@@ -1,2 +1,6 @@
 python-telegram-bot
+requests
 deep-translator
+beautifulsoup4
+httpx
+python-dotenv
