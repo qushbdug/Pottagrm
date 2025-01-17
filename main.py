@@ -1,19 +1,28 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, CallbackQueryHandler
-import random
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    filters,
+    CallbackContext,
+    CallbackQueryHandler,
+    ConversationHandler,
+)
 import logging
-from deep_translator import GoogleTranslator  # استبدال googletrans بـ deep-translator
+from deep_translator import GoogleTranslator
 
 # تفعيل التسجيل للتحقق من الأخطاء
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
 # تخزين بيانات المستخدمين والمحادثات
 users_waiting = []  # قائمة بالمستخدمين الذين ينتظرون شريك دردشة
-active_chats = {}   # تخزين المحادثات النشطة {user_id: partner_id}
+active_chats = {}  # تخزين المحادثات النشطة {user_id: partner_id}
 user_languages = {}  # تخزين لغات المستخدمين {user_id: language}
-user_settings = {}   # تخزين إعدادات المستخدمين {user_id: {"gender": "male", "age": 25, "hide_media": False, "notifications": True}}
-user_points = {}     # تخزين نقاط المكافآت للمستخدمين {user_id: points}
+user_settings = {}  # تخزين إعدادات المستخدمين {user_id: {"gender": "male", "age": 25, "hide_media": False, "notifications": True}}
+user_points = {}  # تخزين نقاط المكافآت للمستخدمين {user_id: points}
 
 # قائمة اللغات المدعومة
 LANGUAGES = {
@@ -27,7 +36,7 @@ LANGUAGES = {
     "ru": "الروسية",
     "pt": "البرتغالية",
     "ja": "اليابانية",
-    "tr": "التركية"
+    "tr": "التركية",
 }
 
 # تعريف الأمر /start
@@ -43,6 +52,7 @@ async def start(update: Update, context: CallbackContext):
         "🎁 استخدم /rewards لعرض نقاط المكافآت."
     )
 
+
 # تعريف الأمر /settings
 async def settings(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
@@ -50,14 +60,15 @@ async def settings(update: Update, context: CallbackContext):
         [InlineKeyboardButton("🔍 البحث عن شريك", callback_data="find_partner")],
         [InlineKeyboardButton("👫 البحث حسب الجنس", callback_data="search_by_gender")],
         [InlineKeyboardButton("🌐 تغيير اللغة", callback_data="set_language")],
-        [InlineKeyboardButton("⚙️ الإعدادات الأخرى", callback_data="other_settings")]
+        [InlineKeyboardButton("⚙️ الإعدادات الأخرى", callback_data="other_settings")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
         "⚙️ اختر الإعداد الذي تريد تغييره:\n\n"
         "ملاحظة: سيتم مطابقتك فقط مع مستخدمين يتحدثون نفس اللغة.",
-        reply_markup=reply_markup
+        reply_markup=reply_markup,
     )
+
 
 # معالجة اختيار الإعدادات
 async def settings_handler(update: Update, context: CallbackContext):
@@ -72,10 +83,12 @@ async def settings_handler(update: Update, context: CallbackContext):
         keyboard = [
             [InlineKeyboardButton("👨 ذكر", callback_data="gender_male")],
             [InlineKeyboardButton("👩 أنثى", callback_data="gender_female")],
-            [InlineKeyboardButton("🤖 غير محدد", callback_data="gender_other")]
+            [InlineKeyboardButton("🤖 غير محدد", callback_data="gender_other")],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text("👫 اختر الجنس الذي تريد البحث عنه:", reply_markup=reply_markup)
+        await query.edit_message_text(
+            "👫 اختر الجنس الذي تريد البحث عنه:", reply_markup=reply_markup
+        )
 
     elif action == "set_language":
         keyboard = []
@@ -88,10 +101,11 @@ async def settings_handler(update: Update, context: CallbackContext):
         keyboard = [
             [InlineKeyboardButton("🎂 العمر", callback_data="set_age")],
             [InlineKeyboardButton("🖼️ إخفاء الصور/الفيديوهات", callback_data="toggle_hide_media")],
-            [InlineKeyboardButton("🔔 الإشعارات", callback_data="toggle_notifications")]
+            [InlineKeyboardButton("🔔 الإشعارات", callback_data="toggle_notifications")],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text("⚙️ الإعدادات الأخرى:", reply_markup=reply_markup)
+
 
 # معالجة اختيار اللغة
 async def language_handler(update: Update, context: CallbackContext):
@@ -101,6 +115,7 @@ async def language_handler(update: Update, context: CallbackContext):
     user_languages[user_id] = language_code
     await query.edit_message_text(f"✅ تم تعيين اللغة إلى: {LANGUAGES[language_code]}")
 
+
 # معالجة اختيار الجنس
 async def gender_handler(update: Update, context: CallbackContext):
     query = update.callback_query
@@ -109,6 +124,17 @@ async def gender_handler(update: Update, context: CallbackContext):
     user_settings[user_id]["gender"] = gender
     await query.edit_message_text(f"✅ تم تعيين الجنس إلى: {gender}")
 
+
+# تعريف حالات المحادثة
+AGE = 1
+
+
+# بدء إدخال العمر
+async def set_age(update: Update, context: CallbackContext):
+    await update.message.reply_text("🎂 الرجاء إدخال عمرك (رقم بين 13 و 100):")
+    return AGE
+
+
 # معالجة إدخال العمر
 async def age_handler(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
@@ -116,10 +142,12 @@ async def age_handler(update: Update, context: CallbackContext):
 
     if not age_text.isdigit() or not (13 <= int(age_text) <= 100):
         await update.message.reply_text("⚠️ الرجاء إدخال عمر صحيح (رقم بين 13 و 100).")
-        return
+        return AGE
 
     user_settings[user_id]["age"] = int(age_text)
     await update.message.reply_text(f"✅ تم تعيين العمر إلى: {age_text}")
+    return ConversationHandler.END
+
 
 # تعريف الأمر /search
 async def search(update: Update, context: CallbackContext):
@@ -145,6 +173,7 @@ async def search(update: Update, context: CallbackContext):
         await context.bot.send_message(user1, "✅ تم العثور على شريك! ابدأ المحادثة الآن.")
         await context.bot.send_message(user2, "✅ تم العثور على شريك! ابدأ المحادثة الآن.")
 
+
 # تعريف الأمر /stop
 async def stop(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
@@ -158,7 +187,10 @@ async def stop(update: Update, context: CallbackContext):
     del active_chats[partner_id]
 
     await update.message.reply_text("⏹️ تم إنهاء المحادثة. استخدم /search للبحث عن شريك جديد.")
-    await context.bot.send_message(partner_id, "⏹️ قام شريكك بإنهاء المحادثة. استخدم /search للبحث عن شريك جديد.")
+    await context.bot.send_message(
+        partner_id, "⏹️ قام شريكك بإنهاء المحادثة. استخدم /search للبحث عن شريك جديد."
+    )
+
 
 # تعريف الأمر /rate
 async def rate(update: Update, context: CallbackContext):
@@ -169,27 +201,34 @@ async def rate(update: Update, context: CallbackContext):
         return
 
     keyboard = [
-        [InlineKeyboardButton("⭐ 1", callback_data="1"),
-         InlineKeyboardButton("⭐ 2", callback_data="2"),
-         InlineKeyboardButton("⭐ 3", callback_data="3"),
-         InlineKeyboardButton("⭐ 4", callback_data="4"),
-         InlineKeyboardButton("⭐ 5", callback_data="5")]
+        [InlineKeyboardButton("⭐ 1", callback_data="1")],
+        [InlineKeyboardButton("⭐ 2", callback_data="2")],
+        [InlineKeyboardButton("⭐ 3", callback_data="3")],
+        [InlineKeyboardButton("⭐ 4", callback_data="4")],
+        [InlineKeyboardButton("⭐ 5", callback_data="5")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("⭐ قم بتقييم شريكك:", reply_markup=reply_markup)
+
 
 # معالجة تقييم المستخدم
 async def rate_handler(update: Update, context: CallbackContext):
     query = update.callback_query
     user_id = query.from_user.id
-    rating = query.data
+    rating = int(query.data)
+
+    # إضافة نقاط المكافأة
+    user_points[user_id] = user_points.get(user_id, 0) + rating
+
     await query.edit_message_text(f"شكرًا لتقييمك! لقد قمت بتقييم شريكك بــ {rating} نجوم.")
+
 
 # تعريف الأمر /rewards
 async def rewards(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     points = user_points.get(user_id, 0)
     await update.message.reply_text(f"🎁 لديك {points} نقطة مكافأة. استخدمها للحصول على مزايا إضافية!")
+
 
 # معالجة الرسائل النصية
 async def handle_message(update: Update, context: CallbackContext):
@@ -204,8 +243,15 @@ async def handle_message(update: Update, context: CallbackContext):
     partner_lang = user_languages.get(partner_id, "en")
 
     # ترجمة الرسالة إلى لغة الشريك
-    translated_text = GoogleTranslator(source=user_lang, target=partner_lang).translate(update.message.text)
-    await context.bot.send_message(partner_id, translated_text)
+    try:
+        translated_text = GoogleTranslator(source=user_lang, target=partner_lang).translate(
+            update.message.text
+        )
+        await context.bot.send_message(partner_id, translated_text)
+    except Exception as e:
+        logger.error(f"فشل في ترجمة الرسالة: {e}")
+        await context.bot.send_message(partner_id, update.message.text)  # إرسال الرسالة دون ترجمة في حالة الخطأ
+
 
 # تعريف الأمر /help
 async def help_command(update: Update, context: CallbackContext):
@@ -221,10 +267,11 @@ async def help_command(update: Update, context: CallbackContext):
         "🛡️ /help - عرض قائمة الأوامر."
     )
 
+
 # تشغيل البوت
-async def main():
+def main():
     # استبدل "YOUR_TELEGRAM_BOT_TOKEN" بتوكن البوت الخاص بك
-    application = Application.builder().token("7876398831:AAHY5P7JOARoFE8KlNecP-2UNR8kDUA3-WM").build()
+    application = Application.builder().token("YOUR_TELEGRAM_BOT_TOKEN").build()
 
     # تعريف الأوامر
     application.add_handler(CommandHandler("start", start))
@@ -239,18 +286,30 @@ async def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     # معالجة الأزرار التفاعلية
-    application.add_handler(CallbackQueryHandler(settings_handler, pattern="^(find_partner|search_by_gender|set_language|other_settings)$"))
+    application.add_handler(
+        CallbackQueryHandler(
+            settings_handler, pattern="^(find_partner|search_by_gender|set_language|other_settings)$"
+        )
+    )
     application.add_handler(CallbackQueryHandler(language_handler, pattern="^lang_"))
     application.add_handler(CallbackQueryHandler(gender_handler, pattern="^gender_"))
     application.add_handler(CallbackQueryHandler(rate_handler, pattern="^(1|2|3|4|5)$"))
 
-    # معالجة إدخال العمر
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, age_handler))
+    # معالجة إدخال العمر باستخدام ConversationHandler
+    application.add_handler(
+        ConversationHandler(
+            entry_points=[CallbackQueryHandler(set_age, pattern="^set_age$")],
+            states={
+                AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, age_handler)],
+            },
+            fallbacks=[],
+        )
+    )
 
     # بدء البوت
-    await application.run_polling()
+    application.run_polling()
 
-# تشغيل البوت في Google Colab أو بيئة Python
-if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main())
+
+# تشغيل البوت
+if __name__ == "__main__":
+    main()
