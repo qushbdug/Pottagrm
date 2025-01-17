@@ -270,8 +270,11 @@ async def help_command(update: Update, context: CallbackContext):
 
 # تشغيل البوت
 def main():
-    # استبدل "YOUR_TELEGRAM_BOT_TOKEN" بتوكن البوت الخاص بك
-    application = Application.builder().token("123456789:ABCdefGhIJKlmNoPQRstuVWXyz").build()
+    # استخدام التوكن مباشرة
+    TOKEN = "7876398831:AAHY5P7JOARoFE8KlNecP-2UNR8kDUA3-WM"
+
+    # إنشاء التطبيق
+    application = Application.builder().token(TOKEN).build()
 
     # تعريف الأوامر
     application.add_handler(CommandHandler("start", start))
