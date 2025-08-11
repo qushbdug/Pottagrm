@@ -5,6 +5,7 @@ import csv
 import io
 import re
 import os
+import random
 from typing import Optional
 from cryptography.fernet import Fernet
 from telegram import (
@@ -13,6 +14,8 @@ from telegram import (
     InlineKeyboardMarkup,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
+    BotCommand,
+    MenuButtonCommands,
 )
 from telegram.ext import (
     Application,
@@ -44,6 +47,19 @@ ACCOUNT_TYPE_REVENUE = 'revenue'
 ACCOUNT_TYPE_EXPENSE = 'expense'
 ACCOUNT_CODE_ISSUANCE_EXPENSE = '5000'
 ACCOUNT_CODE_BOT_COMMISSION_REVENUE = '4100'
+
+# Business configuration
+CARD_COMMISSION_RATE = float(os.getenv('CARD_COMMISSION_RATE', '0.10'))
+AGENT_COMMISSION_RATE = float(os.getenv('AGENT_COMMISSION_RATE', '0.05'))
+
+# Quick menu commands
+QUICK_COMMANDS = [
+    BotCommand('menu', 'فتح القائمة الرئيسية'),
+    BotCommand('balance', 'عرض الرصيد'),
+    BotCommand('buy', 'شراء كرت'),
+    BotCommand('transfer', 'تحويل إلى محفظة'),
+    BotCommand('stats', 'إحصائياتي'),
+]
 
 # Encryption
 
@@ -95,10 +111,28 @@ def init_db():
             bank_account TEXT,
             total_referrals INTEGER DEFAULT 0,
             referral_bonus REAL DEFAULT 0.0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            wallet_number TEXT UNIQUE
         )
         '''
     )
+
+    # Migration: add wallet_number if missing
+    try:
+        cursor.execute('ALTER TABLE users ADD COLUMN wallet_number TEXT UNIQUE')
+    except sqlite3.OperationalError:
+        pass
+
+    # Backfill missing wallet numbers
+    cursor.execute("SELECT id FROM users WHERE wallet_number IS NULL OR wallet_number = ''")
+    missing = [row[0] for row in cursor.fetchall()]
+    for user_id in missing:
+        for _ in range(20):
+            trial = '79' + ''.join(str(random.randint(0, 9)) for _ in range(7))
+            cursor.execute('SELECT 1 FROM users WHERE wallet_number = ?', (trial,))
+            if not cursor.fetchone():
+                cursor.execute('UPDATE users SET wallet_number = ? WHERE id = ?', (trial, user_id))
+                break
 
     cursor.execute(
         '''
@@ -352,9 +386,19 @@ def create_user(telegram_id, full_name, phone, role='customer', is_active=False)
     cursor = conn.cursor()
     try:
         invite_code = str(uuid.uuid4())[:8].upper()
+        # Generate wallet number: 9 digits, starts with 79
+        wallet_number = None
+        for _ in range(10):
+            trial = '79' + ''.join(str(random.randint(0, 9)) for _ in range(7))
+            cursor.execute('SELECT 1 FROM users WHERE wallet_number = ?', (trial,))
+            if not cursor.fetchone():
+                wallet_number = trial
+                break
+        if not wallet_number:
+            raise RuntimeError('Failed to generate wallet number')
         cursor.execute(
-            'INSERT INTO users (telegram_id, full_name, phone, role, invite_code, is_active) VALUES (?, ?, ?, ?, ?, ?)',
-            (telegram_id, full_name, phone, role, invite_code, 1 if role == 'customer' else (1 if is_active else 0)),
+            'INSERT INTO users (telegram_id, full_name, phone, role, invite_code, is_active, wallet_number) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            (telegram_id, full_name, phone, role, invite_code, 1 if role == 'customer' else (1 if is_active else 0), wallet_number),
         )
         conn.commit()
         return cursor.lastrowid
@@ -386,6 +430,16 @@ def get_user_by_phone(phone):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM users WHERE phone = ?', (phone,))
+    row = cursor.fetchone()
+    user = _row_to_dict(cursor, row)
+    conn.close()
+    return user
+
+
+def get_user_by_wallet(wallet_number: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM users WHERE wallet_number = ?', (wallet_number,))
     row = cursor.fetchone()
     user = _row_to_dict(cursor, row)
     conn.close()
@@ -447,7 +501,10 @@ def setup_super_admin():
     GET_WITHDRAW_AMOUNT, CONFIRM_WITHDRAWAL,
     ADMIN_ACTIVATE_ACCOUNTS,
     ISSUE_TARGET, ISSUE_AMOUNT, ISSUE_CONFIRM,
-) = range(21)
+    # New states
+    PASTE_CARDS,
+    TRANSFER_TARGET, TRANSFER_AMOUNT, TRANSFER_CONFIRM,
+) = range(25)
 
 # Handlers
 async def start(update: Update, context: CallbackContext) -> int:
@@ -597,6 +654,7 @@ async def supplier_menu(update: Update, context: CallbackContext) -> int:
         return ConversationHandler.END
     keyboard = [
         [InlineKeyboardButton('📤 رفع كروت جديدة', callback_data='upload_cards')],
+        [InlineKeyboardButton('📝 لصق أكواد يدويًا', callback_data='paste_cards')],
         [InlineKeyboardButton('📊 إدارة المخزون', callback_data='manage_inventory')],
         [InlineKeyboardButton('💸 سحب الأرباح', callback_data='withdraw_earnings')],
         [InlineKeyboardButton('📈 سجل المبيعات', callback_data='sales_history')],
@@ -866,8 +924,8 @@ async def complete_purchase(update: Update, context: CallbackContext) -> int:
             row_acc = cur2.fetchone()
         commission_acc = row_acc[0]
         conn.commit()
-        supplier_share = price * 0.90
-        bot_commission = price * 0.10
+        supplier_share = round(price * (1.0 - CARD_COMMISSION_RATE), 2)
+        bot_commission = round(price * CARD_COMMISSION_RATE, 2)
         post_journal(
             description=f'Card purchase {card_id} by user {user["id"]}',
             created_by=user['id'],
@@ -932,8 +990,8 @@ async def confirm_recharge(update: Update, context: CallbackContext) -> int:
     if not customer_id or amount <= 0:
         await update.message.reply_text('⚠️ حدث خطأ في البيانات!')
         return ConversationHandler.END
-    agent_commission = amount * 0.05
-    customer_amount = amount - agent_commission
+    agent_commission = round(amount * AGENT_COMMISSION_RATE, 2)
+    customer_amount = round(amount - agent_commission, 2)
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -1131,6 +1189,178 @@ async def notify_admins(context: CallbackContext, message: str):
     logger.info(f'Admin Notification: {message}')
     await context.bot.send_message(chat_id=7684780523, text=message)
 
+async def quick_menu(update: Update, context: CallbackContext) -> int:
+    user = get_user(update.effective_user.id)
+    if not user:
+        return await start(update, context)
+    buttons = [
+        [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')],
+        [InlineKeyboardButton('💳 رصيدي', callback_data='show_balance')],
+        [InlineKeyboardButton('🛒 شراء كرت', callback_data='buy_cards')],
+        [InlineKeyboardButton('🔁 تحويل إلى محفظة', callback_data='transfer_to_friend')],
+        [InlineKeyboardButton('📊 إحصائياتي', callback_data='my_stats')],
+    ]
+    if update.message:
+        await update.message.reply_text('⚡️ قائمة الأوامر السريعة:', reply_markup=InlineKeyboardMarkup(buttons))
+    else:
+        await update.callback_query.edit_message_text('⚡️ قائمة الأوامر السريعة:', reply_markup=InlineKeyboardMarkup(buttons))
+    return ConversationHandler.END
+
+async def show_balance(update: Update, context: CallbackContext) -> int:
+    user = get_user(update.effective_user.id)
+    recalc_and_set_user_balance(user['id'])
+    user = get_user(update.effective_user.id)
+    text = f"💳 رصيدك: {user['balance']:.2f} ريال\n🪪 رقم المحفظة: {user.get('wallet_number','-')}"
+    if update.message:
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]))
+    else:
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]))
+    return ConversationHandler.END
+
+# Supplier text paste cards upload (0..13 digit codes separated by newline)
+async def paste_cards_prompt(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text('📋 أرسل الآن قائمة الأكواد (سطر لكل كرت). يمكن أن تكون الأكواد من 0 إلى 13 رقم/حرف لكل كرت.\nاكتب /cancel للإلغاء.')
+    return PASTE_CARDS
+
+async def handle_pasted_cards(update: Update, context: CallbackContext) -> int:
+    supplier = get_user(update.message.from_user.id)
+    if not supplier or supplier['role'] != 'supplier' or not supplier['is_active']:
+        await update.message.reply_text('⚠️ الميزة للمزودين المفعّلين فقط.')
+        return ConversationHandler.END
+    raw = update.message.text.strip()
+    lines = [l.strip() for l in raw.splitlines() if l.strip()]
+    if not lines:
+        await update.message.reply_text('⚠️ لم يتم العثور على أكواد.')
+        return ConversationHandler.END
+    # Default value/price: ask not implemented; assume equal pricing by length? Use placeholders 0 value/price
+    # We'll store as value=0, price=0 and supplier can set categories later in inventory
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        network_id = await _ensure_supplier_network(cur, supplier['id'])
+        # Use single category per paste with value=0 price=0
+        cur.execute('SELECT id FROM card_categories WHERE network_id = ? AND value = ? AND price = ?', (network_id, 0, 0))
+        row = cur.fetchone()
+        if row:
+            category_id = row[0]
+        else:
+            cur.execute('INSERT INTO card_categories (network_id, value, price) VALUES (?, ?, ?)', (network_id, 0, 0))
+            category_id = cur.lastrowid
+        uploaded = 0
+        for code in lines:
+            if not re.fullmatch(r'\d{1,13}', code):
+                continue
+            enc = encrypt_data(code)
+            cur.execute('INSERT INTO cards (id, category_id, code) VALUES (?, ?, ?)', (str(uuid.uuid4()), category_id, enc))
+            uploaded += 1
+        conn.commit()
+        await update.message.reply_text(f'✅ تم حفظ {uploaded} كرت من أصل {len(lines)}.', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]))
+    except Exception as e:
+        logger.error(f'Paste upload error: {e}')
+        await update.message.reply_text('⚠️ فشل الحفظ.')
+    finally:
+        conn.close()
+    return ConversationHandler.END
+
+# P2P transfer by wallet number
+async def transfer_to_friend_handler(update: Update, context: CallbackContext) -> int:
+    await update.callback_query.edit_message_text('🔁 أدخل رقم محفظة المستلم (9 أرقام وتبدأ بـ 79):')
+    return TRANSFER_TARGET
+
+async def transfer_target(update: Update, context: CallbackContext) -> int:
+    wallet = update.message.text.strip()
+    if not re.fullmatch(r'79\d{7}', wallet):
+        await update.message.reply_text('⚠️ رقم المحفظة غير صحيح. يجب أن يكون 9 أرقام ويبدأ بـ 79.')
+        return TRANSFER_TARGET
+    user = get_user_by_wallet(wallet)
+    if not user:
+        await update.message.reply_text('⚠️ لم يتم العثور على محفظة بهذا الرقم. أعد الإدخال:')
+        return TRANSFER_TARGET
+    context.user_data['transfer_target_id'] = user['id']
+    await update.message.reply_text('💰 أدخل مبلغ التحويل (بالريال):')
+    return TRANSFER_AMOUNT
+
+async def transfer_amount(update: Update, context: CallbackContext) -> int:
+    try:
+        amount = float(update.message.text)
+        if amount <= 0:
+            raise ValueError()
+    except Exception:
+        await update.message.reply_text('⚠️ أدخل مبلغاً صحيحاً (> 0):')
+        return TRANSFER_AMOUNT
+    context.user_data['transfer_amount'] = round(amount, 2)
+    target = get_user_by_id(context.user_data['transfer_target_id'])
+    await update.message.reply_text(
+        f"تأكيد التحويل:\nالمستلم: {target['full_name']} ({target['wallet_number']})\nالمبلغ: {amount:.2f} ريال\nتأكيد؟",
+        reply_markup=ReplyKeyboardMarkup([['✅ نعم', '❌ إلغاء']], one_time_keyboard=True, resize_keyboard=True),
+    )
+    return TRANSFER_CONFIRM
+
+async def transfer_confirm(update: Update, context: CallbackContext) -> int:
+    if update.message.text != '✅ نعم':
+        await update.message.reply_text('تم الإلغاء.', reply_markup=ReplyKeyboardRemove())
+        return ConversationHandler.END
+    sender = get_user(update.message.from_user.id)
+    target_id = context.user_data.get('transfer_target_id')
+    amount = float(context.user_data.get('transfer_amount', 0))
+    if not target_id or amount <= 0:
+        await update.message.reply_text('⚠️ خطأ في البيانات.')
+        return ConversationHandler.END
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        sender_acc = get_or_create_user_wallet_account(cur, sender['id'])
+        recv_acc = get_or_create_user_wallet_account(cur, target_id)
+        conn.commit()
+        conn.close()
+        post_journal(
+            description=f'P2P transfer from {sender["id"]} to {target_id}',
+            created_by=sender['id'],
+            lines=[
+                {'account_id': sender_acc, 'debit': amount, 'credit': 0.0, 'user_id': sender['id'], 'ref_type': 'p2p_transfer', 'ref_id': str(target_id)},
+                {'account_id': recv_acc, 'debit': 0.0, 'credit': amount, 'user_id': target_id, 'ref_type': 'p2p_transfer', 'ref_id': str(sender['id'])},
+            ],
+        )
+        create_transaction(sender['id'], target_id, amount, 'p2p_transfer')
+        recalc_and_set_user_balance(sender['id'])
+        recalc_and_set_user_balance(target_id)
+        await update.message.reply_text('✅ تم التحويل بنجاح.', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]))
+    except Exception as e:
+        logger.error(f'P2P transfer error: {e}')
+        await update.message.reply_text('⚠️ فشل التحويل.')
+    return ConversationHandler.END
+
+# Stats handlers
+async def my_stats(update: Update, context: CallbackContext) -> int:
+    user = get_user(update.effective_user.id)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # Total purchases
+        cur.execute("SELECT COUNT(*), COALESCE(SUM(amount),0) FROM transactions WHERE from_user = ? AND type = 'card_purchase'", (user['id'],))
+        cnt_p, sum_p = cur.fetchone()
+        # Total incoming transfers
+        cur.execute("SELECT COALESCE(SUM(amount),0) FROM transactions WHERE to_user = ?", (user['id'],))
+        incoming = cur.fetchone()[0] or 0
+        # Total outgoing transfers
+        cur.execute("SELECT COALESCE(SUM(amount),0) FROM transactions WHERE from_user = ?", (user['id'],))
+        outgoing = cur.fetchone()[0] or 0
+        text = (
+            f"📊 إحصائياتك:\n"
+            f"🧾 عدد عمليات الشراء: {cnt_p}\n"
+            f"💵 إجمالي المبالغ الخارجة: {outgoing:.2f} ريال\n"
+            f"💳 إجمالي المبالغ الداخلة: {incoming:.2f} ريال\n"
+        )
+    finally:
+        conn.close()
+    if update.message:
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]))
+    else:
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]))
+    return ConversationHandler.END
+
 async def button_click_handler(update: Update, context: CallbackContext):
     query = update.callback_query
     await query.answer()
@@ -1168,26 +1398,113 @@ async def button_click_handler(update: Update, context: CallbackContext):
         await start_withdrawal(update, context)
     elif data == 'issue_balance':
         await start_issue_balance(update, context)
+    elif data == 'show_balance':
+        await show_balance(update, context)
+    elif data == 'my_stats':
+        await my_stats(update, context)
+    elif data == 'paste_cards':
+        await paste_cards_prompt(update, context)
     else:
         await query.edit_message_text('⚠️ هذا الزر غير مفعل حالياً')
 
 async def recharge_balance_handler(update: Update, context: CallbackContext):
-    await update.callback_query.edit_message_text('⏳ هذه الميزة قيد التطوير...')
+    await update.callback_query.edit_message_text('💳 رقم محفظتك: ' + (get_user(update.callback_query.from_user.id).get('wallet_number') or '-') + '\n⏳ هذه الميزة قيد التطوير...')
 
 async def transfer_to_friend_handler(update: Update, context: CallbackContext):
-    await update.callback_query.edit_message_text('⏳ هذه الميزة قيد التطوير...')
+    await update.callback_query.edit_message_text('🔁 أدخل رقم محفظة المستلم (9 أرقام وتبدأ بـ 79):')
+    return TRANSFER_TARGET
 
-async def invite_friends_handler(update: Update, context: CallbackContext):
-    user = get_user(update.callback_query.from_user.id)
-    await update.callback_query.edit_message_text(f"📨 رابط دعوتك: https://t.me/Vsjsgshh_bot?start=ref_{user.get('invite_code')}\n" '💰 احصل على 10% من أول شحن لأصدقائك!')
+async def transfer_target(update: Update, context: CallbackContext) -> int:
+    wallet = update.message.text.strip()
+    if not re.fullmatch(r'79\d{7}', wallet):
+        await update.message.reply_text('⚠️ رقم المحفظة غير صحيح. يجب أن يكون 9 أرقام ويبدأ بـ 79.')
+        return TRANSFER_TARGET
+    user = get_user_by_wallet(wallet)
+    if not user:
+        await update.message.reply_text('⚠️ لم يتم العثور على محفظة بهذا الرقم. أعد الإدخال:')
+        return TRANSFER_TARGET
+    context.user_data['transfer_target_id'] = user['id']
+    await update.message.reply_text('💰 أدخل مبلغ التحويل (بالريال):')
+    return TRANSFER_AMOUNT
 
-async def transaction_history_handler(update: Update, context: CallbackContext):
-    await update.callback_query.edit_message_text('⏳ جاري تحميل سجل المعاملات...')
+async def transfer_amount(update: Update, context: CallbackContext) -> int:
+    try:
+        amount = float(update.message.text)
+        if amount <= 0:
+            raise ValueError()
+    except Exception:
+        await update.message.reply_text('⚠️ أدخل مبلغاً صحيحاً (> 0):')
+        return TRANSFER_AMOUNT
+    context.user_data['transfer_amount'] = round(amount, 2)
+    target = get_user_by_id(context.user_data['transfer_target_id'])
+    await update.message.reply_text(
+        f"تأكيد التحويل:\nالمستلم: {target['full_name']} ({target['wallet_number']})\nالمبلغ: {amount:.2f} ريال\nتأكيد؟",
+        reply_markup=ReplyKeyboardMarkup([['✅ نعم', '❌ إلغاء']], one_time_keyboard=True, resize_keyboard=True),
+    )
+    return TRANSFER_CONFIRM
 
-async def customer_help_handler(update: Update, context: CallbackContext):
-    await update.callback_query.edit_message_text('🆘 مركز المساعدة:\nللإبلاغ عن مشكلة أو استفسار، راسل الدعم الفني:\n@Vsjsgshh_support')
+async def transfer_confirm(update: Update, context: CallbackContext) -> int:
+    if update.message.text != '✅ نعم':
+        await update.message.reply_text('تم الإلغاء.', reply_markup=ReplyKeyboardRemove())
+        return ConversationHandler.END
+    sender = get_user(update.message.from_user.id)
+    target_id = context.user_data.get('transfer_target_id')
+    amount = float(context.user_data.get('transfer_amount', 0))
+    if not target_id or amount <= 0:
+        await update.message.reply_text('⚠️ خطأ في البيانات.')
+        return ConversationHandler.END
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        sender_acc = get_or_create_user_wallet_account(cur, sender['id'])
+        recv_acc = get_or_create_user_wallet_account(cur, target_id)
+        conn.commit()
+        conn.close()
+        post_journal(
+            description=f'P2P transfer from {sender["id"]} to {target_id}',
+            created_by=sender['id'],
+            lines=[
+                {'account_id': sender_acc, 'debit': amount, 'credit': 0.0, 'user_id': sender['id'], 'ref_type': 'p2p_transfer', 'ref_id': str(target_id)},
+                {'account_id': recv_acc, 'debit': 0.0, 'credit': amount, 'user_id': target_id, 'ref_type': 'p2p_transfer', 'ref_id': str(sender['id'])},
+            ],
+        )
+        create_transaction(sender['id'], target_id, amount, 'p2p_transfer')
+        recalc_and_set_user_balance(sender['id'])
+        recalc_and_set_user_balance(target_id)
+        await update.message.reply_text('✅ تم التحويل بنجاح.', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]))
+    except Exception as e:
+        logger.error(f'P2P transfer error: {e}')
+        await update.message.reply_text('⚠️ فشل التحويل.')
+    return ConversationHandler.END
 
-# main
+# Stats handlers
+async def my_stats(update: Update, context: CallbackContext) -> int:
+    user = get_user(update.effective_user.id)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # Total purchases
+        cur.execute("SELECT COUNT(*), COALESCE(SUM(amount),0) FROM transactions WHERE from_user = ? AND type = 'card_purchase'", (user['id'],))
+        cnt_p, sum_p = cur.fetchone()
+        # Total incoming transfers
+        cur.execute("SELECT COALESCE(SUM(amount),0) FROM transactions WHERE to_user = ?", (user['id'],))
+        incoming = cur.fetchone()[0] or 0
+        # Total outgoing transfers
+        cur.execute("SELECT COALESCE(SUM(amount),0) FROM transactions WHERE from_user = ?", (user['id'],))
+        outgoing = cur.fetchone()[0] or 0
+        text = (
+            f"📊 إحصائياتك:\n"
+            f"🧾 عدد عمليات الشراء: {cnt_p}\n"
+            f"💵 إجمالي المبالغ الخارجة: {outgoing:.2f} ريال\n"
+            f"💳 إجمالي المبالغ الداخلة: {incoming:.2f} ريال\n"
+        )
+    finally:
+        conn.close()
+    if update.message:
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]))
+    else:
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]))
+    return ConversationHandler.END
 
 def main() -> None:
     init_db()
@@ -1198,8 +1515,16 @@ def main() -> None:
         raise SystemExit(1)
     persistence = PicklePersistence(filepath='conversationbot')
     application = Application.builder().token(token).persistence(persistence).build()
+
+    # Set quick action menu (bot commands)
+    try:
+        application.bot.set_my_commands(QUICK_COMMANDS)
+        application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+    except Exception as e:
+        logger.warning(f'Failed setting commands/menu: {e}')
+
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
+        entry_points=[CommandHandler('start', start), CommandHandler('menu', quick_menu), CommandHandler('balance', show_balance), CommandHandler('buy', lambda u, c: buy_cards(u, c)), CommandHandler('stats', my_stats), CommandHandler('transfer', transfer_to_friend_handler)],
         states={
             GET_FULL_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_full_name)],
             GET_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone)],
@@ -1218,6 +1543,11 @@ def main() -> None:
             ISSUE_TARGET: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_issue_target)],
             ISSUE_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_issue_amount)],
             ISSUE_CONFIRM: [MessageHandler(filters.Regex('^(✅ نعم|❌ إلغاء)$'), confirm_issue)],
+            # New
+            PASTE_CARDS: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_pasted_cards)],
+            TRANSFER_TARGET: [MessageHandler(filters.TEXT & ~filters.COMMAND, transfer_target)],
+            TRANSFER_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, transfer_amount)],
+            TRANSFER_CONFIRM: [MessageHandler(filters.Regex('^(✅ نعم|❌ إلغاء)$'), transfer_confirm)],
         },
         fallbacks=[
             CommandHandler('cancel', cancel),
