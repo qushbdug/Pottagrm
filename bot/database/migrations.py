@@ -254,41 +254,64 @@ def create_new_tables():
 def create_indexes():
     """إنشاء الفهارس لتحسين الأداء"""
     
-    indexes_script = """
-    -- فهارس للجداول الأساسية
-    CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id);
-    CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);
-    CREATE INDEX IF NOT EXISTS idx_users_wallet_number ON users(wallet_number);
+    try:
+        with db_manager.get_cursor() as (conn, cursor):
+            # التحقق من وجود الأعمدة قبل إنشاء الفهارس
+            
+            # فهارس للجداول الأساسية
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone)")
+            
+            # التحقق من وجود عمود wallet_number
+            cursor.execute("PRAGMA table_info(users)")
+            user_columns = [column[1] for column in cursor.fetchall()]
+            if 'wallet_number' in user_columns:
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_wallet_number ON users(wallet_number)")
+            
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_networks_supplier_id ON networks(supplier_id)")
+            
+            # التحقق من وجود عمود network_code
+            cursor.execute("PRAGMA table_info(networks)")
+            network_columns = [column[1] for column in cursor.fetchall()]
+            if 'network_code' in network_columns:
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_networks_network_code ON networks(network_code)")
+            
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_cards_category_id ON cards(category_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_cards_is_used ON cards(is_used)")
+            
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_from_user ON transactions(from_user)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_to_user ON transactions(to_user)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at)")
+            
+            # فهارس للجداول الجديدة - التحقق من وجود الجداول أولاً
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ratings'")
+            if cursor.fetchone():
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_ratings_user_id ON ratings(user_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_ratings_created_at ON ratings(created_at)")
+            
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='e_wallet_transactions'")
+            if cursor.fetchone():
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_e_wallet_sender ON e_wallet_transactions(sender_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_e_wallet_receiver ON e_wallet_transactions(receiver_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_e_wallet_status ON e_wallet_transactions(status)")
+            
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='notifications'")
+            if cursor.fetchone():
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read)")
+            
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='activity_log'")
+            if cursor.fetchone():
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_activity_log_user_id ON activity_log(user_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_activity_log_created_at ON activity_log(created_at)")
+                
+            logger.info("تم إنشاء الفهارس بنجاح")
     
-    CREATE INDEX IF NOT EXISTS idx_networks_supplier_id ON networks(supplier_id);
-    CREATE INDEX IF NOT EXISTS idx_networks_network_code ON networks(network_code);
-    
-    CREATE INDEX IF NOT EXISTS idx_cards_category_id ON cards(category_id);
-    CREATE INDEX IF NOT EXISTS idx_cards_is_used ON cards(is_used);
-    
-    CREATE INDEX IF NOT EXISTS idx_transactions_from_user ON transactions(from_user);
-    CREATE INDEX IF NOT EXISTS idx_transactions_to_user ON transactions(to_user);
-    CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type);
-    CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status);
-    CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at);
-    
-    -- فهارس للجداول الجديدة
-    CREATE INDEX IF NOT EXISTS idx_ratings_user_id ON ratings(user_id);
-    CREATE INDEX IF NOT EXISTS idx_ratings_created_at ON ratings(created_at);
-    
-    CREATE INDEX IF NOT EXISTS idx_e_wallet_sender ON e_wallet_transactions(sender_id);
-    CREATE INDEX IF NOT EXISTS idx_e_wallet_receiver ON e_wallet_transactions(receiver_id);
-    CREATE INDEX IF NOT EXISTS idx_e_wallet_status ON e_wallet_transactions(status);
-    
-    CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
-    CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
-    
-    CREATE INDEX IF NOT EXISTS idx_activity_log_user_id ON activity_log(user_id);
-    CREATE INDEX IF NOT EXISTS idx_activity_log_created_at ON activity_log(created_at);
-    """
-    
-    db_manager.execute_script(indexes_script)
-    logger.info("تم إنشاء الفهارس بنجاح")
+    except Exception as e:
+        logger.error(f"خطأ في إنشاء الفهارس: {e}")
+        # لا نرفع الخطأ هنا لأن الفهارس ليست ضرورية لعمل البوت
 
 def add_missing_columns():
     """إضافة الأعمدة المفقودة للجداول الموجودة"""
