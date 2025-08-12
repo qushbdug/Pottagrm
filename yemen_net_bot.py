@@ -1509,9 +1509,9 @@ async def my_stats(update: Update, context: CallbackContext) -> int:
 def main() -> None:
     init_db()
     setup_super_admin()
-    token = '7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0'
+    token = os.getenv('BOT_TOKEN') or os.getenv('TELEGRAM_BOT_TOKEN')
     if not token:
-        logger.error('BOT_TOKEN is not set. Please set BOT_TOKEN environment variable.')
+        logger.error('لم يتم ضبط BOT_TOKEN. يُرجى ضبط متغير البيئة BOT_TOKEN في Render.')
         raise SystemExit(1)
     persistence = PicklePersistence(filepath='conversationbot')
     application = Application.builder().token(token).persistence(persistence).build()
