@@ -1509,7 +1509,7 @@ async def my_stats(update: Update, context: CallbackContext) -> int:
 def main() -> None:
     init_db()
     setup_super_admin()
-    token = os.getenv('BOT_TOKEN') or os.getenv('7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0')
+    token = os.getenv('7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0') or os.getenv('7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0')
     if not token:
         logger.error('لم يتم ضبط BOT_TOKEN. يُرجى ضبط متغير البيئة BOT_TOKEN في Render.')
         raise SystemExit(1)
