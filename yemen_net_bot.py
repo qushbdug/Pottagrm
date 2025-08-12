@@ -1509,7 +1509,7 @@ async def my_stats(update: Update, context: CallbackContext) -> int:
 def main() -> None:
     init_db()
     setup_super_admin()
-    token = os.getenv('7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0')
+    token = '7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0'
     if not token:
         logger.error('BOT_TOKEN is not set. Please set BOT_TOKEN environment variable.')
         raise SystemExit(1)
