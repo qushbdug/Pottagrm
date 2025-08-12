@@ -3,7 +3,7 @@ services:
     name: yemen-net-bot
     env: python
     buildCommand: "pip install -r requirements.txt"
-    startCommand: "python main_bot.py"
+    startCommand: "python start.py"
     plan: free
     envVars:
       - key: DB_PATH
@@ -12,6 +12,10 @@ services:
         generateValue: true
       - key: PYTHONPATH
         value: /opt/render/project/src
+      - key: PORT
+        value: 8080
+      - key: RENDER
+        value: "true"
     disk:
       name: yemen-net-data
       mountPath: /opt/render/project/src
