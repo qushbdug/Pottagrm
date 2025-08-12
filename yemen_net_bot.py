@@ -27,15 +27,13 @@ from telegram.ext import (
     PicklePersistence,
     filters,
 )
-from dotenv import load_dotenv
-
-# Load env
-load_dotenv()
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+BOT_TOKEN = '7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0'
 
 DB_PATH = os.getenv('DB_PATH', os.path.abspath('yemen_net.db'))
 
@@ -1509,10 +1507,7 @@ async def my_stats(update: Update, context: CallbackContext) -> int:
 def main() -> None:
     init_db()
     setup_super_admin()
-    token = os.getenv('BOT_TOKEN') or os.getenv('TELEGRAM_BOT_TOKEN')
-    if not token:
-        logger.error('لم يتم ضبط BOT_TOKEN. يُرجى ضبط متغير البيئة BOT_TOKEN في Render.')
-        raise SystemExit(1)
+    token = BOT_TOKEN
     persistence = PicklePersistence(filepath='conversationbot')
     application = Application.builder().token(token).persistence(persistence).build()
 
