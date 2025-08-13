@@ -1,7 +1,9 @@
-python-telegram-bot
-requests
-deep-translator
-beautifulsoup4
-httpx
-python-dotenv
-cryptography
+python-telegram-bot==20.7
+httpx==0.25.2
+asyncio-mqtt==0.16.1
+python-dotenv==1.0.0
+SQLAlchemy==2.0.23
+aiosqlite==0.19.0
+cryptography==41.0.7
+Pillow==10.1.0
+aiofiles==23.2.1

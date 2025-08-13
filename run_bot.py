@@ -31,44 +31,20 @@ async def run_bot_async():
         # إنشاء البوت
         bot = YemenNetBot()
         
-        # إعداد الأوامر السريعة
-        try:
-            await bot.setup_commands()
-        except Exception as e:
-            logger.warning(f"فشل إعداد الأوامر السريعة: {e}")
-        
         # تشغيل البوت حسب البيئة
         if os.getenv('RENDER'):
             # تشغيل webhook للبيئة الإنتاجية
-            port = int(os.getenv('PORT', 8080))
+            port = int(os.getenv('PORT', 10000))
             webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}"
             
             logger.info(f"تشغيل webhook على المنفذ {port}")
             logger.info(f"webhook URL: {webhook_url}")
             
-            # تشغيل webhook
-            async with bot.application:
-                await bot.application.start()
-                await bot.application.updater.start_webhook(
-                    listen='0.0.0.0',
-                    port=port,
-                    webhook_url=webhook_url,
-                    drop_pending_updates=True
-                )
-                
-                # الانتظار إلى ما لا نهاية
-                await asyncio.Event().wait()
+            await bot.run_webhook(port=port, webhook_url=webhook_url)
         else:
             # تشغيل polling للتطوير المحلي
             logger.info("تشغيل polling للتطوير المحلي")
-            
-            # تشغيل polling
-            async with bot.application:
-                await bot.application.start()
-                await bot.application.updater.start_polling(drop_pending_updates=True)
-                
-                # الانتظار إلى ما لا نهاية
-                await asyncio.Event().wait()
+            await bot.run()
                 
     except KeyboardInterrupt:
         logger.info("تم إيقاف البوت بواسطة المستخدم")

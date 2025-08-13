@@ -921,6 +921,43 @@ class YemenNetBot:
             logger.info("تم إعداد الأوامر السريعة بنجاح")
         except Exception as e:
             logger.warning(f"فشل إعداد الأوامر السريعة: {e}")
+    
+    async def run(self):
+        """تشغيل البوت"""
+        try:
+            # إعداد الأوامر السريعة
+            await self.setup_commands()
+            
+            # تشغيل البوت
+            logger.info("🚀 بدء تشغيل البوت...")
+            await self.application.run_polling(drop_pending_updates=True)
+            
+        except Exception as e:
+            logger.error(f"خطأ في تشغيل البوت: {e}")
+            raise
+    
+    async def run_webhook(self, port=8080, webhook_url=None):
+        """تشغيل البوت باستخدام webhook"""
+        try:
+            # إعداد الأوامر السريعة
+            await self.setup_commands()
+            
+            if webhook_url:
+                logger.info(f"تشغيل webhook على المنفذ {port}")
+                logger.info(f"webhook URL: {webhook_url}")
+                
+                await self.application.run_webhook(
+                    listen='0.0.0.0',
+                    port=port,
+                    webhook_url=webhook_url,
+                    drop_pending_updates=True
+                )
+            else:
+                logger.error("يجب تحديد webhook_url")
+                
+        except Exception as e:
+            logger.error(f"خطأ في تشغيل webhook: {e}")
+            raise
 
 def main():
     """الدالة الرئيسية"""
@@ -930,7 +967,7 @@ def main():
         
         # تشغيل البوت باستخدام polling
         logger.info("🚀 بدء تشغيل البوت بـ polling...")
-        bot.application.run_polling(drop_pending_updates=True)
+        asyncio.run(bot.run())
         
     except KeyboardInterrupt:
         logger.info("تم إيقاف البوت بواسطة المستخدم")
