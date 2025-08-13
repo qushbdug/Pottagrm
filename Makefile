@@ -29,7 +29,11 @@ help:
 # Installation
 install:
 	@echo "📦 Installing dependencies..."
-	pip install -r requirements.txt
+	pip install -r requirements-compatible.txt
+
+install-compatible:
+	@echo "📦 Installing compatible dependencies..."
+	pip install -r requirements-compatible.txt
 
 install-dev:
 	@echo "📦 Installing development dependencies..."
@@ -104,6 +108,18 @@ dev-setup: install-dev
 	@echo "Run 'make run' to start the bot"
 
 # Production setup
-prod-setup: install
+prod-setup: install-compatible
 	@echo "🚀 Production environment setup complete!"
 	@echo "Run 'make run-prod' to start the bot"
+
+# Render deployment
+render-setup: verify-config install-compatible
+	@echo "🚀 Render deployment setup complete!"
+	@echo "Run 'make deploy-render' to prepare for deployment"
+
+verify-config:
+	@echo "🔍 Verifying Render configuration..."
+	@test -f render.yaml || (echo "❌ render.yaml not found!" && exit 1)
+	@test -f main.py || (echo "❌ main.py not found!" && exit 1)
+	@test -f requirements-compatible.txt || (echo "❌ requirements-compatible.txt not found!" && exit 1)
+	@echo "✅ All configuration files verified!"

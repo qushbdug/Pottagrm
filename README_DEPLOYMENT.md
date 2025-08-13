@@ -27,7 +27,7 @@ git push origin main
 
 - ✅ `render.yaml` - إعدادات Render
 - ✅ `main.py` - نقطة الدخول الرئيسية
-- ✅ `requirements-minimal.txt` - المتطلبات الأساسية
+- ✅ `requirements-compatible.txt` - المتطلبات المتوافقة
 - ✅ `Procfile` - ملف Procfile
 - ✅ `runtime.txt` - إصدار Python
 
@@ -36,9 +36,16 @@ git push origin main
 **المشكلة**: خطأ في تثبيت `sqlite3`
 
 **الحل**: 
-1. استخدم `requirements-minimal.txt` بدلاً من `requirements.txt`
+1. استخدم `requirements-compatible.txt` بدلاً من `requirements.txt`
 2. تأكد من تحديث pip أولاً
 3. استخدم Python 3.11 أو أحدث
+
+**المشكلة**: خطأ `_Updater__polling_cleanup_cb`
+
+**الحل**:
+1. استخدم `python-telegram-bot==21.0.1`
+2. تأكد من استخدام الطرق الجديدة في الكود
+3. استخدم `requirements-compatible.txt`
 
 ## 🌐 إعداد Render
 
@@ -87,9 +94,14 @@ LOG_LEVEL=INFO
 
 إذا واجهت مشاكل في التثبيت:
 
-1. **استخدم `requirements-minimal.txt`** بدلاً من `requirements.txt`
+1. **استخدم `requirements-compatible.txt`** بدلاً من `requirements.txt`
 2. **تأكد من تحديث pip** أولاً
 3. **استخدم Python 3.11** أو أحدث
+
+**مشكلة `_Updater__polling_cleanup_cb`**:
+1. استخدم `python-telegram-bot==21.0.1`
+2. تأكد من استخدام الطرق الجديدة في الكود
+3. استخدم `requirements-compatible.txt`
 
 ### 5. إعدادات متقدمة
 
@@ -127,7 +139,7 @@ Health Check Timeout: 300
 #### 1. خطأ في البناء
 
 ```bash
-# فحص ملف requirements-minimal.txt
+# فحص ملف requirements-compatible.txt
 # تأكد من صحة إصدارات المكتبات
 # تأكد من تحديث pip أولاً
 ```
@@ -264,15 +276,24 @@ Health Check Timeout: 300
 **السبب**: `sqlite3` مكتبة مدمجة مع Python ولا تحتاج لتثبيتها
 
 **الحل**:
-1. استخدم `requirements-minimal.txt` بدلاً من `requirements.txt`
+1. استخدم `requirements-compatible.txt` بدلاً من `requirements.txt`
 2. تأكد من تحديث pip أولاً: `pip install --upgrade pip`
 3. استخدم Python 3.11 أو أحدث
+
+### المشكلة: خطأ `_Updater__polling_cleanup_cb`
+
+**السبب**: عدم توافق إصدار `python-telegram-bot`
+
+**الحل**:
+1. استخدم `python-telegram-bot==21.0.1`
+2. تأكد من استخدام الطرق الجديدة في الكود
+3. استخدم `requirements-compatible.txt`
 
 ### المشكلة: تعذر العثور على إصدار يلبي متطلبات
 
 **الحل**:
 1. تأكد من صحة إصدارات المكتبات
-2. استخدم المتطلبات الأساسية فقط
+2. استخدم المتطلبات المتوافقة
 3. تأكد من توافق إصدار Python
 
 ---
@@ -281,4 +302,4 @@ Health Check Timeout: 300
 
 > 💡 **نصيحة**: تأكد من اختبار البوت محلياً قبل النشر على Render!
 
-> ⚠️ **مهم**: استخدم `requirements-minimal.txt` لتجنب مشاكل التثبيت!
+> ⚠️ **مهم**: استخدم `requirements-compatible.txt` لتجنب مشاكل التثبيت!

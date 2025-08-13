@@ -1,5 +1,5 @@
 # Telegram Bot API - Essential
-python-telegram-bot==20.7
+python-telegram-bot==21.0.1
 
 # HTTP Client
 httpx==0.25.2

@@ -40,35 +40,39 @@ async def run_bot_async():
         # تشغيل البوت حسب البيئة
         if os.getenv('RENDER'):
             # تشغيل webhook للبيئة الإنتاجية
-            port = int(os.getenv('PORT', 8080))
-            webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}"
+            port = int(os.getenv('PORT', 10000))
+            webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME', 'localhost')}"
             
             logger.info(f"تشغيل webhook على المنفذ {port}")
             logger.info(f"webhook URL: {webhook_url}")
             
             # تشغيل webhook
-            async with bot.application:
-                await bot.application.start()
-                await bot.application.updater.start_webhook(
-                    listen='0.0.0.0',
-                    port=port,
-                    webhook_url=webhook_url,
-                    drop_pending_updates=True
-                )
-                
-                # الانتظار إلى ما لا نهاية
-                await asyncio.Event().wait()
+            await bot.application.initialize()
+            await bot.application.start()
+            await bot.application.updater.start_webhook(
+                listen='0.0.0.0',
+                port=port,
+                webhook_url=webhook_url,
+                drop_pending_updates=True
+            )
+            
+            logger.info("✅ البوت يعمل بنجاح مع webhook!")
+            
+            # الانتظار إلى ما لا نهاية
+            await asyncio.Event().wait()
         else:
             # تشغيل polling للتطوير المحلي
             logger.info("تشغيل polling للتطوير المحلي")
             
             # تشغيل polling
-            async with bot.application:
-                await bot.application.start()
-                await bot.application.updater.start_polling(drop_pending_updates=True)
-                
-                # الانتظار إلى ما لا نهاية
-                await asyncio.Event().wait()
+            await bot.application.initialize()
+            await bot.application.start()
+            await bot.application.updater.start_polling(drop_pending_updates=True)
+            
+            logger.info("✅ البوت يعمل بنجاح مع polling!")
+            
+            # الانتظار إلى ما لا نهاية
+            await asyncio.Event().wait()
                 
     except KeyboardInterrupt:
         logger.info("تم إيقاف البوت بواسطة المستخدم")

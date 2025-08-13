@@ -930,7 +930,17 @@ def main():
         
         # تشغيل البوت باستخدام polling
         logger.info("🚀 بدء تشغيل البوت بـ polling...")
-        bot.application.run_polling(drop_pending_updates=True)
+        
+        # استخدام الطريقة الجديدة لتشغيل البوت
+        async def run_bot():
+            await bot.application.initialize()
+            await bot.application.start()
+            await bot.application.updater.start_polling(drop_pending_updates=True)
+            logger.info("✅ البوت يعمل بنجاح!")
+            await asyncio.Event().wait()
+        
+        # تشغيل البوت
+        asyncio.run(run_bot())
         
     except KeyboardInterrupt:
         logger.info("تم إيقاف البوت بواسطة المستخدم")

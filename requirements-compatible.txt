@@ -1,0 +1,14 @@
+# Telegram Bot API - Compatible Version
+python-telegram-bot==21.0.1
+
+# HTTP Client
+httpx==0.25.2
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# Security
+cryptography==41.0.7
+
+# Additional dependencies for compatibility
+typing-extensions>=4.0.0

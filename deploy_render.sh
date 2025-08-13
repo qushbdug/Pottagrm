@@ -175,7 +175,7 @@ show_deployment_summary() {
     echo "6. Use these settings:"
 echo "   • Name: yemen-net-bot"
 echo "   • Environment: Python 3"
-echo "   • Build Command: pip install --upgrade pip && pip install -r requirements-minimal.txt"
+echo "   • Build Command: pip install --upgrade pip && pip install -r requirements-compatible.txt"
 echo "   • Start Command: python main.py"
     echo "7. Click 'Create Web Service'"
     echo
