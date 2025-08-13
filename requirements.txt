@@ -2,12 +2,8 @@
 python-telegram-bot==20.7
 httpx==0.25.2
 
-# Database
-sqlite3
-
 # Utilities
 python-dotenv==1.0.0
-asyncio
 
 # Logging
 colorlog==6.8.0

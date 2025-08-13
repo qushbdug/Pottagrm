@@ -1,0 +1,11 @@
+# Telegram Bot API - Essential
+python-telegram-bot==20.7
+
+# HTTP Client
+httpx==0.25.2
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# Security
+cryptography==41.0.7

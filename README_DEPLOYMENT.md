@@ -27,10 +27,18 @@ git push origin main
 
 - ✅ `render.yaml` - إعدادات Render
 - ✅ `main.py` - نقطة الدخول الرئيسية
-- ✅ `requirements.txt` - المتطلبات
-- ✅ `build.sh` - سكريبت البناء
+- ✅ `requirements-minimal.txt` - المتطلبات الأساسية
 - ✅ `Procfile` - ملف Procfile
 - ✅ `runtime.txt` - إصدار Python
+
+### 3. حل مشاكل التثبيت
+
+**المشكلة**: خطأ في تثبيت `sqlite3`
+
+**الحل**: 
+1. استخدم `requirements-minimal.txt` بدلاً من `requirements.txt`
+2. تأكد من تحديث pip أولاً
+3. استخدم Python 3.11 أو أحدث
 
 ## 🌐 إعداد Render
 
@@ -55,7 +63,7 @@ Name: yemen-net-bot
 Environment: Python 3
 Region: Frankfurt (EU Central) - أو أقرب منطقة لك
 Branch: main
-Build Command: chmod +x build.sh && ./build.sh
+Build Command: pip install --upgrade pip && pip install -r requirements-minimal.txt
 Start Command: python main.py
 ```
 
@@ -74,6 +82,14 @@ ENVIRONMENT=production
 DEBUG=false
 LOG_LEVEL=INFO
 ```
+
+### 5. حل مشاكل التثبيت
+
+إذا واجهت مشاكل في التثبيت:
+
+1. **استخدم `requirements-minimal.txt`** بدلاً من `requirements.txt`
+2. **تأكد من تحديث pip** أولاً
+3. **استخدم Python 3.11** أو أحدث
 
 ### 5. إعدادات متقدمة
 
@@ -111,9 +127,9 @@ Health Check Timeout: 300
 #### 1. خطأ في البناء
 
 ```bash
-# فحص ملف requirements.txt
+# فحص ملف requirements-minimal.txt
 # تأكد من صحة إصدارات المكتبات
-# فحص ملف build.sh
+# تأكد من تحديث pip أولاً
 ```
 
 #### 2. خطأ في التشغيل
@@ -241,8 +257,28 @@ Health Check Timeout: 300
 4. **مراقبة الأداء** من Render Dashboard
 5. **إعداد النسخ الاحتياطية** لقاعدة البيانات
 
+## 🔧 حل مشاكل التثبيت
+
+### المشكلة: خطأ في تثبيت sqlite3
+
+**السبب**: `sqlite3` مكتبة مدمجة مع Python ولا تحتاج لتثبيتها
+
+**الحل**:
+1. استخدم `requirements-minimal.txt` بدلاً من `requirements.txt`
+2. تأكد من تحديث pip أولاً: `pip install --upgrade pip`
+3. استخدم Python 3.11 أو أحدث
+
+### المشكلة: تعذر العثور على إصدار يلبي متطلبات
+
+**الحل**:
+1. تأكد من صحة إصدارات المكتبات
+2. استخدم المتطلبات الأساسية فقط
+3. تأكد من توافق إصدار Python
+
 ---
 
 **🎉 تهانينا! البوت جاهز للنشر على Render!**
 
 > 💡 **نصيحة**: تأكد من اختبار البوت محلياً قبل النشر على Render!
+
+> ⚠️ **مهم**: استخدم `requirements-minimal.txt` لتجنب مشاكل التثبيت!

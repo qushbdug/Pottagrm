@@ -2,7 +2,7 @@ services:
   - type: web
     name: yemen-net-bot
     env: python
-    buildCommand: "chmod +x build.sh && ./build.sh"
+    buildCommand: "pip install --upgrade pip && pip install -r requirements-minimal.txt"
     startCommand: "python main.py"
     plan: free
     envVars:

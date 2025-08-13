@@ -7,9 +7,9 @@ services:
     container_name: yemen-net-bot
     restart: unless-stopped
     environment:
-      - BOT_TOKEN=${BOT_TOKEN}
+      - BOT_TOKEN=7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0
       - DB_PATH=/app/data/yemen_net.db
-      - ENCRYPTION_KEY_B64=${ENCRYPTION_KEY_B64}
+      - ENCRYPTION_KEY_B64=8KqXzP9vN2mR7sL4tQ1wE6yU3iO8pA5dF2gH9jK4lZ7xV1bN6mQ3wE9rT4yU7i
       - ENVIRONMENT=production
       - LOG_LEVEL=INFO
     volumes:

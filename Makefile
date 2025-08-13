@@ -33,8 +33,7 @@ install:
 
 install-dev:
 	@echo "📦 Installing development dependencies..."
-	pip install -r requirements.txt
-	pip install pytest black flake8
+	pip install -r requirements-dev.txt
 
 # Running
 run:
