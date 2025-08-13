@@ -169,3 +169,10 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Databases and local data
+*.db
+yemen_net_backup_*.db
+bot_data*
+conversationbot*
+*.pickle

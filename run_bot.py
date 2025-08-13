@@ -48,7 +48,6 @@ async def run_bot_async():
             
             # تشغيل webhook
             async with bot.application:
-                await bot.application.start()
                 await bot.application.updater.start_webhook(
                     listen='0.0.0.0',
                     port=port,
@@ -64,7 +63,6 @@ async def run_bot_async():
             
             # تشغيل polling
             async with bot.application:
-                await bot.application.start()
                 await bot.application.updater.start_polling(drop_pending_updates=True)
                 
                 # الانتظار إلى ما لا نهاية

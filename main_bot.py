@@ -921,22 +921,3 @@ class YemenNetBot:
             logger.info("تم إعداد الأوامر السريعة بنجاح")
         except Exception as e:
             logger.warning(f"فشل إعداد الأوامر السريعة: {e}")
-
-def main():
-    """الدالة الرئيسية"""
-    try:
-        # إنشاء البوت
-        bot = YemenNetBot()
-        
-        # تشغيل البوت باستخدام polling
-        logger.info("🚀 بدء تشغيل البوت بـ polling...")
-        bot.application.run_polling(drop_pending_updates=True)
-        
-    except KeyboardInterrupt:
-        logger.info("تم إيقاف البوت بواسطة المستخدم")
-    except Exception as e:
-        logger.error(f"خطأ حرج في main: {e}")
-        raise
-
-if __name__ == '__main__':
-    main()
