@@ -7,7 +7,9 @@ from typing import List
 from telegram import BotCommand
 
 # معلومات البوت
-BOT_TOKEN = '7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0'
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+if not BOT_TOKEN:
+    raise RuntimeError("BOT_TOKEN environment variable is required")
 
 # إعدادات قاعدة البيانات  
 DB_PATH = os.getenv('DB_PATH', os.path.abspath('yemen_net.db'))

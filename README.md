@@ -40,7 +40,7 @@
 pip install -r requirements.txt
 
 # تشغيل البوت
-python start.py
+python run_bot.py
 ```
 
 ### 2. النشر على Render
@@ -74,7 +74,6 @@ bot/
     └── report_service.py
 
 main_bot.py               # البوت الرئيسي المحسن
-start.py                  # ملف بدء التشغيل
 migrate_bot.py            # سكريبت الترحيل
 render.yaml               # إعدادات Render
 requirements.txt          # متطلبات Python
@@ -91,7 +90,7 @@ ENCRYPTION_KEY_B64=auto_generated_key
 
 ### إعدادات Render
 - **Build Command**: `pip install -r requirements.txt`
-- **Start Command**: `python start.py`
+- **Start Command**: `python run_bot.py`
 - **Environment**: Python 3.13+
 
 ## 🔧 استكشاف الأخطاء
@@ -126,7 +125,7 @@ ENCRYPTION_KEY_B64=auto_generated_key
 - ✅ تحسين نظام ترحيل قاعدة البيانات
 - ✅ إضافة جميع الدوال المفقودة
 - ✅ تحسين هيكل البوت العام
-- ✅ إضافة ملف start.py للنشر
+- ✅ تحديث ملف التشغيل إلى run_bot.py للنشر
 - ✅ تحديث إعدادات Render
 
 ## 🤝 المساهمة
