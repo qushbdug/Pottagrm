@@ -2,21 +2,17 @@ services:
   - type: web
     name: yemen-net-bot
     env: python
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python run_bot.py"
     plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python start.py
     envVars:
-      - key: DB_PATH
-        value: /opt/render/project/src/yemen_net.db
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: BOT_TOKEN
+        sync: false
       - key: ENCRYPTION_KEY_B64
-        generateValue: true
-      - key: PYTHONPATH
-        value: /opt/render/project/src
+        sync: false
+      - key: ENVIRONMENT
+        value: production
       - key: PORT
-        value: 8080
-      - key: RENDER
-        value: "true"
-    disk:
-      name: yemen-net-data
-      mountPath: /opt/render/project/src
-      sizeGB: 1
+        value: 10000
