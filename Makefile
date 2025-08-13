@@ -79,6 +79,17 @@ deploy:
 	git commit -m "Deploy: $(shell date)"
 	git push origin main
 
+deploy-render:
+	@echo "🚀 Preparing for Render deployment..."
+	chmod +x deploy_render.sh
+	./deploy_render.sh
+
+deploy-github:
+	@echo "🚀 Deploying to GitHub..."
+	git add .
+	git commit -m "Deploy to GitHub: $(shell date)"
+	git push origin main
+
 backup:
 	@echo "💾 Creating database backup..."
 	cp yemen_net.db "yemen_net_backup_$(shell date +%Y%m%d_%H%M%S).db"

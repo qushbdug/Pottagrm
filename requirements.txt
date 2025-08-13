@@ -12,6 +12,9 @@ asyncio
 # Logging
 colorlog==6.8.0
 
+# Security
+cryptography==41.0.7
+
 # Development (optional)
 pytest==7.4.3
 black==23.11.0
