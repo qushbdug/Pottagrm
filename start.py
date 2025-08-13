@@ -23,11 +23,9 @@ def main():
     try:
         logger.info("🚀 بدء تشغيل بوت يمن نت...")
         
-        # استيراد وتشغيل البوت الرئيسي
-        from main_bot import YemenNetBot
-        
-        bot = YemenNetBot()
-        bot.run()
+        # استخدام run_bot.py بدلاً من main_bot مباشرة
+        from run_bot import main as run_bot_main
+        run_bot_main()
         
     except KeyboardInterrupt:
         logger.info("تم إيقاف البوت بواسطة المستخدم")
