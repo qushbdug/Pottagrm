@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  # Bot Service
+  bot:
+    build: .
+    container_name: yemen-net-bot
+    restart: unless-stopped
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - DB_PATH=/app/data/yemen_net.db
+      - ENCRYPTION_KEY_B64=${ENCRYPTION_KEY_B64}
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    ports:
+      - "10000:10000"
+    depends_on:
+      - database
+    networks:
+      - bot-network
+
+  # Database Service (for development)
+  database:
+    image: sqlite:latest
+    container_name: yemen-net-db
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+    networks:
+      - bot-network
+
+  # Redis Service (for caching)
+  redis:
+    image: redis:7-alpine
+    container_name: yemen-net-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - bot-network
+
+  # Nginx Service (for production)
+  nginx:
+    image: nginx:alpine
+    container_name: yemen-net-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - bot
+    networks:
+      - bot-network
+
+volumes:
+  redis-data:
+
+networks:
+  bot-network:
+    driver: bridge
