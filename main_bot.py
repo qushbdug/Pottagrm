@@ -50,15 +50,8 @@ class YemenNetBot:
             # إعداد الأوامر
             self.setup_handlers()
             
-            # إعداد الأوامر السريعة
-            async def setup_commands_wrapper():
-                await self.setup_commands()
-            
-            # تشغيل إعداد الأوامر
-            try:
-                asyncio.run(setup_commands_wrapper())
-            except Exception as e:
-                logger.warning(f"فشل إعداد الأوامر السريعة: {e}")
+            # سيتم إعداد الأوامر السريعة عند التشغيل
+            # لا نحتاج لتشغيلها هنا لتجنب مشاكل event loop
             
             logger.info("تم إعداد البوت بنجاح")
             
@@ -917,29 +910,9 @@ class YemenNetBot:
             logger.error(f"خطأ في تحديد الإشعارات كمقروءة: {e}")
             await query.edit_message_text("❌ حدث خطأ في العملية.")
     
-    def run(self):
-        """تشغيل البوت"""
-        try:
-            # تشغيل البوت
-            logger.info("🚀 بدء تشغيل البوت المحسن...")
-            
-            # استخدام run_webhook للتوافق مع Render أو run_polling للتطوير المحلي
-            import os
-            if os.getenv('RENDER'):
-                # تشغيل webhook للبيئة الإنتاجية
-                port = int(os.getenv('PORT', 8080))
-                self.application.run_webhook(
-                    listen="0.0.0.0",
-                    port=port,
-                    webhook_url=f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}"
-                )
-            else:
-                # تشغيل polling للتطوير المحلي
-                self.application.run_polling(drop_pending_updates=True)
-            
-        except Exception as e:
-            logger.error(f"خطأ حرج في تشغيل البوت: {e}")
-            raise
+    def get_application(self):
+        """إرجاع كائن Application للاستخدام الخارجي"""
+        return self.application
     
     async def setup_commands(self):
         """إعداد الأوامر السريعة"""
@@ -952,9 +925,12 @@ class YemenNetBot:
 def main():
     """الدالة الرئيسية"""
     try:
-        # إنشاء وتشغيل البوت
+        # إنشاء البوت
         bot = YemenNetBot()
-        bot.run()
+        
+        # تشغيل البوت باستخدام polling
+        logger.info("🚀 بدء تشغيل البوت بـ polling...")
+        bot.application.run_polling(drop_pending_updates=True)
         
     except KeyboardInterrupt:
         logger.info("تم إيقاف البوت بواسطة المستخدم")
