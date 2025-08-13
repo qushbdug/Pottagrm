@@ -1,7 +1,18 @@
-python-telegram-bot
-requests
-deep-translator
-beautifulsoup4
-httpx
-python-dotenv
-cryptography
+# Telegram Bot API
+python-telegram-bot==20.7
+httpx==0.25.2
+
+# Database
+sqlite3
+
+# Utilities
+python-dotenv==1.0.0
+asyncio
+
+# Logging
+colorlog==6.8.0
+
+# Development (optional)
+pytest==7.4.3
+black==23.11.0
+flake8==6.1.0
