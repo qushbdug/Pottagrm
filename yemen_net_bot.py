@@ -6,9 +6,18 @@ import io
 import re
 import os
 import random
-from typing import Optional
-from datetime import datetime
+import json
+import base64
+import asyncio
+import aiofiles
+from typing import Optional, Dict, List, Tuple, Any
+from datetime import datetime, timedelta, date
 from cryptography.fernet import Fernet
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from PIL import Image
+import qrcode
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -98,6 +107,877 @@ EMOJIS = {
     'hot': '🔥',
     'cool': '😎'
 }
+
+# Enhanced utility functions for new features
+def log_activity(user_id: int, activity_type: str, description: str, metadata: dict = None):
+    """Log user activity for enhanced tracking"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        activity_id = str(uuid.uuid4())
+        metadata_json = json.dumps(metadata) if metadata else None
+        
+        cursor.execute('''
+            INSERT INTO activity_logs (id, user_id, activity_type, description, metadata)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (activity_id, user_id, activity_type, description, metadata_json))
+        
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error logging activity: {e}")
+
+def create_wallet_transaction(user_id: int, transaction_type: str, amount: float, 
+                            balance_before: float, balance_after: float, 
+                            description: str = None, reference_id: str = None,
+                            metadata: dict = None) -> str:
+    """Create a wallet transaction record"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        transaction_id = str(uuid.uuid4())
+        metadata_json = json.dumps(metadata) if metadata else None
+        
+        cursor.execute('''
+            INSERT INTO wallet_transactions 
+            (id, user_id, transaction_type, amount, balance_before, balance_after, 
+             reference_id, description, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (transaction_id, user_id, transaction_type, amount, balance_before, 
+              balance_after, reference_id, description, metadata_json))
+        
+        conn.commit()
+        conn.close()
+        return transaction_id
+    except Exception as e:
+        logger.error(f"Error creating wallet transaction: {e}")
+        return None
+
+def send_smart_notification(user_id: int, notification_type: str, title: str, 
+                          message: str, priority: str = 'normal', 
+                          metadata: dict = None) -> str:
+    """Send a smart notification to a user"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check user notification preferences
+        cursor.execute('''
+            SELECT * FROM notification_preferences WHERE user_id = ?
+        ''', (user_id,))
+        prefs = cursor.fetchone()
+        
+        # Default preferences if not set
+        if not prefs:
+            cursor.execute('''
+                INSERT INTO notification_preferences (user_id) VALUES (?)
+            ''', (user_id,))
+            conn.commit()
+        
+        notification_id = str(uuid.uuid4())
+        metadata_json = json.dumps(metadata) if metadata else None
+        
+        cursor.execute('''
+            INSERT INTO smart_notifications 
+            (id, user_id, notification_type, title, message, priority, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (notification_id, user_id, notification_type, title, message, 
+              priority, metadata_json))
+        
+        conn.commit()
+        conn.close()
+        return notification_id
+    except Exception as e:
+        logger.error(f"Error sending smart notification: {e}")
+        return None
+
+def calculate_user_rating(user_id: int) -> Dict:
+    """Calculate and update user rating summary"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT rating, COUNT(*) as count FROM ratings 
+            WHERE rated_user_id = ? AND is_visible = 1
+            GROUP BY rating
+        ''', (user_id,))
+        
+        rating_counts = {i: 0 for i in range(1, 6)}
+        total_ratings = 0
+        total_score = 0
+        
+        for rating, count in cursor.fetchall():
+            rating_counts[rating] = count
+            total_ratings += count
+            total_score += rating * count
+        
+        average_rating = total_score / total_ratings if total_ratings > 0 else 0.0
+        
+        # Update or insert rating summary
+        cursor.execute('''
+            INSERT OR REPLACE INTO user_ratings_summary 
+            (user_id, total_ratings, average_rating, rating_1_count, rating_2_count,
+             rating_3_count, rating_4_count, rating_5_count, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (user_id, total_ratings, average_rating, rating_counts[1], 
+              rating_counts[2], rating_counts[3], rating_counts[4], 
+              rating_counts[5], datetime.now()))
+        
+        conn.commit()
+        conn.close()
+        
+        return {
+            'total_ratings': total_ratings,
+            'average_rating': round(average_rating, 2),
+            'rating_distribution': rating_counts
+        }
+    except Exception as e:
+        logger.error(f"Error calculating user rating: {e}")
+        return {'total_ratings': 0, 'average_rating': 0.0, 'rating_distribution': {}}
+
+def update_inventory_stock(network_id: str, category_id: int, change: int) -> bool:
+    """Update inventory stock count"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        inventory_id = f"{network_id}_{category_id}"
+        
+        cursor.execute('''
+            INSERT OR IGNORE INTO product_inventory 
+            (id, network_id, category_id, stock_count)
+            VALUES (?, ?, ?, 0)
+        ''', (inventory_id, network_id, category_id))
+        
+        cursor.execute('''
+            UPDATE product_inventory 
+            SET stock_count = stock_count + ?, last_updated = ?
+            WHERE id = ?
+        ''', (change, datetime.now(), inventory_id))
+        
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Error updating inventory: {e}")
+        return False
+
+def check_low_stock_alerts():
+    """Check for low stock items and send alerts"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT pi.*, n.name as network_name, cc.category_name, cc.value
+            FROM product_inventory pi
+            JOIN networks n ON pi.network_id = n.id
+            JOIN card_categories cc ON pi.category_id = cc.id
+            WHERE pi.stock_count <= pi.low_stock_threshold
+        ''')
+        
+        low_stock_items = cursor.fetchall()
+        
+        for item in low_stock_items:
+            # Send alert to suppliers and admins
+            cursor.execute('''
+                SELECT id FROM users WHERE role IN ('supplier', 'admin', 'superadmin')
+            ''')
+            
+            for user in cursor.fetchall():
+                send_smart_notification(
+                    user[0], 
+                    'low_stock_alert',
+                    f'⚠️ تنبيه نقص مخزون',
+                    f'المخزون منخفض لـ {item["network_name"]} - {item["category_name"]} ({item["value"]} ريال)\n'
+                    f'الكمية المتبقية: {item["stock_count"]}',
+                    'high'
+                )
+        
+        conn.close()
+        return len(low_stock_items)
+    except Exception as e:
+        logger.error(f"Error checking low stock: {e}")
+        return 0
+
+async def generate_sales_report(report_type: str, start_date: date, end_date: date, 
+                              user_id: int) -> Dict:
+    """Generate comprehensive sales report"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get sales data
+        cursor.execute('''
+            SELECT t.*, u.full_name, n.name as network_name
+            FROM transactions t
+            JOIN users u ON t.from_user = u.id
+            LEFT JOIN cards c ON t.reference_id = c.id
+            LEFT JOIN card_categories cc ON c.category_id = cc.id
+            LEFT JOIN networks n ON cc.network_id = n.id
+            WHERE DATE(t.created_at) BETWEEN ? AND ?
+            AND t.type = 'purchase'
+        ''', (start_date, end_date))
+        
+        transactions = cursor.fetchall()
+        
+        # Calculate metrics
+        total_sales = sum(t['amount'] for t in transactions)
+        total_transactions = len(transactions)
+        
+        # Calculate commissions
+        cursor.execute('''
+            SELECT SUM(amount) as total_commission
+            FROM transactions
+            WHERE DATE(created_at) BETWEEN ? AND ?
+            AND type = 'commission'
+        ''', (start_date, end_date))
+        
+        commission_result = cursor.fetchone()
+        total_commission = commission_result['total_commission'] if commission_result['total_commission'] else 0
+        
+        # Network breakdown
+        network_sales = {}
+        for t in transactions:
+            network = t['network_name'] or 'غير محدد'
+            if network not in network_sales:
+                network_sales[network] = {'count': 0, 'amount': 0}
+            network_sales[network]['count'] += 1
+            network_sales[network]['amount'] += t['amount']
+        
+        report_data = {
+            'total_sales': total_sales,
+            'total_commission': total_commission,
+            'total_transactions': total_transactions,
+            'network_breakdown': network_sales,
+            'period': f"{start_date} - {end_date}",
+            'generated_at': datetime.now().isoformat()
+        }
+        
+        # Save report
+        report_id = str(uuid.uuid4())
+        cursor.execute('''
+            INSERT INTO sales_reports 
+            (id, report_type, start_date, end_date, total_sales, total_commission,
+             total_transactions, generated_by, data)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (report_id, report_type, start_date, end_date, total_sales,
+              total_commission, total_transactions, user_id, json.dumps(report_data)))
+        
+        conn.commit()
+        conn.close()
+        
+        return report_data
+    except Exception as e:
+        logger.error(f"Error generating sales report: {e}")
+        return {}
+
+def get_user_permissions(user_id: int) -> List[str]:
+    """Get user permissions list"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT permission_name FROM user_permissions
+            WHERE user_id = ? AND is_active = 1
+            AND (expires_at IS NULL OR expires_at > ?)
+        ''', (user_id, datetime.now()))
+        
+        permissions = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        return permissions
+    except Exception as e:
+        logger.error(f"Error getting user permissions: {e}")
+        return []
+
+def has_permission(user_id: int, permission: str) -> bool:
+    """Check if user has specific permission"""
+    permissions = get_user_permissions(user_id)
+    return permission in permissions
+
+def grant_user_permission(user_id: int, permission: str, granted_by: int, expires_at: datetime = None) -> bool:
+    """Grant a permission to a user"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if permission already exists
+        cursor.execute('''
+            SELECT id FROM user_permissions
+            WHERE user_id = ? AND permission_name = ? AND is_active = 1
+        ''', (user_id, permission))
+        
+        if cursor.fetchone():
+            conn.close()
+            return False  # Permission already exists
+        
+        cursor.execute('''
+            INSERT INTO user_permissions (user_id, permission_name, granted_by, expires_at)
+            VALUES (?, ?, ?, ?)
+        ''', (user_id, permission, granted_by, expires_at))
+        
+        conn.commit()
+        conn.close()
+        
+        # Log the permission grant
+        log_activity(granted_by, 'permission_grant', f'Granted permission {permission} to user {user_id}')
+        
+        return True
+    except Exception as e:
+        logger.error(f"Error granting permission: {e}")
+        return False
+
+def revoke_user_permission(user_id: int, permission: str, revoked_by: int) -> bool:
+    """Revoke a permission from a user"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE user_permissions 
+            SET is_active = 0
+            WHERE user_id = ? AND permission_name = ? AND is_active = 1
+        ''', (user_id, permission))
+        
+        if cursor.rowcount > 0:
+            conn.commit()
+            log_activity(revoked_by, 'permission_revoke', f'Revoked permission {permission} from user {user_id}')
+            conn.close()
+            return True
+        
+        conn.close()
+        return False
+    except Exception as e:
+        logger.error(f"Error revoking permission: {e}")
+        return False
+
+def get_user_activity_summary(user_id: int, days: int = 30) -> Dict:
+    """Get user activity summary for the last N days"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        since_date = datetime.now() - timedelta(days=days)
+        
+        # Get activity counts by type
+        cursor.execute('''
+            SELECT activity_type, COUNT(*) as count
+            FROM activity_logs
+            WHERE user_id = ? AND created_at >= ?
+            GROUP BY activity_type
+        ''', (user_id, since_date))
+        
+        activity_counts = {row['activity_type']: row['count'] for row in cursor.fetchall()}
+        
+        # Get recent activities
+        cursor.execute('''
+            SELECT * FROM activity_logs
+            WHERE user_id = ? AND created_at >= ?
+            ORDER BY created_at DESC
+            LIMIT 10
+        ''', (user_id, since_date))
+        
+        recent_activities = cursor.fetchall()
+        
+        # Get login statistics
+        cursor.execute('''
+            SELECT COUNT(DISTINCT DATE(created_at)) as active_days
+            FROM activity_logs
+            WHERE user_id = ? AND created_at >= ?
+        ''', (user_id, since_date))
+        
+        active_days = cursor.fetchone()['active_days']
+        
+        conn.close()
+        
+        return {
+            'activity_counts': activity_counts,
+            'recent_activities': recent_activities,
+            'active_days': active_days,
+            'period_days': days
+        }
+    except Exception as e:
+        logger.error(f"Error getting user activity summary: {e}")
+        return {}
+
+def update_user_role(user_id: int, new_role: str, updated_by: int) -> bool:
+    """Update user role with proper validation"""
+    try:
+        valid_roles = ['customer', 'agent', 'supplier', 'admin', 'super_admin']
+        if new_role not in valid_roles:
+            return False
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get current role
+        cursor.execute('SELECT role FROM users WHERE id = ?', (user_id,))
+        current_role = cursor.fetchone()
+        
+        if not current_role:
+            conn.close()
+            return False
+        
+        old_role = current_role['role']
+        
+        # Update role
+        cursor.execute('''
+            UPDATE users SET role = ? WHERE id = ?
+        ''', (new_role, user_id))
+        
+        conn.commit()
+        conn.close()
+        
+        # Log role change
+        log_activity(updated_by, 'role_change', f'Changed user {user_id} role from {old_role} to {new_role}')
+        
+        # Send notification to user
+        send_smart_notification(
+            user_id,
+            'role_change',
+            '🔄 تغيير الدور',
+            f'تم تغيير دورك من {old_role} إلى {new_role}',
+            'high'
+        )
+        
+        return True
+    except Exception as e:
+        logger.error(f"Error updating user role: {e}")
+        return False
+
+def get_users_by_role(role: str, active_only: bool = True) -> List[Dict]:
+    """Get all users with a specific role"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        query = 'SELECT * FROM users WHERE role = ?'
+        params = [role]
+        
+        if active_only:
+            query += ' AND is_active = 1'
+        
+        cursor.execute(query, params)
+        users = cursor.fetchall()
+        
+        conn.close()
+        return users
+    except Exception as e:
+        logger.error(f"Error getting users by role: {e}")
+        return []
+
+def suspend_user(user_id: int, suspended_by: int, reason: str = None) -> bool:
+    """Suspend a user account"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE users SET is_active = 0 WHERE id = ?
+        ''', (user_id,))
+        
+        if cursor.rowcount > 0:
+            conn.commit()
+            
+            # Log suspension
+            log_activity(suspended_by, 'user_suspension', f'Suspended user {user_id}. Reason: {reason or "Not specified"}')
+            
+            # Send notification
+            send_smart_notification(
+                user_id,
+                'account_suspended',
+                '🚫 تم تعليق الحساب',
+                f'تم تعليق حسابك. السبب: {reason or "غير محدد"}',
+                'high'
+            )
+            
+            conn.close()
+            return True
+        
+        conn.close()
+        return False
+    except Exception as e:
+        logger.error(f"Error suspending user: {e}")
+        return False
+
+def activate_user(user_id: int, activated_by: int) -> bool:
+    """Activate a user account"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE users SET is_active = 1 WHERE id = ?
+        ''', (user_id,))
+        
+        if cursor.rowcount > 0:
+            conn.commit()
+            
+            # Log activation
+            log_activity(activated_by, 'user_activation', f'Activated user {user_id}')
+            
+            # Send notification
+            send_smart_notification(
+                user_id,
+                'account_activated',
+                '✅ تم تفعيل الحساب',
+                'تم تفعيل حسابك بنجاح. يمكنك الآن استخدام جميع الخدمات.',
+                'normal'
+            )
+            
+            conn.close()
+            return True
+        
+        conn.close()
+        return False
+    except Exception as e:
+        logger.error(f"Error activating user: {e}")
+        return False
+
+# Advanced Reporting and Analytics Functions
+
+async def generate_comprehensive_report(report_type: str, start_date: date, end_date: date, 
+                                      user_id: int, filters: dict = None) -> Dict:
+    """Generate comprehensive business reports"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        report_data = {
+            'report_type': report_type,
+            'period': f"{start_date} to {end_date}",
+            'generated_by': user_id,
+            'generated_at': datetime.now().isoformat(),
+            'filters_applied': filters or {}
+        }
+        
+        if report_type == 'sales_overview':
+            # Sales Overview Report
+            cursor.execute('''
+                SELECT 
+                    COUNT(*) as total_transactions,
+                    SUM(amount) as total_revenue,
+                    AVG(amount) as avg_transaction,
+                    COUNT(DISTINCT from_user) as unique_customers
+                FROM transactions 
+                WHERE type = 'purchase' 
+                AND DATE(created_at) BETWEEN ? AND ?
+            ''', (start_date, end_date))
+            
+            overview = cursor.fetchone()
+            
+            # Revenue by network
+            cursor.execute('''
+                SELECT n.name, COUNT(*) as sales_count, SUM(t.amount) as revenue
+                FROM transactions t
+                JOIN cards c ON t.reference_id = c.id
+                JOIN card_categories cc ON c.category_id = cc.id
+                JOIN networks n ON cc.network_id = n.id
+                WHERE t.type = 'purchase' AND DATE(t.created_at) BETWEEN ? AND ?
+                GROUP BY n.name
+                ORDER BY revenue DESC
+            ''', (start_date, end_date))
+            
+            network_sales = cursor.fetchall()
+            
+            # Daily sales trend
+            cursor.execute('''
+                SELECT DATE(created_at) as sale_date, 
+                       COUNT(*) as daily_sales,
+                       SUM(amount) as daily_revenue
+                FROM transactions 
+                WHERE type = 'purchase' AND DATE(created_at) BETWEEN ? AND ?
+                GROUP BY DATE(created_at)
+                ORDER BY sale_date
+            ''', (start_date, end_date))
+            
+            daily_trends = cursor.fetchall()
+            
+            report_data.update({
+                'overview': overview,
+                'network_sales': network_sales,
+                'daily_trends': daily_trends
+            })
+            
+        elif report_type == 'user_analytics':
+            # User Analytics Report
+            cursor.execute('''
+                SELECT role, COUNT(*) as user_count, 
+                       COUNT(CASE WHEN is_active = 1 THEN 1 END) as active_count
+                FROM users 
+                GROUP BY role
+            ''')
+            user_distribution = cursor.fetchall()
+            
+            # User registration trends
+            cursor.execute('''
+                SELECT DATE(created_at) as reg_date, COUNT(*) as new_users
+                FROM users 
+                WHERE DATE(created_at) BETWEEN ? AND ?
+                GROUP BY DATE(created_at)
+                ORDER BY reg_date
+            ''', (start_date, end_date))
+            registration_trends = cursor.fetchall()
+            
+            # Most active users
+            cursor.execute('''
+                SELECT u.full_name, u.role, 
+                       COUNT(t.id) as transaction_count,
+                       SUM(t.amount) as total_spent
+                FROM users u
+                LEFT JOIN transactions t ON u.id = t.from_user AND t.type = 'purchase'
+                WHERE DATE(t.created_at) BETWEEN ? AND ?
+                GROUP BY u.id
+                ORDER BY transaction_count DESC
+                LIMIT 10
+            ''', (start_date, end_date))
+            active_users = cursor.fetchall()
+            
+            report_data.update({
+                'user_distribution': user_distribution,
+                'registration_trends': registration_trends,
+                'most_active_users': active_users
+            })
+            
+        elif report_type == 'financial_summary':
+            # Financial Summary Report
+            cursor.execute('''
+                SELECT 
+                    SUM(CASE WHEN type = 'purchase' THEN amount ELSE 0 END) as total_sales,
+                    SUM(CASE WHEN type = 'commission' THEN amount ELSE 0 END) as total_commissions,
+                    SUM(CASE WHEN type = 'transfer' THEN amount ELSE 0 END) as total_transfers,
+                    SUM(CASE WHEN type = 'recharge' THEN amount ELSE 0 END) as total_recharges
+                FROM transactions 
+                WHERE DATE(created_at) BETWEEN ? AND ?
+            ''', (start_date, end_date))
+            financial_overview = cursor.fetchone()
+            
+            # Revenue breakdown by role
+            cursor.execute('''
+                SELECT u.role, SUM(t.amount) as revenue
+                FROM transactions t
+                JOIN users u ON t.from_user = u.id
+                WHERE t.type = 'purchase' AND DATE(t.created_at) BETWEEN ? AND ?
+                GROUP BY u.role
+            ''', (start_date, end_date))
+            revenue_by_role = cursor.fetchall()
+            
+            report_data.update({
+                'financial_overview': financial_overview,
+                'revenue_by_role': revenue_by_role
+            })
+            
+        elif report_type == 'inventory_status':
+            # Inventory Status Report
+            cursor.execute('''
+                SELECT n.name as network_name, cc.value, cc.category_name,
+                       COUNT(c.id) as total_cards,
+                       COUNT(CASE WHEN c.is_used = 0 THEN 1 END) as available_cards,
+                       COUNT(CASE WHEN c.is_used = 1 THEN 1 END) as sold_cards
+                FROM networks n
+                JOIN card_categories cc ON n.id = cc.network_id
+                LEFT JOIN cards c ON cc.id = c.category_id
+                GROUP BY n.id, cc.id
+                ORDER BY n.name, cc.value
+            ''')
+            inventory_status = cursor.fetchall()
+            
+            # Low stock alerts
+            cursor.execute('''
+                SELECT n.name, cc.value, COUNT(c.id) as remaining_stock
+                FROM networks n
+                JOIN card_categories cc ON n.id = cc.network_id
+                LEFT JOIN cards c ON cc.id = c.category_id AND c.is_used = 0
+                GROUP BY n.id, cc.id
+                HAVING remaining_stock < 10
+                ORDER BY remaining_stock ASC
+            ''')
+            low_stock_items = cursor.fetchall()
+            
+            report_data.update({
+                'inventory_status': inventory_status,
+                'low_stock_alerts': low_stock_items
+            })
+        
+        # Save report to database
+        report_id = str(uuid.uuid4())
+        cursor.execute('''
+            INSERT INTO sales_reports 
+            (id, report_type, start_date, end_date, total_sales, total_commission,
+             total_transactions, generated_by, data)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            report_id, 
+            report_type, 
+            start_date, 
+            end_date,
+            report_data.get('financial_overview', {}).get('total_sales', 0),
+            report_data.get('financial_overview', {}).get('total_commissions', 0),
+            report_data.get('overview', {}).get('total_transactions', 0),
+            user_id,
+            json.dumps(report_data)
+        ))
+        
+        conn.commit()
+        conn.close()
+        
+        report_data['report_id'] = report_id
+        return report_data
+        
+    except Exception as e:
+        logger.error(f"Error generating comprehensive report: {e}")
+        return {}
+
+async def export_data_to_csv(data: List[Dict], filename: str) -> str:
+    """Export data to CSV format"""
+    try:
+        if not data:
+            return None
+        
+        import pandas as pd
+        
+        df = pd.DataFrame(data)
+        
+        # Create exports directory if it doesn't exist
+        import os
+        os.makedirs('exports', exist_ok=True)
+        
+        filepath = f'exports/{filename}'
+        df.to_csv(filepath, index=False, encoding='utf-8-sig')
+        
+        return filepath
+    except Exception as e:
+        logger.error(f"Error exporting to CSV: {e}")
+        return None
+
+async def generate_visual_chart(data: List[Dict], chart_type: str, title: str) -> str:
+    """Generate visual charts from data"""
+    try:
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        
+        plt.style.use('seaborn-v0_8')
+        plt.rcParams['font.family'] = ['Arial Unicode MS', 'Tahoma', 'DejaVu Sans']
+        
+        fig, ax = plt.subplots(figsize=(12, 8))
+        
+        if chart_type == 'bar':
+            if data and len(data) > 0:
+                x_values = [item.get('name', str(i)) for i, item in enumerate(data)]
+                y_values = [float(item.get('value', 0)) for item in data]
+                
+                bars = ax.bar(x_values, y_values, color='skyblue', alpha=0.8)
+                ax.set_title(title, fontsize=16, fontweight='bold')
+                ax.set_xlabel('Categories', fontsize=12)
+                ax.set_ylabel('Values', fontsize=12)
+                
+                # Add value labels on bars
+                for bar in bars:
+                    height = bar.get_height()
+                    ax.text(bar.get_x() + bar.get_width()/2., height,
+                           f'{height:.1f}', ha='center', va='bottom')
+                
+                plt.xticks(rotation=45, ha='right')
+        
+        elif chart_type == 'line':
+            if data and len(data) > 0:
+                x_values = [item.get('date', str(i)) for i, item in enumerate(data)]
+                y_values = [float(item.get('value', 0)) for item in data]
+                
+                ax.plot(x_values, y_values, marker='o', linewidth=2, markersize=6)
+                ax.set_title(title, fontsize=16, fontweight='bold')
+                ax.set_xlabel('Date', fontsize=12)
+                ax.set_ylabel('Values', fontsize=12)
+                plt.xticks(rotation=45, ha='right')
+        
+        elif chart_type == 'pie':
+            if data and len(data) > 0:
+                labels = [item.get('name', str(i)) for i, item in enumerate(data)]
+                sizes = [float(item.get('value', 0)) for item in data]
+                
+                wedges, texts, autotexts = ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=90)
+                ax.set_title(title, fontsize=16, fontweight='bold')
+        
+        plt.tight_layout()
+        
+        # Save chart
+        import os
+        os.makedirs('charts', exist_ok=True)
+        
+        chart_filename = f'charts/{title.replace(" ", "_")}_chart.png'
+        plt.savefig(chart_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        return chart_filename
+        
+    except Exception as e:
+        logger.error(f"Error generating chart: {e}")
+        return None
+
+def get_platform_statistics() -> Dict:
+    """Get comprehensive platform statistics"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Basic statistics
+        cursor.execute('SELECT COUNT(*) as total_users FROM users')
+        total_users = cursor.fetchone()['total_users']
+        
+        cursor.execute('SELECT COUNT(*) as active_users FROM users WHERE is_active = 1')
+        active_users = cursor.fetchone()['active_users']
+        
+        cursor.execute('SELECT COUNT(*) as total_transactions FROM transactions')
+        total_transactions = cursor.fetchone()['total_transactions']
+        
+        cursor.execute('SELECT SUM(amount) as total_revenue FROM transactions WHERE type = "purchase"')
+        total_revenue = cursor.fetchone()['total_revenue'] or 0
+        
+        cursor.execute('SELECT COUNT(*) as total_networks FROM networks WHERE is_active = 1')
+        total_networks = cursor.fetchone()['total_networks']
+        
+        cursor.execute('SELECT COUNT(*) as total_cards FROM cards')
+        total_cards = cursor.fetchone()['total_cards']
+        
+        cursor.execute('SELECT COUNT(*) as available_cards FROM cards WHERE is_used = 0')
+        available_cards = cursor.fetchone()['available_cards']
+        
+        # Recent activity (last 7 days)
+        week_ago = datetime.now() - timedelta(days=7)
+        cursor.execute('SELECT COUNT(*) as weekly_sales FROM transactions WHERE type = "purchase" AND created_at >= ?', (week_ago,))
+        weekly_sales = cursor.fetchone()['weekly_sales']
+        
+        cursor.execute('SELECT COUNT(*) as weekly_registrations FROM users WHERE created_at >= ?', (week_ago,))
+        weekly_registrations = cursor.fetchone()['weekly_registrations']
+        
+        # Average statistics
+        cursor.execute('SELECT AVG(amount) as avg_transaction FROM transactions WHERE type = "purchase"')
+        avg_transaction = cursor.fetchone()['avg_transaction'] or 0
+        
+        conn.close()
+        
+        return {
+            'total_users': total_users,
+            'active_users': active_users,
+            'total_transactions': total_transactions,
+            'total_revenue': round(total_revenue, 2),
+            'total_networks': total_networks,
+            'total_cards': total_cards,
+            'available_cards': available_cards,
+            'weekly_sales': weekly_sales,
+            'weekly_registrations': weekly_registrations,
+            'avg_transaction': round(avg_transaction, 2),
+            'card_utilization': round((total_cards - available_cards) / max(total_cards, 1) * 100, 1),
+            'user_activity_rate': round(active_users / max(total_users, 1) * 100, 1)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting platform statistics: {e}")
+        return {}
 
 # Encryption functions
 def _load_cipher_suite() -> Fernet:
@@ -377,6 +1257,207 @@ def init_db():
                 ref_id TEXT,
                 FOREIGN KEY(entry_id) REFERENCES journal_entries(id),
                 FOREIGN KEY(account_id) REFERENCES accounts(id)
+            )
+        ''')
+
+        # Enhanced sales system tables
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS sales_reports (
+                id TEXT PRIMARY KEY,
+                report_type TEXT NOT NULL,
+                start_date DATE NOT NULL,
+                end_date DATE NOT NULL,
+                total_sales REAL DEFAULT 0.0,
+                total_commission REAL DEFAULT 0.0,
+                total_transactions INTEGER DEFAULT 0,
+                generated_by INTEGER NOT NULL,
+                generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                data TEXT,
+                FOREIGN KEY(generated_by) REFERENCES users(id)
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS product_inventory (
+                id TEXT PRIMARY KEY,
+                network_id TEXT NOT NULL,
+                category_id INTEGER NOT NULL,
+                stock_count INTEGER DEFAULT 0,
+                reserved_count INTEGER DEFAULT 0,
+                low_stock_threshold INTEGER DEFAULT 10,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_by INTEGER,
+                FOREIGN KEY(network_id) REFERENCES networks(id),
+                FOREIGN KEY(category_id) REFERENCES card_categories(id),
+                FOREIGN KEY(updated_by) REFERENCES users(id)
+            )
+        ''')
+
+        # E-wallet enhanced features
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS wallet_transactions (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                transaction_type TEXT NOT NULL,
+                amount REAL NOT NULL,
+                balance_before REAL NOT NULL,
+                balance_after REAL NOT NULL,
+                reference_id TEXT,
+                description TEXT,
+                status TEXT DEFAULT 'completed',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                metadata TEXT,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS payment_methods (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                method_type TEXT NOT NULL,
+                method_name TEXT NOT NULL,
+                account_details TEXT NOT NULL,
+                is_active BOOLEAN DEFAULT 1,
+                is_verified BOOLEAN DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                verified_at TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+        ''')
+
+        # Rating and review system
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ratings (
+                id TEXT PRIMARY KEY,
+                rater_id INTEGER NOT NULL,
+                rated_user_id INTEGER NOT NULL,
+                transaction_id TEXT,
+                rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
+                review_text TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_visible BOOLEAN DEFAULT 1,
+                FOREIGN KEY(rater_id) REFERENCES users(id),
+                FOREIGN KEY(rated_user_id) REFERENCES users(id),
+                FOREIGN KEY(transaction_id) REFERENCES transactions(id)
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS user_ratings_summary (
+                user_id INTEGER PRIMARY KEY,
+                total_ratings INTEGER DEFAULT 0,
+                average_rating REAL DEFAULT 0.0,
+                rating_1_count INTEGER DEFAULT 0,
+                rating_2_count INTEGER DEFAULT 0,
+                rating_3_count INTEGER DEFAULT 0,
+                rating_4_count INTEGER DEFAULT 0,
+                rating_5_count INTEGER DEFAULT 0,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+        ''')
+
+        # Smart notifications system
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS notification_preferences (
+                user_id INTEGER PRIMARY KEY,
+                balance_alerts BOOLEAN DEFAULT 1,
+                transaction_alerts BOOLEAN DEFAULT 1,
+                promotion_alerts BOOLEAN DEFAULT 1,
+                system_alerts BOOLEAN DEFAULT 1,
+                low_stock_alerts BOOLEAN DEFAULT 0,
+                rating_requests BOOLEAN DEFAULT 1,
+                email_notifications BOOLEAN DEFAULT 0,
+                sms_notifications BOOLEAN DEFAULT 0,
+                quiet_hours_start TIME,
+                quiet_hours_end TIME,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS smart_notifications (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                notification_type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                message TEXT NOT NULL,
+                priority TEXT DEFAULT 'normal',
+                is_read BOOLEAN DEFAULT 0,
+                is_sent BOOLEAN DEFAULT 0,
+                scheduled_for TIMESTAMP,
+                sent_at TIMESTAMP,
+                read_at TIMESTAMP,
+                metadata TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+        ''')
+
+        # Enhanced user management
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS user_permissions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                permission_name TEXT NOT NULL,
+                granted_by INTEGER NOT NULL,
+                granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP,
+                is_active BOOLEAN DEFAULT 1,
+                FOREIGN KEY(user_id) REFERENCES users(id),
+                FOREIGN KEY(granted_by) REFERENCES users(id)
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS activity_logs (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                activity_type TEXT NOT NULL,
+                description TEXT NOT NULL,
+                ip_address TEXT,
+                user_agent TEXT,
+                session_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                metadata TEXT,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+        ''')
+
+        # Promotions and offers system
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS promotions (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                promotion_type TEXT NOT NULL,
+                discount_percentage REAL DEFAULT 0.0,
+                discount_amount REAL DEFAULT 0.0,
+                min_purchase_amount REAL DEFAULT 0.0,
+                max_usage_per_user INTEGER DEFAULT 1,
+                start_date TIMESTAMP NOT NULL,
+                end_date TIMESTAMP NOT NULL,
+                is_active BOOLEAN DEFAULT 1,
+                created_by INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                target_user_role TEXT,
+                applicable_networks TEXT,
+                FOREIGN KEY(created_by) REFERENCES users(id)
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS promotion_usage (
+                id TEXT PRIMARY KEY,
+                promotion_id TEXT NOT NULL,
+                user_id INTEGER NOT NULL,
+                transaction_id TEXT NOT NULL,
+                discount_applied REAL NOT NULL,
+                used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(promotion_id) REFERENCES promotions(id),
+                FOREIGN KEY(user_id) REFERENCES users(id),
+                FOREIGN KEY(transaction_id) REFERENCES transactions(id)
             )
         ''')
 
@@ -810,21 +1891,29 @@ def create_main_keyboard(role):
     if role == 'customer':
         return [
             [InlineKeyboardButton(f'{EMOJIS["purchase"]} شراء كروت إنترنت', callback_data='buy_cards')],
-            [InlineKeyboardButton(f'{EMOJIS["money"]} شحن رصيد', callback_data='recharge_balance')],
-            [InlineKeyboardButton(f'{EMOJIS["transfer"]} تحويل لصديق', callback_data='transfer_to_friend')],
-            [InlineKeyboardButton(f'{EMOJIS["user"]} دعوة أصدقاء', callback_data='invite_friends')],
-            [InlineKeyboardButton(f'{EMOJIS["stats"]} إحصائياتي', callback_data='my_stats')],
-            [InlineKeyboardButton(f'{EMOJIS["wallet"]} محفظتي', callback_data='show_balance')],
-            [InlineKeyboardButton(f'❓ المساعدة', callback_data='customer_help')],
+            [InlineKeyboardButton(f'{EMOJIS["wallet"]} محفظتي المطورة', callback_data='enhanced_wallet'),
+             InlineKeyboardButton(f'{EMOJIS["transfer"]} تحويل رصيد', callback_data='transfer_to_friend')],
+            [InlineKeyboardButton(f'{EMOJIS["stats"]} تقاريري الشخصية', callback_data='personal_reports'),
+             InlineKeyboardButton(f'{EMOJIS["star"]} تقييماتي', callback_data='my_ratings')],
+            [InlineKeyboardButton(f'{EMOJIS["user"]} دعوة أصدقاء', callback_data='invite_friends'),
+             InlineKeyboardButton(f'🔔 إشعاراتي', callback_data='my_notifications')],
+            [InlineKeyboardButton(f'{EMOJIS["money"]} شحن رصيد', callback_data='recharge_balance'),
+             InlineKeyboardButton(f'🎁 العروض والخصومات', callback_data='promotions')],
+            [InlineKeyboardButton(f'⚙️ إعدادات الحساب', callback_data='account_settings'),
+             InlineKeyboardButton(f'❓ المساعدة', callback_data='customer_help')],
         ]
     elif role == 'supplier':
         return [
-            [InlineKeyboardButton(f'{EMOJIS["upload"]} رفع كروت جديدة', callback_data='upload_cards')],
-            [InlineKeyboardButton(f'📝 لصق أكواد يدوياً', callback_data='paste_cards')],
-            [InlineKeyboardButton(f'{EMOJIS["network"]} إدارة الشبكات', callback_data='manage_networks')],
-            [InlineKeyboardButton(f'{EMOJIS["settings"]} إدارة المخزون', callback_data='manage_inventory')],
-            [InlineKeyboardButton(f'{EMOJIS["money"]} سحب الأرباح', callback_data='withdraw_earnings')],
-            [InlineKeyboardButton(f'{EMOJIS["stats"]} تقارير المبيعات', callback_data='sales_reports')],
+            [InlineKeyboardButton(f'{EMOJIS["upload"]} رفع كروت جديدة', callback_data='upload_cards'),
+             InlineKeyboardButton(f'📝 لصق أكواد يدوياً', callback_data='paste_cards')],
+            [InlineKeyboardButton(f'{EMOJIS["network"]} إدارة الشبكات', callback_data='manage_networks'),
+             InlineKeyboardButton(f'{EMOJIS["settings"]} إدارة المخزون', callback_data='manage_inventory')],
+            [InlineKeyboardButton(f'{EMOJIS["stats"]} تقارير المبيعات المتقدمة', callback_data='advanced_sales_reports'),
+             InlineKeyboardButton(f'{EMOJIS["star"]} تقييمات المنتجات', callback_data='product_ratings')],
+            [InlineKeyboardButton(f'{EMOJIS["money"]} سحب الأرباح', callback_data='withdraw_earnings'),
+             InlineKeyboardButton(f'🎁 إنشاء عروض', callback_data='create_promotions')],
+            [InlineKeyboardButton(f'🔔 تنبيهات المخزون', callback_data='inventory_alerts'),
+             InlineKeyboardButton(f'📊 تحليلات الأداء', callback_data='performance_analytics')],
         ]
     elif role == 'agent':
         return [
@@ -836,21 +1925,29 @@ def create_main_keyboard(role):
         ]
     elif role == 'admin':
         return [
-            [InlineKeyboardButton(f'{EMOJIS["user"]} تفعيل حسابات', callback_data='activate_accounts')],
-            [InlineKeyboardButton(f'{EMOJIS["network"]} موافقة شبكات', callback_data='approve_networks')],
-            [InlineKeyboardButton(f'🔍 مراقبة التحويلات', callback_data='monitor_transactions')],
-            [InlineKeyboardButton(f'💼 طلبات السحب', callback_data='withdrawal_requests')],
-            [InlineKeyboardButton(f'{EMOJIS["stats"]} التقارير الإدارية', callback_data='admin_reports')],
-            [InlineKeyboardButton(f'🔔 الإشعارات', callback_data='admin_notifications')],
+            [InlineKeyboardButton(f'{EMOJIS["user"]} تفعيل حسابات', callback_data='activate_accounts'),
+             InlineKeyboardButton(f'{EMOJIS["network"]} موافقة شبكات', callback_data='approve_networks')],
+            [InlineKeyboardButton(f'🔍 مراقبة التحويلات', callback_data='monitor_transactions'),
+             InlineKeyboardButton(f'💼 طلبات السحب', callback_data='withdrawal_requests')],
+            [InlineKeyboardButton(f'{EMOJIS["stats"]} التقارير الشاملة', callback_data='comprehensive_reports'),
+             InlineKeyboardButton(f'{EMOJIS["star"]} إدارة التقييمات', callback_data='manage_ratings')],
+            [InlineKeyboardButton(f'🔔 إدارة الإشعارات', callback_data='manage_notifications'),
+             InlineKeyboardButton(f'🎁 إدارة العروض', callback_data='manage_promotions')],
+            [InlineKeyboardButton(f'👥 إدارة الصلاحيات', callback_data='manage_permissions'),
+             InlineKeyboardButton(f'📊 إحصائيات متقدمة', callback_data='advanced_analytics')],
         ]
     elif role == 'super_admin':
         return [
-            [InlineKeyboardButton(f'{EMOJIS["admin"]} إدارة المشرفين', callback_data='manage_admins')],
-            [InlineKeyboardButton(f'{EMOJIS["settings"]} إعدادات النظام', callback_data='system_settings')],
-            [InlineKeyboardButton(f'💾 النسخ الاحتياطي', callback_data='backup_database')],
-            [InlineKeyboardButton(f'{EMOJIS["stats"]} التقارير الشاملة', callback_data='global_reports')],
-            [InlineKeyboardButton(f'{EMOJIS["money"]} إصدار رصيد', callback_data='issue_balance')],
-            [InlineKeyboardButton(f'📊 إحصائيات المنصة', callback_data='platform_stats')],
+            [InlineKeyboardButton(f'{EMOJIS["admin"]} إدارة المشرفين', callback_data='manage_admins'),
+             InlineKeyboardButton(f'{EMOJIS["settings"]} إعدادات النظام', callback_data='system_settings')],
+            [InlineKeyboardButton(f'{EMOJIS["money"]} إصدار رصيد', callback_data='issue_balance'),
+             InlineKeyboardButton(f'💾 النسخ الاحتياطي', callback_data='backup_database')],
+            [InlineKeyboardButton(f'{EMOJIS["stats"]} التقارير التنفيذية', callback_data='executive_reports'),
+             InlineKeyboardButton(f'📊 تحليلات الأعمال', callback_data='business_analytics')],
+            [InlineKeyboardButton(f'🏛️ إدارة المنصة', callback_data='platform_management'),
+             InlineKeyboardButton(f'🔧 إعدادات متقدمة', callback_data='advanced_settings')],
+            [InlineKeyboardButton(f'🚨 مراقبة الأمان', callback_data='security_monitoring'),
+             InlineKeyboardButton(f'📈 لوحة المعلومات', callback_data='dashboard_analytics')],
         ]
     
     return [[InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]]
@@ -1681,16 +2778,79 @@ async def complete_purchase(update: Update, context: CallbackContext) -> int:
             
             price, value, supplier_id, network_name = row
             
+            # Check and apply promotions
+            applied_promotion = None
+            discount_amount = 0.0
+            final_price = price
+            
+            cursor.execute('''
+                SELECT * FROM promotions 
+                WHERE is_active = 1 
+                AND start_date <= ? 
+                AND end_date >= ?
+                AND (target_user_role IS NULL OR target_user_role = ?)
+                AND min_purchase_amount <= ?
+                ORDER BY discount_percentage DESC, discount_amount DESC
+                LIMIT 1
+            ''', (datetime.now(), datetime.now(), user['role'], price))
+            
+            promotion = cursor.fetchone()
+            
+            if promotion:
+                # Check if user hasn't exceeded usage limit
+                cursor.execute('''
+                    SELECT COUNT(*) as usage_count
+                    FROM promotion_usage 
+                    WHERE user_id = ? AND promotion_id = ?
+                ''', (user['id'], promotion['id']))
+                
+                usage_count = cursor.fetchone()['usage_count']
+                
+                if usage_count < promotion['max_usage_per_user']:
+                    if promotion['discount_percentage'] > 0:
+                        discount_amount = round(price * promotion['discount_percentage'] / 100, 2)
+                    else:
+                        discount_amount = promotion['discount_amount']
+                    
+                    final_price = max(0, price - discount_amount)
+                    applied_promotion = promotion
+            
+            # Check user balance
+            if user['balance'] < final_price:
+                await context.bot.edit_message_text(
+                    chat_id=query.message.chat_id,
+                    message_id=processing_msg.message_id,
+                    text=f"{EMOJIS['error']} رصيدك غير كافي!\n\n"
+                         f"💰 المطلوب: {final_price:.2f} ريال\n"
+                         f"💳 رصيدك: {user['balance']:.2f} ريال\n"
+                         f"💸 النقص: {final_price - user['balance']:.2f} ريال"
+                )
+                return ConversationHandler.END
+            
             # Get available card
             cursor.execute('SELECT id, code FROM cards WHERE category_id = ? AND is_used = 0 LIMIT 1', (category_id,))
             card = cursor.fetchone()
             
             if not card:
+                # Update inventory to reflect shortage
+                update_inventory_stock(row['network_id'] if 'network_id' in row else None, category_id, -1)
+                
                 await context.bot.edit_message_text(
                     chat_id=query.message.chat_id,
                     message_id=processing_msg.message_id,
-                    text=f"{EMOJIS['warning']} عذراً، الكروت نفذت لهذه الفئة!"
+                    text=f"{EMOJIS['warning']} عذراً، الكروت نفذت لهذه الفئة!\n\n"
+                         f"🔔 سيتم إشعارك عند توفر كروت جديدة."
                 )
+                
+                # Send low stock notification
+                send_smart_notification(
+                    user['id'],
+                    'out_of_stock',
+                    '⚠️ نفاد المخزون',
+                    f'الكروت نفذت لفئة {value} ريال من شبكة {network_name}',
+                    'high'
+                )
+                
                 return ConversationHandler.END
             
             card_id, encrypted_code = card
@@ -1709,12 +2869,42 @@ async def complete_purchase(update: Update, context: CallbackContext) -> int:
                 row_acc = cur2.fetchone()
             commission_acc = row_acc[0]
             
-            supplier_share = round(price * (1.0 - CARD_COMMISSION_RATE), 2)
-            bot_commission = round(price * CARD_COMMISSION_RATE, 2)
+            supplier_share = round(final_price * (1.0 - CARD_COMMISSION_RATE), 2)
+            bot_commission = round(final_price * CARD_COMMISSION_RATE, 2)
             
             # Mark card as used and update user stats
             cursor.execute('UPDATE cards SET is_used = 1, used_at = CURRENT_TIMESTAMP, used_by = ? WHERE id = ?', (user['id'], card_id))
-            cursor.execute('UPDATE users SET total_purchases = total_purchases + 1, total_spent = total_spent + ? WHERE id = ?', (price, user['id']))
+            cursor.execute('UPDATE users SET total_purchases = total_purchases + 1, total_spent = total_spent + ? WHERE id = ?', (final_price, user['id']))
+            
+            # Record promotion usage if applicable
+            transaction_id = str(uuid.uuid4())
+            if applied_promotion:
+                cursor.execute('''
+                    INSERT INTO promotion_usage (id, promotion_id, user_id, transaction_id, discount_applied)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (str(uuid.uuid4()), applied_promotion['id'], user['id'], transaction_id, discount_amount))
+            
+            # Update inventory
+            network_id = row.get('network_id', f"net_{supplier_id}")
+            update_inventory_stock(network_id, category_id, -1)
+            
+            # Create enhanced wallet transaction
+            create_wallet_transaction(
+                user['id'], 
+                'debit', 
+                final_price, 
+                user['balance'], 
+                user['balance'] - final_price,
+                f'شراء كرت {value} ريال من {network_name}',
+                card_id,
+                {
+                    'original_price': price,
+                    'discount_applied': discount_amount,
+                    'promotion_id': applied_promotion['id'] if applied_promotion else None,
+                    'network_name': network_name,
+                    'card_value': value
+                }
+            )
             
             conn.commit()
         finally:
@@ -1742,14 +2932,45 @@ async def complete_purchase(update: Update, context: CallbackContext) -> int:
         recalc_and_set_user_balance(user['id'])
         recalc_and_set_user_balance(supplier_id)
         
-        # Log the purchase
-        log_system_action(user['id'], 'card_purchase', f'Purchased card {card_id} for {price} riyal')
+        # Log the purchase with enhanced details
+        log_system_action(user['id'], 'card_purchase', f'Purchased card {card_id} for {final_price} riyal')
+        log_activity(user['id'], 'purchase', f'Purchased {value} riyal card from {network_name}', {
+            'card_id': card_id,
+            'network_name': network_name,
+            'original_price': price,
+            'final_price': final_price,
+            'discount_amount': discount_amount,
+            'promotion_used': applied_promotion['title'] if applied_promotion else None
+        })
         
-        # Send success message
+        # Send purchase notification
+        notification_msg = f'تم شراء كرت {value} ريال من {network_name}'
+        if applied_promotion:
+            notification_msg += f' مع خصم {discount_amount:.2f} ريال'
+        
+        send_smart_notification(
+            user['id'],
+            'purchase_success',
+            '✅ تم الشراء بنجاح',
+            notification_msg,
+            'normal'
+        )
+        
+        # Send success message with promotion details
+        success_text = f"{EMOJIS['success']} **تم الشراء بنجاح!**\n\n"
+        
+        if applied_promotion:
+            success_text += f"🎁 **تم تطبيق عرض:** {applied_promotion['title']}\n"
+            success_text += f"💰 السعر الأصلي: {price:.2f} ريال\n"
+            success_text += f"🎊 الخصم: {discount_amount:.2f} ريال\n"
+            success_text += f"💳 المبلغ المدفوع: {final_price:.2f} ريال\n\n"
+        
+        success_text += "كود الكرت سيرسل لك في الرسالة التالية..."
+        
         await context.bot.edit_message_text(
             chat_id=query.message.chat_id,
             message_id=processing_msg.message_id,
-            text=f"{EMOJIS['success']} **تم الشراء بنجاح!**\n\nكود الكرت سيرسل لك في الرسالة التالية...",
+            text=success_text,
             parse_mode='Markdown'
         )
         
@@ -1761,11 +2982,20 @@ async def complete_purchase(update: Update, context: CallbackContext) -> int:
 
 {EMOJIS['network']} الشبكة: **{network_name}**
 {EMOJIS['money']} القيمة: **{value}** ريال
+"""
+
+        if applied_promotion:
+            card_message += f"\n🎁 العرض المطبق: **{applied_promotion['title']}**"
+            card_message += f"\n💰 وفرت: **{discount_amount:.2f}** ريال"
+
+        card_message += f"""
 
 {EMOJIS['warning']} **تنبيه مهم:**
 • احفظ الكود في مكان آمن
 • لا تشارك الكود مع أحد
 • استخدم الكود قبل انتهاء صلاحيته
+
+💳 رصيدك الحالي: **{user['balance'] - final_price:.2f}** ريال
 """
         
         await context.bot.send_message(
@@ -2301,6 +3531,521 @@ async def customer_help_handler(update: Update, context: CallbackContext):
         logger.error(f"Error in customer_help_handler: {e}")
         await update.callback_query.edit_message_text(f"{EMOJIS['error']} حدث خطأ.")
 
+# Enhanced feature handlers
+
+async def enhanced_wallet_handler(update: Update, context: CallbackContext):
+    """Enhanced wallet with transaction history and analytics"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user:
+            await query.edit_message_text(f"{EMOJIS['error']} المستخدم غير موجود.")
+            return
+        
+        # Get wallet transactions
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT * FROM wallet_transactions 
+            WHERE user_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT 10
+        ''', (user['id'],))
+        transactions = cursor.fetchall()
+        
+        # Calculate statistics
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as total_transactions,
+                SUM(CASE WHEN transaction_type = 'credit' THEN amount ELSE 0 END) as total_credits,
+                SUM(CASE WHEN transaction_type = 'debit' THEN amount ELSE 0 END) as total_debits
+            FROM wallet_transactions 
+            WHERE user_id = ?
+        ''', (user['id'],))
+        stats = cursor.fetchone()
+        
+        conn.close()
+        
+        wallet_text = f"""
+💳 **محفظتي المطورة** 💳
+
+{EMOJIS['money']} الرصيد الحالي: `{user['balance']:.2f}` ريال
+{EMOJIS['id']} رقم المحفظة: `{user['wallet_number']}`
+
+📊 **إحصائيات المحفظة:**
+🔢 إجمالي المعاملات: {stats['total_transactions'] or 0}
+💚 إجمالي الإيداعات: {stats['total_credits'] or 0:.2f} ريال
+💸 إجمالي المصروفات: {stats['total_debits'] or 0:.2f} ريال
+
+📋 **آخر المعاملات:**
+"""
+        
+        if transactions:
+            for i, trans in enumerate(transactions[:5], 1):
+                trans_type = "➕ إيداع" if trans['transaction_type'] == 'credit' else "➖ سحب"
+                wallet_text += f"\n{i}. {trans_type}: {trans['amount']:.2f} ريال"
+                wallet_text += f"\n   📅 {trans['created_at'][:16]}"
+                if trans['description']:
+                    wallet_text += f"\n   📝 {trans['description']}"
+                wallet_text += "\n"
+        else:
+            wallet_text += "\nلا توجد معاملات حالياً"
+        
+        keyboard = [
+            [InlineKeyboardButton(f'💸 تحويل رصيد', callback_data='transfer_to_friend'),
+             InlineKeyboardButton(f'💰 شحن رصيد', callback_data='recharge_balance')],
+            [InlineKeyboardButton(f'📋 تاريخ المعاملات الكامل', callback_data='full_transaction_history'),
+             InlineKeyboardButton(f'📊 تقرير الإنفاق', callback_data='spending_report')],
+            [InlineKeyboardButton(f'⚙️ إعدادات المحفظة', callback_data='wallet_settings'),
+             InlineKeyboardButton(f'🔔 تنبيهات الرصيد', callback_data='balance_alerts')],
+            [InlineKeyboardButton(f'{EMOJIS["back"]} العودة للقائمة', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(
+            wallet_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+        # Log activity
+        log_activity(user['id'], 'wallet_access', 'Accessed enhanced wallet')
+        
+    except Exception as e:
+        logger.error(f"Error in enhanced wallet handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض المحفظة.")
+
+async def personal_reports_handler(update: Update, context: CallbackContext):
+    """Personal reports and analytics for customers"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user:
+            await query.edit_message_text(f"{EMOJIS['error']} المستخدم غير موجود.")
+            return
+        
+        # Generate personal analytics
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get purchase statistics
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as total_purchases,
+                SUM(amount) as total_spent,
+                AVG(amount) as avg_purchase
+            FROM transactions 
+            WHERE from_user = ? AND type = 'purchase'
+        ''', (user['id'],))
+        purchase_stats = cursor.fetchone()
+        
+        # Get this month's statistics
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as monthly_purchases,
+                SUM(amount) as monthly_spent
+            FROM transactions 
+            WHERE from_user = ? AND type = 'purchase'
+            AND DATE(created_at) >= DATE('now', 'start of month')
+        ''', (user['id'],))
+        monthly_stats = cursor.fetchone()
+        
+        # Get network preferences
+        cursor.execute('''
+            SELECT n.name, COUNT(*) as count
+            FROM transactions t
+            JOIN cards c ON t.reference_id = c.id
+            JOIN card_categories cc ON c.category_id = cc.id
+            JOIN networks n ON cc.network_id = n.id
+            WHERE t.from_user = ? AND t.type = 'purchase'
+            GROUP BY n.name
+            ORDER BY count DESC
+            LIMIT 3
+        ''', (user['id'],))
+        network_prefs = cursor.fetchall()
+        
+        conn.close()
+        
+        report_text = f"""
+📊 **تقاريري الشخصية** 📊
+
+👤 **المستخدم:** {user['full_name']}
+
+📈 **إحصائيات الشراء:**
+🛒 إجمالي المشتريات: {purchase_stats['total_purchases'] or 0}
+💰 إجمالي المبلغ: {purchase_stats['total_spent'] or 0:.2f} ريال
+📊 متوسط الشراء: {purchase_stats['avg_purchase'] or 0:.2f} ريال
+
+📅 **إحصائيات هذا الشهر:**
+🛒 مشتريات الشهر: {monthly_stats['monthly_purchases'] or 0}
+💰 إنفاق الشهر: {monthly_stats['monthly_spent'] or 0:.2f} ريال
+
+🌐 **الشبكات المفضلة:**
+"""
+        
+        if network_prefs:
+            for i, (network, count) in enumerate(network_prefs, 1):
+                report_text += f"\n{i}. {network}: {count} مرة"
+        else:
+            report_text += "\nلا توجد مشتريات حالياً"
+        
+        keyboard = [
+            [InlineKeyboardButton(f'📊 تقرير مفصل', callback_data='detailed_personal_report'),
+             InlineKeyboardButton(f'📈 رسم بياني', callback_data='spending_chart')],
+            [InlineKeyboardButton(f'📅 تقرير شهري', callback_data='monthly_report'),
+             InlineKeyboardButton(f'📄 تصدير التقرير', callback_data='export_personal_report')],
+            [InlineKeyboardButton(f'{EMOJIS["back"]} العودة للقائمة', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(
+            report_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+        # Log activity
+        log_activity(user['id'], 'report_access', 'Accessed personal reports')
+        
+    except Exception as e:
+        logger.error(f"Error in personal reports handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض التقارير.")
+
+async def my_ratings_handler(update: Update, context: CallbackContext):
+    """Show user ratings and reviews"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user:
+            await query.edit_message_text(f"{EMOJIS['error']} المستخدم غير موجود.")
+            return
+        
+        # Get user rating summary
+        rating_summary = calculate_user_rating(user['id'])
+        
+        # Get recent ratings received
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT r.*, u.full_name
+            FROM ratings r
+            JOIN users u ON r.rater_id = u.id
+            WHERE r.rated_user_id = ? AND r.is_visible = 1
+            ORDER BY r.created_at DESC
+            LIMIT 5
+        ''', (user['id'],))
+        recent_ratings = cursor.fetchall()
+        
+        # Get ratings given by user
+        cursor.execute('''
+            SELECT r.*, u.full_name
+            FROM ratings r
+            JOIN users u ON r.rated_user_id = u.id
+            WHERE r.rater_id = ?
+            ORDER BY r.created_at DESC
+            LIMIT 3
+        ''', (user['id'],))
+        given_ratings = cursor.fetchall()
+        
+        conn.close()
+        
+        stars = "⭐" * int(rating_summary['average_rating'])
+        
+        ratings_text = f"""
+⭐ **تقييماتي** ⭐
+
+📊 **ملخص التقييمات:**
+{stars} متوسط التقييم: {rating_summary['average_rating']}/5
+🔢 إجمالي التقييمات: {rating_summary['total_ratings']}
+
+📈 **توزيع التقييمات:**
+⭐⭐⭐⭐⭐ {rating_summary['rating_distribution'][5]} تقييم
+⭐⭐⭐⭐ {rating_summary['rating_distribution'][4]} تقييم
+⭐⭐⭐ {rating_summary['rating_distribution'][3]} تقييم
+⭐⭐ {rating_summary['rating_distribution'][2]} تقييم
+⭐ {rating_summary['rating_distribution'][1]} تقييم
+
+📝 **آخر التقييمات المستلمة:**
+"""
+        
+        if recent_ratings:
+            for rating in recent_ratings:
+                stars = "⭐" * rating['rating']
+                ratings_text += f"\n{stars} من {rating['full_name']}"
+                if rating['review_text']:
+                    ratings_text += f"\n💬 {rating['review_text'][:50]}..."
+                ratings_text += f"\n📅 {rating['created_at'][:10]}\n"
+        else:
+            ratings_text += "\nلا توجد تقييمات حالياً"
+        
+        keyboard = [
+            [InlineKeyboardButton(f'📝 تقييماتي للآخرين', callback_data='my_given_ratings'),
+             InlineKeyboardButton(f'⭐ إضافة تقييم', callback_data='add_rating')],
+            [InlineKeyboardButton(f'📊 تفاصيل التقييمات', callback_data='detailed_ratings'),
+             InlineKeyboardButton(f'🔔 إعدادات التقييم', callback_data='rating_settings')],
+            [InlineKeyboardButton(f'{EMOJIS["back"]} العودة للقائمة', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(
+            ratings_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in ratings handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض التقييمات.")
+
+async def my_notifications_handler(update: Update, context: CallbackContext):
+    """Show user notifications"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user:
+            await query.edit_message_text(f"{EMOJIS['error']} المستخدم غير موجود.")
+            return
+        
+        # Get notifications
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT * FROM smart_notifications 
+            WHERE user_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT 10
+        ''', (user['id'],))
+        notifications = cursor.fetchall()
+        
+        # Get unread count
+        cursor.execute('''
+            SELECT COUNT(*) as unread_count
+            FROM smart_notifications 
+            WHERE user_id = ? AND is_read = 0
+        ''', (user['id'],))
+        unread_count = cursor.fetchone()['unread_count']
+        
+        conn.close()
+        
+        notifications_text = f"""
+🔔 **إشعاراتي** 🔔
+
+📨 إجمالي الإشعارات: {len(notifications)}
+🔴 غير مقروءة: {unread_count}
+
+📋 **الإشعارات الحديثة:**
+"""
+        
+        if notifications:
+            for i, notif in enumerate(notifications[:7], 1):
+                status = "🔴" if not notif['is_read'] else "✅"
+                priority_emoji = "🚨" if notif['priority'] == 'high' else "📢" if notif['priority'] == 'normal' else "ℹ️"
+                
+                notifications_text += f"\n{i}. {status} {priority_emoji} **{notif['title']}**"
+                notifications_text += f"\n   📝 {notif['message'][:50]}..."
+                notifications_text += f"\n   📅 {notif['created_at'][:16]}\n"
+        else:
+            notifications_text += "\nلا توجد إشعارات حالياً"
+        
+        keyboard = [
+            [InlineKeyboardButton(f'✅ تحديد الكل كمقروء', callback_data='mark_all_read'),
+             InlineKeyboardButton(f'🗑️ حذف المقروءة', callback_data='delete_read_notifications')],
+            [InlineKeyboardButton(f'⚙️ إعدادات الإشعارات', callback_data='notification_settings'),
+             InlineKeyboardButton(f'🔔 إشعارات العروض', callback_data='promotion_notifications')],
+            [InlineKeyboardButton(f'{EMOJIS["back"]} العودة للقائمة', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(
+            notifications_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+        # Mark notifications as read when viewed
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE smart_notifications 
+                SET is_read = 1, read_at = ?
+                WHERE user_id = ? AND is_read = 0
+            ''', (datetime.now(), user['id']))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error(f"Error marking notifications as read: {e}")
+        
+    except Exception as e:
+        logger.error(f"Error in notifications handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض الإشعارات.")
+
+async def promotions_handler(update: Update, context: CallbackContext):
+    """Show available promotions and offers"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user:
+            await query.edit_message_text(f"{EMOJIS['error']} المستخدم غير موجود.")
+            return
+        
+        # Get active promotions
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT * FROM promotions 
+            WHERE is_active = 1 
+            AND start_date <= ? 
+            AND end_date >= ?
+            AND (target_user_role IS NULL OR target_user_role = ?)
+            ORDER BY created_at DESC
+        ''', (datetime.now(), datetime.now(), user['role']))
+        promotions = cursor.fetchall()
+        
+        # Get user's promotion usage
+        cursor.execute('''
+            SELECT promotion_id, COUNT(*) as usage_count
+            FROM promotion_usage 
+            WHERE user_id = ?
+            GROUP BY promotion_id
+        ''', (user['id'],))
+        usage_data = {row['promotion_id']: row['usage_count'] for row in cursor.fetchall()}
+        
+        conn.close()
+        
+        promotions_text = f"""
+🎁 **العروض والخصومات** 🎁
+
+💫 العروض المتاحة لك:
+"""
+        
+        if promotions:
+            for i, promo in enumerate(promotions, 1):
+                used_count = usage_data.get(promo['id'], 0)
+                remaining = promo['max_usage_per_user'] - used_count
+                
+                if remaining > 0:
+                    discount_text = f"{promo['discount_percentage']}%" if promo['discount_percentage'] > 0 else f"{promo['discount_amount']} ريال"
+                    
+                    promotions_text += f"\n{i}. 🔥 **{promo['title']}**"
+                    promotions_text += f"\n   💰 خصم: {discount_text}"
+                    promotions_text += f"\n   📝 {promo['description'][:60]}..."
+                    promotions_text += f"\n   🔢 متبقي: {remaining} مرة"
+                    promotions_text += f"\n   📅 حتى: {promo['end_date'][:10]}\n"
+        else:
+            promotions_text += "\nلا توجد عروض متاحة حالياً"
+        
+        promotions_text += f"\n💡 **نصيحة:** استخدم العروض عند الشراء للحصول على أفضل الأسعار!"
+        
+        keyboard = [
+            [InlineKeyboardButton(f'🛒 تسوق بالعروض', callback_data='shop_with_promotions'),
+             InlineKeyboardButton(f'📋 عروضي المستخدمة', callback_data='used_promotions')],
+            [InlineKeyboardButton(f'🔔 تنبيهات العروض', callback_data='promotion_alerts'),
+             InlineKeyboardButton(f'📊 توفيراتي', callback_data='savings_summary')],
+            [InlineKeyboardButton(f'{EMOJIS["back"]} العودة للقائمة', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(
+            promotions_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in promotions handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض العروض.")
+
+async def account_settings_handler(update: Update, context: CallbackContext):
+    """Account settings and preferences"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user:
+            await query.edit_message_text(f"{EMOJIS['error']} المستخدم غير موجود.")
+            return
+        
+        # Get notification preferences
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT * FROM notification_preferences WHERE user_id = ?
+        ''', (user['id'],))
+        prefs = cursor.fetchone()
+        
+        # Get user permissions
+        permissions = get_user_permissions(user['id'])
+        
+        conn.close()
+        
+        # Default preferences if not set
+        if not prefs:
+            prefs = {
+                'balance_alerts': True,
+                'transaction_alerts': True,
+                'promotion_alerts': True,
+                'system_alerts': True,
+                'rating_requests': True
+            }
+        
+        settings_text = f"""
+⚙️ **إعدادات الحساب** ⚙️
+
+👤 **معلومات الحساب:**
+📛 الاسم: {user['full_name']}
+📞 الهاتف: {user['phone']}
+🏷️ الدور: {user['role']}
+💳 رقم المحفظة: {user['wallet_number']}
+✅ الحالة: {"مفعل" if user['is_active'] else "غير مفعل"}
+
+🔔 **إعدادات الإشعارات:**
+💰 تنبيهات الرصيد: {"✅" if prefs['balance_alerts'] else "❌"}
+💸 تنبيهات المعاملات: {"✅" if prefs['transaction_alerts'] else "❌"}
+🎁 تنبيهات العروض: {"✅" if prefs['promotion_alerts'] else "❌"}
+🔔 التنبيهات العامة: {"✅" if prefs['system_alerts'] else "❌"}
+⭐ طلبات التقييم: {"✅" if prefs['rating_requests'] else "❌"}
+
+🔐 **الصلاحيات الخاصة:**
+"""
+        
+        if permissions:
+            for perm in permissions:
+                settings_text += f"• {perm}\n"
+        else:
+            settings_text += "لا توجد صلاحيات خاصة"
+        
+        keyboard = [
+            [InlineKeyboardButton(f'📝 تعديل المعلومات', callback_data='edit_profile'),
+             InlineKeyboardButton(f'🔔 إعدادات الإشعارات', callback_data='notification_settings')],
+            [InlineKeyboardButton(f'🔒 تغيير كلمة المرور', callback_data='change_password'),
+             InlineKeyboardButton(f'🛡️ إعدادات الأمان', callback_data='security_settings')],
+            [InlineKeyboardButton(f'📱 ربط الجهاز', callback_data='device_linking'),
+             InlineKeyboardButton(f'📋 تصدير البيانات', callback_data='export_data')],
+            [InlineKeyboardButton(f'{EMOJIS["back"]} العودة للقائمة', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(
+            settings_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in account settings handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض الإعدادات.")
+
 # Main button handler
 async def button_click_handler(update: Update, context: CallbackContext):
     """Handle all button clicks"""
@@ -2334,6 +4079,19 @@ async def button_click_handler(update: Update, context: CallbackContext):
             return await confirm_purchase(update, context)
         elif data == 'complete_purchase':
             return await complete_purchase(update, context)
+        # Enhanced feature routes
+        elif data == 'enhanced_wallet':
+            return await enhanced_wallet_handler(update, context)
+        elif data == 'personal_reports':
+            return await personal_reports_handler(update, context)
+        elif data == 'my_ratings':
+            return await my_ratings_handler(update, context)
+        elif data == 'my_notifications':
+            return await my_notifications_handler(update, context)
+        elif data == 'promotions':
+            return await promotions_handler(update, context)
+        elif data == 'account_settings':
+            return await account_settings_handler(update, context)
         else:
             # Handle not implemented features
             await query.edit_message_text(
