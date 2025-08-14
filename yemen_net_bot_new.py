@@ -18,7 +18,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'bot_modules'))
 
 # Import Telegram bot components
-from telegram import Update, MenuButtonCommands
+from telegram import Update, MenuButtonCommands, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler,
     ConversationHandler, PicklePersistence, filters
@@ -105,6 +105,12 @@ async def button_click_handler(update: Update, context):
         elif callback_data.startswith('role_'):
             from handlers import choose_role
             return await choose_role(update, context)
+        
+        # Core features
+        elif callback_data == 'buy_cards':
+            await buy_cards_handler(update, context)
+        elif callback_data == 'transfer_to_friend':
+            await transfer_handler(update, context)
         
         # Personal features
         elif callback_data == 'personal_reports':
@@ -403,6 +409,73 @@ async def account_settings_handler(update: Update, context):
     except Exception as e:
         logger.error(f"Error in account settings handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض الإعدادات.")
+
+async def buy_cards_handler(update: Update, context):
+    """Handle buy cards request"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        buy_text = f"""
+🛒 **شراء كروت الإنترنت** 🛒
+
+👤 **{user['full_name']}**
+💰 رصيدك: **{user['balance']:.2f}** ريال
+
+📶 **الشبكات المتاحة:**
+
+هذه الميزة قيد التطوير حالياً وسيتم إضافة:
+• عرض الشبكات المتاحة
+• اختيار فئات الكروت
+• معاينة الأسعار
+• تأكيد الشراء
+
+⚠️ سيتم إضافة هذه الميزة في التحديث القادم.
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton(f'📊 عرض الشبكات', callback_data='view_networks')],
+            [InlineKeyboardButton(f'💰 شحن الرصيد', callback_data='recharge_balance')],
+            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(buy_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in buy cards handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض صفحة الشراء.")
+
+async def transfer_handler(update: Update, context):
+    """Handle transfer request"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        transfer_text = f"""
+💸 **تحويل رصيد لصديق** 💸
+
+👤 **{user['full_name']}**
+💰 رصيدك: **{user['balance']:.2f}** ريال
+
+📋 **تعليمات التحويل:**
+1️⃣ أدخل رقم محفظة المستلم (9 أرقام)
+2️⃣ أدخل المبلغ المراد تحويله
+3️⃣ تأكيد العملية
+
+⚠️ هذه الميزة قيد التطوير وسيتم إضافتها قريباً.
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton(f'🔍 البحث عن مستخدم', callback_data='search_user')],
+            [InlineKeyboardButton(f'📋 آخر التحويلات', callback_data='transfer_history')],
+            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(transfer_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in transfer handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض صفحة التحويل.")
 
 async def help_handler(update: Update, context):
     """Show help information"""

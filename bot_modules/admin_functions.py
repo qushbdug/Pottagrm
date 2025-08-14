@@ -541,6 +541,61 @@ async def platform_management_handler(update: Update, context: CallbackContext):
         logger.error(f"Error in platform management: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحميل إدارة المنصة.")
 
+# Additional admin handlers for missing callbacks
+async def placeholder_handler(update, context, feature_name):
+    """Placeholder handler for features under development"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        text = f"""
+⚠️ **{feature_name}**
+
+هذه الميزة قيد التطوير حالياً.
+سيتم إضافتها في التحديثات القادمة إن شاء الله.
+
+🔧 **قريباً:**
+• واجهة محسّنة
+• ميزات متقدمة  
+• تحكم شامل
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton(f'👑 لوحة المشرف الأعلى', callback_data='super_admin_panel')],
+            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in placeholder handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ.")
+
+# Placeholder handlers for missing features
+async def commission_settings_handler(update, context):
+    return await placeholder_handler(update, context, "إعدادات العمولات")
+
+async def backup_handler(update, context):
+    return await placeholder_handler(update, context, "النسخ الاحتياطي")
+
+async def executive_reports_handler(update, context):
+    return await placeholder_handler(update, context, "التقارير التنفيذية")
+
+async def manage_users_handler(update, context):
+    return await placeholder_handler(update, context, "إدارة المستخدمين")
+
+async def system_settings_handler(update, context):
+    return await placeholder_handler(update, context, "إعدادات النظام")
+
+async def security_monitoring_handler(update, context):
+    return await placeholder_handler(update, context, "مراقبة الأمان")
+
+async def manage_admins_handler(update, context):
+    return await placeholder_handler(update, context, "إدارة المشرفين")
+
+async def dashboard_handler(update, context):
+    return await placeholder_handler(update, context, "لوحة المعلومات")
+
 # Export functions for callback routing
 ADMIN_CALLBACKS = {
     'super_admin_panel': lambda u, c: show_super_admin_panel(u, c, get_user(u.effective_user.id)),
@@ -548,4 +603,13 @@ ADMIN_CALLBACKS = {
     'super_activate_suppliers': activate_suppliers_handler,
     'activate_all_suppliers': activate_all_suppliers,
     'super_platform_management': platform_management_handler,
+    'super_commission_settings': commission_settings_handler,
+    'super_backup': backup_handler,
+    'executive_reports': executive_reports_handler,
+    'super_manage_users': manage_users_handler,
+    'super_executive_reports': executive_reports_handler,
+    'super_system_settings': system_settings_handler,
+    'super_security_monitoring': security_monitoring_handler,
+    'super_manage_admins': manage_admins_handler,
+    'super_dashboard': dashboard_handler,
 }
