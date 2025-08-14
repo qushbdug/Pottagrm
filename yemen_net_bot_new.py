@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'bot_modules'))
 from telegram import Update, MenuButtonCommands, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler,
-    ConversationHandler, PicklePersistence, filters
+    ConversationHandler, PicklePersistence, filters, CallbackContext
 )
 
 # Import our modular components
@@ -147,6 +147,28 @@ async def button_click_handler(update: Update, context):
             await transaction_details_handler(update, context)
         elif callback_data == 'wallet_stats':
             await wallet_stats_handler(update, context)
+        
+        # Enhanced supplier features
+        elif callback_data == 'upload_cards':
+            await upload_cards_handler(update, context)
+        elif callback_data == 'manage_networks':
+            await manage_networks_handler(update, context)
+        elif callback_data == 'cards_reports':
+            await cards_reports_handler(update, context)
+        elif callback_data == 'sales_stats':
+            await sales_stats_handler(update, context)
+        elif callback_data == 'upload_history':
+            await upload_history_handler(update, context)
+        elif callback_data == 'supplier_settings':
+            await supplier_settings_handler(update, context)
+        
+        # File upload processing
+        elif callback_data.startswith('select_network_'):
+            await process_network_selection(update, context)
+        elif callback_data == 'cancel_upload':
+            await cancel_upload(update, context)
+        elif callback_data == 'confirm_upload':
+            await confirm_upload(update, context)
         
         # Refresh balance
         elif callback_data == 'refresh_balance':
@@ -569,30 +591,60 @@ async def my_commissions_handler(update: Update, context):
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض العمولات.")
 
 async def supplier_panel_handler(update: Update, context):
-    """Handle supplier panel"""
+    """Handle enhanced supplier panel"""
     try:
         query = update.callback_query
         user = get_user(query.from_user.id)
         
+        # Get supplier code
+        from bot_modules.utils import get_or_create_supplier_code
+        supplier_code = get_or_create_supplier_code(user['id'])
+        
+        # Get statistics
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Count networks
+        cursor.execute('SELECT COUNT(*) as count FROM networks WHERE supplier_id = ?', (user['id'],))
+        networks_count = cursor.fetchone()['count']
+        
+        # Count active cards
+        cursor.execute('SELECT COUNT(*) as count FROM network_cards WHERE supplier_id = ? AND is_sold = 0', (user['id'],))
+        active_cards = cursor.fetchone()['count']
+        
+        # Count sold cards
+        cursor.execute('SELECT COUNT(*) as count FROM network_cards WHERE supplier_id = ? AND is_sold = 1', (user['id'],))
+        sold_cards = cursor.fetchone()['count']
+        
+        # Recent uploads
+        cursor.execute('SELECT COUNT(*) as count FROM card_upload_batches WHERE supplier_id = ? AND created_at > datetime("now", "-7 days")', (user['id'],))
+        recent_uploads = cursor.fetchone()['count']
+        
+        conn.close()
+        
         panel_text = f"""
-🏪 **لوحة المزود** 🏪
+🏪 **لوحة المزود المطورة** 🏪
 
 👤 **{user['full_name']}**
 💰 رصيدك: **{user['balance']:.2f}** ريال
+🆔 **معرف المزود: `{supplier_code}`**
 
 📊 **إحصائيات المزود:**
-⚠️ هذه الميزة قيد التطوير
+📶 الشبكات: **{networks_count}**
+📋 كروت متاحة: **{active_cards}**
+✅ كروت مباعة: **{sold_cards}**
+📤 رفع حديث (7 أيام): **{recent_uploads}**
 
-🔧 **سيتم إضافة:**
-• إدارة الشبكات
-• رفع الكروت
-• تقارير المبيعات
-• إحصائيات الأرباح
+🎯 **إدارة الكروت والشبكات:**
 """
         
         keyboard = [
-            [InlineKeyboardButton(f'📶 إدارة الشبكات', callback_data='manage_networks')],
-            [InlineKeyboardButton(f'📤 رفع كروت', callback_data='upload_cards')],
+            [InlineKeyboardButton(f'📶 إدارة الشبكات', callback_data='manage_networks'),
+             InlineKeyboardButton(f'📤 رفع كروت', callback_data='upload_cards')],
+            [InlineKeyboardButton(f'📊 تقارير الكروت', callback_data='cards_reports'),
+             InlineKeyboardButton(f'📈 إحصائيات المبيعات', callback_data='sales_stats')],
+            [InlineKeyboardButton(f'📋 سجل الرفع', callback_data='upload_history'),
+             InlineKeyboardButton(f'⚙️ إعدادات المزود', callback_data='supplier_settings')],
             [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
         ]
         
@@ -752,6 +804,284 @@ async def wallet_stats_handler(update: Update, context):
         logger.error(f"Error in wallet stats handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض إحصائيات المحفظة.")
 
+# Enhanced supplier handlers
+async def upload_cards_handler(update: Update, context):
+    """Handle card upload process"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        if user['role'] != 'supplier':
+            await query.edit_message_text("❌ هذه الميزة متاحة للمزودين فقط.")
+            return
+        
+        upload_text = f"""
+📤 **رفع كروت الشبكة** 📤
+
+🎯 **طريقة رفع الكروت:**
+
+📋 **الصيغة المدعومة:**
+1️⃣ **ملف نصي (.txt)** - كل رقم في سطر منفصل
+2️⃣ **ملف إكسل (.xlsx)** - عمود الأرقام
+
+📝 **صيغة الأرقام:**
+• كل رقم من 6 إلى 14 رقم
+• يمكن إضافة القيمة: `رقم_الكارت,القيمة`
+• مثال: `123456789012,50`
+
+⚡ **خطوات الرفع:**
+1. أرسل الملف (نصي أو إكسل)
+2. اختر الشبكة المرتبطة
+3. تأكيد الرفع والمعالجة
+
+🚀 **ابدأ برفع ملف الكروت الآن!**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📁 اختر طريقة الرفع', callback_data='choose_upload_method')],
+            [InlineKeyboardButton('📋 عرض سجل الرفع', callback_data='upload_history')],
+            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
+        ]
+        
+        await query.edit_message_text(upload_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in upload cards handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في صفحة رفع الكروت.")
+
+async def manage_networks_handler(update: Update, context):
+    """Handle network management"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        # Get user's networks
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM networks WHERE supplier_id = ? ORDER BY created_at DESC', (user['id'],))
+        networks = cursor.fetchall()
+        conn.close()
+        
+        networks_text = f"""
+📶 **إدارة الشبكات** 📶
+
+👤 **{user['full_name']}**
+📊 إجمالي الشبكات: **{len(networks)}**
+
+📋 **شبكاتك:**
+"""
+        
+        if networks:
+            for network in networks[:5]:  # Show first 5
+                status = "✅ مفعلة" if network['is_active'] else "⏸️ متوقفة"
+                approval = "✅ معتمدة" if network['is_approved'] else "⏳ في انتظار الموافقة"
+                networks_text += f"""
+📶 **{network['name']}**
+🏙️ المدينة: {network['city']}
+🔢 الكود: {network['network_code']}
+📊 الحالة: {status}
+✅ الاعتماد: {approval}
+---"""
+        else:
+            networks_text += "\n⚠️ لا توجد شبكات مسجلة بعد"
+        
+        keyboard = [
+            [InlineKeyboardButton('➕ إضافة شبكة جديدة', callback_data='add_network')],
+            [InlineKeyboardButton('📊 تفاصيل الشبكات', callback_data='network_details')],
+            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
+        ]
+        
+        await query.edit_message_text(networks_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in manage networks handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إدارة الشبكات.")
+
+async def cards_reports_handler(update: Update, context):
+    """Handle cards reports"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        # Get cards statistics
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as total_cards,
+                SUM(CASE WHEN is_sold = 0 THEN 1 ELSE 0 END) as available_cards,
+                SUM(CASE WHEN is_sold = 1 THEN 1 ELSE 0 END) as sold_cards,
+                SUM(CASE WHEN is_sold = 0 THEN card_value ELSE 0 END) as available_value,
+                SUM(CASE WHEN is_sold = 1 THEN card_value ELSE 0 END) as sold_value
+            FROM network_cards 
+            WHERE supplier_id = ?
+        ''', (user['id'],))
+        
+        stats = cursor.fetchone()
+        
+        # Recent sales (last 7 days)
+        cursor.execute('''
+            SELECT COUNT(*) as recent_sales 
+            FROM network_cards 
+            WHERE supplier_id = ? AND is_sold = 1 AND sold_at > datetime("now", "-7 days")
+        ''', (user['id'],))
+        
+        recent_sales = cursor.fetchone()['recent_sales']
+        conn.close()
+        
+        reports_text = f"""
+📊 **تقارير الكروت** 📊
+
+👤 **{user['full_name']}**
+
+📈 **إحصائيات شاملة:**
+📋 إجمالي الكروت: **{stats['total_cards'] or 0}**
+✅ كروت متاحة: **{stats['available_cards'] or 0}**
+💰 قيمة متاحة: **{stats['available_value'] or 0:.2f}** ريال
+
+🎯 **إحصائيات المبيعات:**
+✅ كروت مباعة: **{stats['sold_cards'] or 0}**
+💵 قيمة مباعة: **{stats['sold_value'] or 0:.2f}** ريال
+🔥 مبيعات هذا الأسبوع: **{recent_sales}**
+
+📊 **معدل البيع:**
+{((stats['sold_cards'] or 0) / max(stats['total_cards'] or 1, 1) * 100):.1f}%
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📈 تفاصيل أكثر', callback_data='detailed_reports')],
+            [InlineKeyboardButton('📤 سجل الرفع', callback_data='upload_history')],
+            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
+        ]
+        
+        await query.edit_message_text(reports_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in cards reports handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تقارير الكروت.")
+
+async def sales_stats_handler(update: Update, context):
+    """Handle sales statistics"""
+    try:
+        query = update.callback_query
+        
+        stats_text = f"""
+📈 **إحصائيات المبيعات** 📈
+
+⚠️ هذه الميزة قيد التطوير
+
+🔧 **سيتم إضافة:**
+• رسوم بيانية للمبيعات
+• إحصائيات شهرية وسنوية
+• أفضل الكروت مبيعاً
+• تحليل أنماط الشراء
+• توقعات الطلب
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📊 تقارير الكروت', callback_data='cards_reports')],
+            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
+        ]
+        
+        await query.edit_message_text(stats_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in sales stats handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إحصائيات المبيعات.")
+
+async def upload_history_handler(update: Update, context):
+    """Handle upload history"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        # Get upload history
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT 
+                cb.*, n.name as network_name 
+            FROM card_upload_batches cb
+            LEFT JOIN networks n ON cb.network_id = n.id
+            WHERE cb.supplier_id = ? 
+            ORDER BY cb.created_at DESC 
+            LIMIT 10
+        ''', (user['id'],))
+        
+        uploads = cursor.fetchall()
+        conn.close()
+        
+        history_text = f"""
+📋 **سجل رفع الكروت** 📋
+
+👤 **{user['full_name']}**
+
+📊 **آخر عمليات الرفع:**
+"""
+        
+        if uploads:
+            for upload in uploads:
+                status_emoji = {"processing": "⏳", "completed": "✅", "completed_with_errors": "⚠️", "failed": "❌"}
+                status = status_emoji.get(upload['upload_status'], "❓")
+                
+                history_text += f"""
+{status} **{upload['filename'] or 'ملف مجهول'}**
+📶 الشبكة: {upload['network_name'] or 'غير محدد'}
+📊 نجح: {upload['successful_cards']}, فشل: {upload['failed_cards']}
+📅 {upload['created_at'][:16]}
+---"""
+        else:
+            history_text += "\n⚠️ لا توجد عمليات رفع سابقة"
+        
+        keyboard = [
+            [InlineKeyboardButton('📤 رفع كروت جديدة', callback_data='upload_cards')],
+            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
+        ]
+        
+        await query.edit_message_text(history_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in upload history handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في سجل الرفع.")
+
+async def supplier_settings_handler(update: Update, context):
+    """Handle supplier settings"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        from bot_modules.utils import get_or_create_supplier_code
+        supplier_code = get_or_create_supplier_code(user['id'])
+        
+        settings_text = f"""
+⚙️ **إعدادات المزود** ⚙️
+
+👤 **{user['full_name']}**
+🆔 **معرف المزود: `{supplier_code}`**
+
+🔧 **الإعدادات المتاحة:**
+⚠️ هذه الميزة قيد التطوير
+
+🎯 **سيتم إضافة:**
+• تعديل معلومات المزود
+• إعدادات الإشعارات
+• إعدادات العمولات
+• إدارة طرق الدفع
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🔄 تجديد المعرف', callback_data='regenerate_supplier_code')],
+            [InlineKeyboardButton('📞 معلومات الاتصال', callback_data='update_contact_info')],
+            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
+        ]
+        
+        await query.edit_message_text(settings_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in supplier settings handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إعدادات المزود.")
+
 async def help_handler(update: Update, context):
     """Show help information"""
     try:
@@ -802,6 +1132,224 @@ async def help_handler(update: Update, context):
             await update.callback_query.edit_message_text(error_text)
         else:
             await update.message.reply_text(error_text)
+
+async def handle_document(update: Update, context: CallbackContext):
+    """Handle uploaded documents for card upload"""
+    try:
+        if not update.message or not update.message.document:
+            return
+        
+        user = get_user(update.message.from_user.id)
+        if not user or user['role'] != 'supplier':
+            await update.message.reply_text("❌ هذه الميزة متاحة للمزودين فقط.")
+            return
+        
+        document = update.message.document
+        file_name = document.file_name
+        file_size = document.file_size
+        
+        # Check file size (max 10MB)
+        if file_size > 10 * 1024 * 1024:
+            await update.message.reply_text("❌ حجم الملف كبير جداً. الحد الأقصى 10 ميجابايت.")
+            return
+        
+        # Check file type
+        allowed_extensions = ['.txt', '.csv', '.xlsx', '.xls']
+        if not any(file_name.lower().endswith(ext) for ext in allowed_extensions):
+            await update.message.reply_text("❌ نوع الملف غير مدعوم. يرجى رفع ملف .txt أو .csv أو .xlsx")
+            return
+        
+        # Download file
+        file = await context.bot.get_file(document.file_id)
+        file_content = await file.download_as_bytearray()
+        
+        # Store file temporarily in context
+        context.user_data['upload_file'] = {
+            'content': file_content.decode('utf-8') if file_name.endswith('.txt') else file_content,
+            'filename': file_name,
+            'size': file_size
+        }
+        
+        # Get user's networks for selection
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, name FROM networks WHERE supplier_id = ? AND is_active = 1', (user['id'],))
+        networks = cursor.fetchall()
+        conn.close()
+        
+        if not networks:
+            await update.message.reply_text("""
+❌ **لا توجد شبكات مفعلة**
+
+يجب أن يكون لديك شبكة مفعلة لرفع الكروت.
+اتصل بالإدارة لتفعيل شبكاتك أو أضف شبكة جديدة.
+""", parse_mode='Markdown')
+            return
+        
+        # Show network selection
+        keyboard = []
+        for network in networks:
+            keyboard.append([InlineKeyboardButton(f"📶 {network['name']}", callback_data=f"select_network_{network['id']}")])
+        
+        keyboard.append([InlineKeyboardButton("❌ إلغاء", callback_data="cancel_upload")])
+        
+        await update.message.reply_text(f"""
+📤 **ملف جاهز للرفع**
+
+📁 **اسم الملف:** {file_name}
+📊 **حجم الملف:** {file_size/1024:.1f} كيلوبايت
+
+اختر الشبكة المرتبطة بهذه الكروت:
+""", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error handling document: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في معالجة الملف.")
+
+async def process_network_selection(update: Update, context: CallbackContext):
+    """Process network selection for file upload"""
+    try:
+        query = update.callback_query
+        network_id = query.data.split('_')[-1]
+        
+        user = get_user(query.from_user.id)
+        upload_data = context.user_data.get('upload_file')
+        
+        if not upload_data:
+            await query.edit_message_text("❌ لم يتم العثور على الملف. يرجى رفع الملف مرة أخيرى.")
+            return
+        
+        # Get network info
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT name FROM networks WHERE id = ? AND supplier_id = ?', (network_id, user['id']))
+        network = cursor.fetchone()
+        conn.close()
+        
+        if not network:
+            await query.edit_message_text("❌ شبكة غير صحيحة.")
+            return
+        
+        # Store network selection
+        context.user_data['selected_network_id'] = network_id
+        
+        # Preview file content (first few lines)
+        content = upload_data['content']
+        lines = content.split('\n')[:5]  # First 5 lines
+        preview = '\n'.join(f"{i+1}. {line.strip()}" for i, line in enumerate(lines) if line.strip())
+        
+        confirmation_text = f"""
+✅ **تأكيد رفع الكروت**
+
+📁 **الملف:** {upload_data['filename']}
+📶 **الشبكة:** {network['name']}
+📊 **حجم الملف:** {upload_data['size']/1024:.1f} كيلوبايت
+📝 **عدد الأسطر:** {len([l for l in lines if l.strip()])}
+
+🔍 **معاينة الأسطر الأولى:**
+```
+{preview}
+```
+
+⚠️ **ملاحظة:** سيتم التحقق من صحة الأرقام وتجنب المكرر.
+
+هل تريد المتابعة؟
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton("✅ تأكيد الرفع", callback_data="confirm_upload")],
+            [InlineKeyboardButton("❌ إلغاء", callback_data="cancel_upload")]
+        ]
+        
+        await query.edit_message_text(confirmation_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error processing network selection: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في اختيار الشبكة.")
+
+async def cancel_upload(update: Update, context: CallbackContext):
+    """Cancel file upload"""
+    try:
+        query = update.callback_query
+        
+        # Clear upload data
+        context.user_data.pop('upload_file', None)
+        context.user_data.pop('selected_network_id', None)
+        
+        await query.edit_message_text("❌ تم إلغاء عملية رفع الكروت.")
+        
+    except Exception as e:
+        logger.error(f"Error cancelling upload: {e}")
+
+async def confirm_upload(update: Update, context: CallbackContext):
+    """Confirm and process file upload"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        upload_data = context.user_data.get('upload_file')
+        network_id = context.user_data.get('selected_network_id')
+        
+        if not upload_data or not network_id:
+            await query.edit_message_text("❌ بيانات الرفع غير مكتملة.")
+            return
+        
+        await query.edit_message_text("⏳ جارٍ معالجة الملف... يرجى الانتظار.")
+        
+        # Create upload batch record
+        import uuid
+        batch_id = str(uuid.uuid4())
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO card_upload_batches (id, supplier_id, network_id, filename, upload_status)
+            VALUES (?, ?, ?, ?, 'processing')
+        ''', (batch_id, user['id'], network_id, upload_data['filename']))
+        
+        conn.commit()
+        conn.close()
+        
+        # Process cards
+        from bot_modules.utils import process_uploaded_cards
+        successful, failed, errors = process_uploaded_cards(
+            upload_data['content'], user['id'], network_id, batch_id
+        )
+        
+        # Clear upload data
+        context.user_data.pop('upload_file', None)
+        context.user_data.pop('selected_network_id', None)
+        
+        # Send results
+        result_text = f"""
+✅ **اكتمل رفع الكروت**
+
+📁 **الملف:** {upload_data['filename']}
+📊 **النتائج:**
+
+✅ **نجح:** {successful} كارت
+❌ **فشل:** {failed} كارت
+📈 **معدل النجاح:** {(successful / max(successful + failed, 1) * 100):.1f}%
+
+"""
+        
+        if errors:
+            result_text += f"\n⚠️ **أخطاء (أول 10):**\n"
+            for error in errors[:10]:
+                result_text += f"• {error}\n"
+        
+        keyboard = [
+            [InlineKeyboardButton("📊 تقارير الكروت", callback_data="cards_reports")],
+            [InlineKeyboardButton("📋 سجل الرفع", callback_data="upload_history")],
+            [InlineKeyboardButton("🏪 لوحة المزود", callback_data="supplier_panel")]
+        ]
+        
+        await query.edit_message_text(result_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error confirming upload: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في معالجة الرفع.")
 
 def main():
     """Main function to start the bot"""
@@ -864,6 +1412,7 @@ def main():
         # Add handlers
         application.add_handler(conv_handler)
         application.add_handler(CallbackQueryHandler(button_click_handler))
+        application.add_handler(MessageHandler(filters.Document.ALL, handle_document))  # Document handler for file uploads
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
         application.add_error_handler(error_handler)
         

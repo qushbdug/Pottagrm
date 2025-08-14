@@ -399,3 +399,153 @@ def is_admin(user_id: int) -> bool:
     """Check if user is admin or super admin"""
     user = get_user(user_id)
     return user and user['role'] in ['admin', 'super_admin']
+
+# Enhanced supplier functions
+def generate_supplier_code():
+    """Generate a unique 6-digit supplier code starting with 80"""
+    import random
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    for _ in range(100):  # Try up to 100 times
+        # Generate 6-digit code starting with 80
+        code = '80' + ''.join(str(random.randint(0, 9)) for _ in range(4))
+        
+        # Check if code already exists
+        cursor.execute('SELECT 1 FROM supplier_codes WHERE supplier_code = ?', (code,))
+        if not cursor.fetchone():
+            conn.close()
+            return code
+    
+    conn.close()
+    # If all attempts fail, use timestamp-based approach
+    import time
+    return '80' + str(int(time.time()))[-4:]
+
+def get_or_create_supplier_code(supplier_id):
+    """Get existing supplier code or create new one"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Check if supplier already has a code
+    cursor.execute('SELECT supplier_code FROM supplier_codes WHERE supplier_id = ?', (supplier_id,))
+    result = cursor.fetchone()
+    
+    if result:
+        conn.close()
+        return result['supplier_code']
+    
+    # Create new code
+    code = generate_supplier_code()
+    code_id = str(uuid.uuid4())
+    
+    cursor.execute('''
+        INSERT INTO supplier_codes (id, supplier_id, supplier_code)
+        VALUES (?, ?, ?)
+    ''', (code_id, supplier_id, code))
+    
+    conn.commit()
+    conn.close()
+    return code
+
+def validate_card_code(card_code):
+    """Validate Yemen network card code (6-14 digits)"""
+    if not card_code:
+        return False, "رقم الكارت فارغ"
+    
+    # Remove any spaces or special characters
+    cleaned_code = ''.join(filter(str.isdigit, str(card_code)))
+    
+    if len(cleaned_code) < 6:
+        return False, "رقم الكارت يجب أن يحتوي على 6 أرقام على الأقل"
+    
+    if len(cleaned_code) > 14:
+        return False, "رقم الكارت يجب ألا يزيد عن 14 رقم"
+    
+    return True, cleaned_code
+
+def process_uploaded_cards(file_content, supplier_id, network_id, batch_id):
+    """Process uploaded cards from text or Excel file"""
+    import io
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    successful_cards = 0
+    failed_cards = 0
+    errors = []
+    
+    try:
+        # Try to parse as text first
+        lines = file_content.strip().split('\n')
+        
+        for line_num, line in enumerate(lines, 1):
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Try to parse line format: "card_code,value" or just "card_code"
+            parts = line.split(',')
+            card_code = parts[0].strip()
+            
+            # Default value or from file
+            if len(parts) > 1:
+                try:
+                    card_value = float(parts[1].strip())
+                except ValueError:
+                    card_value = 0.0
+                    errors.append(f"السطر {line_num}: قيمة غير صحيحة '{parts[1]}', تم استخدام 0")
+            else:
+                card_value = 0.0
+            
+            # Validate card code
+            is_valid, result = validate_card_code(card_code)
+            if not is_valid:
+                failed_cards += 1
+                errors.append(f"السطر {line_num}: {result} - '{card_code}'")
+                continue
+            
+            card_code = result
+            
+            # Check if card already exists
+            cursor.execute('SELECT 1 FROM network_cards WHERE card_code = ?', (card_code,))
+            if cursor.fetchone():
+                failed_cards += 1
+                errors.append(f"السطر {line_num}: الكارت موجود مسبقاً - '{card_code}'")
+                continue
+            
+            # Insert card
+            card_id = str(uuid.uuid4())
+            cursor.execute('''
+                INSERT INTO network_cards (id, supplier_id, network_id, card_code, card_value, upload_batch_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (card_id, supplier_id, network_id, card_code, card_value, batch_id))
+            
+            successful_cards += 1
+        
+        # Update batch statistics
+        cursor.execute('''
+            UPDATE card_upload_batches 
+            SET successful_cards = ?, failed_cards = ?, upload_status = ?, error_details = ?
+            WHERE id = ?
+        ''', (successful_cards, failed_cards, 
+              'completed' if failed_cards == 0 else 'completed_with_errors',
+              '\n'.join(errors[:50]),  # Limit error details
+              batch_id))
+        
+        conn.commit()
+        
+    except Exception as e:
+        logger.error(f"Error processing uploaded cards: {e}")
+        cursor.execute('''
+            UPDATE card_upload_batches 
+            SET upload_status = 'failed', error_details = ?
+            WHERE id = ?
+        ''', (str(e), batch_id))
+        conn.commit()
+        raise
+    
+    finally:
+        conn.close()
+    
+    return successful_cards, failed_cards, errors

@@ -468,6 +468,56 @@ def init_db():
             # Column doesn't exist yet, will be handled by migration
             pass
 
+        # Enhanced supplier system tables
+        # Add supplier codes table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS supplier_codes (
+                id TEXT PRIMARY KEY,
+                supplier_id INTEGER UNIQUE NOT NULL,
+                supplier_code TEXT UNIQUE NOT NULL, -- 6-digit code starting with 80
+                is_active BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (supplier_id) REFERENCES users (id)
+            )
+        ''')
+        
+        # Create cards table for uploaded cards
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS network_cards (
+                id TEXT PRIMARY KEY,
+                supplier_id INTEGER NOT NULL,
+                network_id TEXT NOT NULL,
+                card_code TEXT NOT NULL,
+                card_value REAL NOT NULL,
+                is_sold BOOLEAN DEFAULT 0,
+                sold_to INTEGER NULL,
+                sold_at TIMESTAMP NULL,
+                upload_batch_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (supplier_id) REFERENCES users (id),
+                FOREIGN KEY (network_id) REFERENCES networks (id),
+                FOREIGN KEY (sold_to) REFERENCES users (id)
+            )
+        ''')
+        
+        # Create upload batches table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS card_upload_batches (
+                id TEXT PRIMARY KEY,
+                supplier_id INTEGER NOT NULL,
+                network_id TEXT NOT NULL,
+                filename TEXT,
+                total_cards INTEGER DEFAULT 0,
+                successful_cards INTEGER DEFAULT 0,
+                failed_cards INTEGER DEFAULT 0,
+                upload_status TEXT DEFAULT 'processing',
+                error_details TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (supplier_id) REFERENCES users (id),
+                FOREIGN KEY (network_id) REFERENCES networks (id)
+            )
+        ''')
+
         conn.commit()
         logger.info("Database initialized successfully")
         
