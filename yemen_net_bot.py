@@ -90,15 +90,23 @@ ACCOUNT_CODE_BOT_COMMISSION_REVENUE = '4100'
 CARD_COMMISSION_RATE = float(os.getenv('CARD_COMMISSION_RATE', '0.10'))
 AGENT_COMMISSION_RATE = float(os.getenv('AGENT_COMMISSION_RATE', '0.05'))
 
-# Bot command menu
+# Enhanced Bot command menu
 QUICK_COMMANDS = [
-    BotCommand('start', '🏠 القائمة الرئيسية'),
+    BotCommand('start', '🏠 البداية - القائمة الرئيسية'),
     BotCommand('menu', '📋 القائمة السريعة'),
-    BotCommand('balance', '💳 عرض الرصيد'),
-    BotCommand('buy', '🛒 شراء كرت'),
-    BotCommand('transfer', '💸 تحويل رصيد'),
-    BotCommand('stats', '📊 الإحصائيات'),
-    BotCommand('help', '❓ المساعدة'),
+    BotCommand('wallet', '💳 محفظتي المطورة'),
+    BotCommand('buy', '🛒 شراء كروت الشبكة'),
+    BotCommand('transfer', '💸 تحويل رصيد لصديق'),
+    BotCommand('balance', '💰 عرض الرصيد والمعاملات'),
+    BotCommand('reports', '📊 تقاريري الشخصية'),
+    BotCommand('ratings', '⭐ تقييماتي ومراجعاتي'),
+    BotCommand('notifications', '🔔 إشعاراتي وتنبيهاتي'),
+    BotCommand('promotions', '🎁 العروض والخصومات'),
+    BotCommand('settings', '⚙️ إعدادات الحساب'),
+    BotCommand('invite', '👥 دعوة الأصدقاء'),
+    BotCommand('admin', '👑 لوحة الإدارة'),
+    BotCommand('help', '❓ المساعدة والدعم'),
+    BotCommand('cancel', '❌ إلغاء العملية الحالية'),
 ]
 
 # Emojis for better UI

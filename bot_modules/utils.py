@@ -1,0 +1,399 @@
+#!/usr/bin/env python3
+"""
+Utilities module for Pottagrm Enhanced Bot
+Contains helper functions and common operations
+"""
+
+import logging
+import uuid
+import base64
+import json
+from datetime import datetime, timedelta
+from typing import Optional, Dict, List, Tuple, Any
+from bot_modules.config import *
+from bot_modules.database import get_db_connection
+
+logger = logging.getLogger(__name__)
+
+# Encryption functions
+def _load_cipher_suite():
+    """Load or generate encryption key for secure data storage"""
+    if not CRYPTO_AVAILABLE:
+        logger.warning("Cryptography library not available - using basic encoding")
+        return None
+        
+    key_b64: Optional[str] = os.getenv('ENCRYPTION_KEY_B64')
+    if key_b64 and key_b64.strip():
+        key_bytes = key_b64.strip().encode()
+    else:
+        key_file = os.path.abspath('encryption.key')
+        if os.path.exists(key_file):
+            with open(key_file, 'rb') as f:
+                key_bytes = f.read().strip()
+        else:
+            key_bytes = Fernet.generate_key()
+            with open(key_file, 'wb') as f:
+                f.write(key_bytes)
+            logger.warning('Generated new encryption.key (development only). Set ENCRYPTION_KEY_B64 in production.')
+    return Fernet(key_bytes)
+
+cipher_suite = _load_cipher_suite()
+
+def encrypt_data(data: str) -> str:
+    """Encrypt sensitive data"""
+    try:
+        if cipher_suite:
+            return cipher_suite.encrypt(data.encode()).decode()
+        else:
+            # Fallback to base64 encoding if crypto not available
+            return base64.b64encode(data.encode()).decode()
+    except Exception as e:
+        logger.error(f"Encryption error: {e}")
+        return data
+
+def decrypt_data(encrypted_data: str) -> str:
+    """Decrypt sensitive data"""
+    try:
+        if cipher_suite:
+            return cipher_suite.decrypt(encrypted_data.encode()).decode()
+        else:
+            # Fallback to base64 decoding if crypto not available
+            return base64.b64decode(encrypted_data.encode()).decode()
+    except Exception as e:
+        logger.error(f"Decryption error: {e}")
+        return encrypted_data
+
+# User management utilities
+def get_user(telegram_id: int):
+    """Get user by telegram ID"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM users WHERE telegram_id = ?', (telegram_id,))
+        user = cursor.fetchone()
+        conn.close()
+        return user
+    except Exception as e:
+        logger.error(f"Error getting user: {e}")
+        return None
+
+def update_user_activity(user_id: int):
+    """Update user's last activity timestamp"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('UPDATE users SET last_activity = ? WHERE id = ?', 
+                      (datetime.now(), user_id))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error updating user activity: {e}")
+
+def log_system_action(user_id: int, action: str, details: str):
+    """Log system action for audit trail"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO system_logs (user_id, action, details) 
+            VALUES (?, ?, ?)
+        ''', (user_id, action, details))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error logging system action: {e}")
+
+def log_activity(user_id: int, activity_type: str, description: str, metadata: dict = None):
+    """Log user activity for enhanced tracking"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        activity_id = str(uuid.uuid4())
+        metadata_json = json.dumps(metadata) if metadata else None
+        
+        cursor.execute('''
+            INSERT INTO activity_logs (id, user_id, activity_type, description, metadata)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (activity_id, user_id, activity_type, description, metadata_json))
+        
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error logging activity: {e}")
+
+def create_wallet_transaction(user_id: int, transaction_type: str, amount: float, 
+                            balance_before: float, balance_after: float, 
+                            description: str = None, reference_id: str = None,
+                            metadata: dict = None) -> str:
+    """Create a wallet transaction record"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        transaction_id = str(uuid.uuid4())
+        metadata_json = json.dumps(metadata) if metadata else None
+        
+        cursor.execute('''
+            INSERT INTO wallet_transactions 
+            (id, user_id, transaction_type, amount, balance_before, balance_after, 
+             reference_id, description, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (transaction_id, user_id, transaction_type, amount, balance_before, 
+              balance_after, reference_id, description, metadata_json))
+        
+        conn.commit()
+        conn.close()
+        return transaction_id
+    except Exception as e:
+        logger.error(f"Error creating wallet transaction: {e}")
+        return None
+
+def send_smart_notification(user_id: int, notification_type: str, title: str, 
+                          message: str, priority: str = 'normal', 
+                          metadata: dict = None) -> str:
+    """Send a smart notification to a user"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check user notification preferences
+        cursor.execute('''
+            SELECT * FROM notification_preferences WHERE user_id = ?
+        ''', (user_id,))
+        prefs = cursor.fetchone()
+        
+        # Default preferences if not set
+        if not prefs:
+            cursor.execute('''
+                INSERT INTO notification_preferences (user_id) VALUES (?)
+            ''', (user_id,))
+            conn.commit()
+        
+        notification_id = str(uuid.uuid4())
+        metadata_json = json.dumps(metadata) if metadata else None
+        
+        cursor.execute('''
+            INSERT INTO smart_notifications 
+            (id, user_id, notification_type, title, message, priority, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (notification_id, user_id, notification_type, title, message, 
+              priority, metadata_json))
+        
+        conn.commit()
+        conn.close()
+        return notification_id
+    except Exception as e:
+        logger.error(f"Error sending smart notification: {e}")
+        return None
+
+def calculate_user_rating(user_id: int) -> Dict:
+    """Calculate and update user rating summary"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT rating, COUNT(*) as count FROM ratings 
+            WHERE rated_user_id = ? AND is_visible = 1
+            GROUP BY rating
+        ''', (user_id,))
+        
+        rating_counts = {i: 0 for i in range(1, 6)}
+        total_ratings = 0
+        total_score = 0
+        
+        for rating, count in cursor.fetchall():
+            rating_counts[rating] = count
+            total_ratings += count
+            total_score += rating * count
+        
+        average_rating = total_score / total_ratings if total_ratings > 0 else 0.0
+        
+        # Update or insert rating summary
+        cursor.execute('''
+            INSERT OR REPLACE INTO user_ratings_summary 
+            (user_id, total_ratings, average_rating, rating_1_count, rating_2_count,
+             rating_3_count, rating_4_count, rating_5_count, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (user_id, total_ratings, average_rating, rating_counts[1], 
+              rating_counts[2], rating_counts[3], rating_counts[4], 
+              rating_counts[5], datetime.now()))
+        
+        conn.commit()
+        conn.close()
+        
+        return {
+            'total_ratings': total_ratings,
+            'average_rating': round(average_rating, 2),
+            'rating_distribution': rating_counts
+        }
+    except Exception as e:
+        logger.error(f"Error calculating user rating: {e}")
+        return {'total_ratings': 0, 'average_rating': 0.0, 'rating_distribution': {}}
+
+# Permission management
+def get_user_permissions(user_id: int) -> List[str]:
+    """Get user permissions list"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT permission_name FROM user_permissions
+            WHERE user_id = ? AND is_active = 1
+            AND (expires_at IS NULL OR expires_at > ?)
+        ''', (user_id, datetime.now()))
+        
+        permissions = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        return permissions
+    except Exception as e:
+        logger.error(f"Error getting user permissions: {e}")
+        return []
+
+def has_permission(user_id: int, permission: str) -> bool:
+    """Check if user has specific permission"""
+    permissions = get_user_permissions(user_id)
+    return permission in permissions
+
+def grant_user_permission(user_id: int, permission: str, granted_by: int, expires_at: datetime = None) -> bool:
+    """Grant a permission to a user"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if permission already exists
+        cursor.execute('''
+            SELECT id FROM user_permissions
+            WHERE user_id = ? AND permission_name = ? AND is_active = 1
+        ''', (user_id, permission))
+        
+        if cursor.fetchone():
+            conn.close()
+            return False  # Permission already exists
+        
+        cursor.execute('''
+            INSERT INTO user_permissions (user_id, permission_name, granted_by, expires_at)
+            VALUES (?, ?, ?, ?)
+        ''', (user_id, permission, granted_by, expires_at))
+        
+        conn.commit()
+        conn.close()
+        
+        # Log the permission grant
+        log_activity(granted_by, 'permission_grant', f'Granted permission {permission} to user {user_id}')
+        
+        return True
+    except Exception as e:
+        logger.error(f"Error granting permission: {e}")
+        return False
+
+# Utility functions for UI
+def format_user_info(user) -> str:
+    """Format user information for display"""
+    if not user:
+        return "معلومات المستخدم غير متوفرة"
+    
+    role_name = USER_ROLES.get(user['role'], user['role'])
+    status = "مفعل" if user['is_active'] else "غير مفعل"
+    
+    return f"""
+{EMOJIS['user']} **{user['full_name']}**
+{EMOJIS['phone']} {user['phone']}
+🏷️ {role_name}
+{EMOJIS['wallet']} {user['balance']:.2f} ريال
+{EMOJIS['id']} {user['wallet_number']}
+📊 حالة الحساب: {status}
+"""
+
+def create_transaction(from_user: int, to_user: int, amount: float, 
+                      transaction_type: str, reference_id: str = None,
+                      description: str = None, commission_amount: float = 0.0):
+    """Create a transaction record"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        transaction_id = str(uuid.uuid4())
+        
+        cursor.execute('''
+            INSERT INTO transactions 
+            (id, from_user, to_user, amount, type, reference_id, description, commission_amount)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (transaction_id, from_user, to_user, amount, transaction_type, 
+              reference_id, description, commission_amount))
+        
+        conn.commit()
+        conn.close()
+        return transaction_id
+    except Exception as e:
+        logger.error(f"Error creating transaction: {e}")
+        return None
+
+def recalc_and_set_user_balance(user_id: int):
+    """Recalculate and update user balance"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Calculate balance from transactions
+        cursor.execute('''
+            SELECT 
+                COALESCE(SUM(CASE WHEN to_user = ? THEN amount ELSE 0 END), 0) as credits,
+                COALESCE(SUM(CASE WHEN from_user = ? THEN amount ELSE 0 END), 0) as debits
+            FROM transactions 
+            WHERE (to_user = ? OR from_user = ?) AND status = 'completed'
+        ''', (user_id, user_id, user_id, user_id))
+        
+        result = cursor.fetchone()
+        credits = result['credits'] if result['credits'] else 0
+        debits = result['debits'] if result['debits'] else 0
+        new_balance = credits - debits
+        
+        # Update user balance
+        cursor.execute('UPDATE users SET balance = ? WHERE id = ?', (new_balance, user_id))
+        
+        conn.commit()
+        conn.close()
+        return new_balance
+    except Exception as e:
+        logger.error(f"Error recalculating balance: {e}")
+        return 0
+
+def update_inventory_stock(network_id: str, category_id: int, change: int) -> bool:
+    """Update inventory stock count"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        inventory_id = f"{network_id}_{category_id}"
+        
+        cursor.execute('''
+            INSERT OR IGNORE INTO product_inventory 
+            (id, network_id, category_id, stock_count)
+            VALUES (?, ?, ?, 0)
+        ''', (inventory_id, network_id, category_id))
+        
+        cursor.execute('''
+            UPDATE product_inventory 
+            SET stock_count = stock_count + ?, last_updated = ?
+            WHERE id = ?
+        ''', (change, datetime.now(), inventory_id))
+        
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Error updating inventory: {e}")
+        return False
+
+def is_super_admin(user_id: int) -> bool:
+    """Check if user is super admin"""
+    user = get_user(user_id)
+    return user and user['role'] == 'super_admin'
+
+def is_admin(user_id: int) -> bool:
+    """Check if user is admin or super admin"""
+    user = get_user(user_id)
+    return user and user['role'] in ['admin', 'super_admin']
