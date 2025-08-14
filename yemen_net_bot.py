@@ -9,15 +9,43 @@ import random
 import json
 import base64
 import asyncio
-import aiofiles
 from typing import Optional, Dict, List, Tuple, Any
 from datetime import datetime, timedelta, date
-from cryptography.fernet import Fernet
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-from PIL import Image
-import qrcode
+
+# Cryptography import (optional for enhanced security)
+try:
+    from cryptography.fernet import Fernet
+    CRYPTO_AVAILABLE = True
+except ImportError:
+    CRYPTO_AVAILABLE = False
+    Fernet = None
+
+# Optional imports for enhanced features
+try:
+    import aiofiles
+    AIOFILES_AVAILABLE = True
+except ImportError:
+    AIOFILES_AVAILABLE = False
+
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except ImportError:
+    PANDAS_AVAILABLE = False
+
+try:
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    PLOTTING_AVAILABLE = True
+except ImportError:
+    PLOTTING_AVAILABLE = False
+
+try:
+    from PIL import Image
+    import qrcode
+    IMAGE_AVAILABLE = True
+except ImportError:
+    IMAGE_AVAILABLE = False
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -838,14 +866,25 @@ async def export_data_to_csv(data: List[Dict], filename: str) -> str:
         if not data:
             return None
         
-        import pandas as pd
+        if not PANDAS_AVAILABLE:
+            # Fallback to basic CSV writing
+            import csv
+            os.makedirs('exports', exist_ok=True)
+            filepath = f'exports/{filename}'
+            
+            with open(filepath, 'w', newline='', encoding='utf-8-sig') as csvfile:
+                if data:
+                    fieldnames = data[0].keys()
+                    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                    writer.writeheader()
+                    writer.writerows(data)
+            return filepath
         
+        # Use pandas if available
+        import pandas as pd
         df = pd.DataFrame(data)
         
-        # Create exports directory if it doesn't exist
-        import os
         os.makedirs('exports', exist_ok=True)
-        
         filepath = f'exports/{filename}'
         df.to_csv(filepath, index=False, encoding='utf-8-sig')
         
@@ -857,10 +896,18 @@ async def export_data_to_csv(data: List[Dict], filename: str) -> str:
 async def generate_visual_chart(data: List[Dict], chart_type: str, title: str) -> str:
     """Generate visual charts from data"""
     try:
+        if not PLOTTING_AVAILABLE:
+            logger.warning("Plotting libraries not available - chart generation skipped")
+            return None
+            
         import matplotlib.pyplot as plt
         import seaborn as sns
         
-        plt.style.use('seaborn-v0_8')
+        try:
+            plt.style.use('seaborn-v0_8')
+        except:
+            plt.style.use('default')
+        
         plt.rcParams['font.family'] = ['Arial Unicode MS', 'Tahoma', 'DejaVu Sans']
         
         fig, ax = plt.subplots(figsize=(12, 8))
@@ -980,8 +1027,12 @@ def get_platform_statistics() -> Dict:
         return {}
 
 # Encryption functions
-def _load_cipher_suite() -> Fernet:
+def _load_cipher_suite():
     """Load or generate encryption key for secure data storage"""
+    if not CRYPTO_AVAILABLE:
+        logger.warning("Cryptography library not available - using basic encoding")
+        return None
+        
     key_b64: Optional[str] = os.getenv('ENCRYPTION_KEY_B64')
     if key_b64 and key_b64.strip():
         key_bytes = key_b64.strip().encode()
@@ -1002,7 +1053,11 @@ cipher_suite = _load_cipher_suite()
 def encrypt_data(data: str) -> str:
     """Encrypt sensitive data"""
     try:
-        return cipher_suite.encrypt(data.encode()).decode()
+        if cipher_suite:
+            return cipher_suite.encrypt(data.encode()).decode()
+        else:
+            # Fallback to base64 encoding if crypto not available
+            return base64.b64encode(data.encode()).decode()
     except Exception as e:
         logger.error(f"Encryption error: {e}")
         return data
@@ -1010,7 +1065,11 @@ def encrypt_data(data: str) -> str:
 def decrypt_data(encrypted_data: str) -> str:
     """Decrypt sensitive data"""
     try:
-        return cipher_suite.decrypt(encrypted_data.encode()).decode()
+        if cipher_suite:
+            return cipher_suite.decrypt(encrypted_data.encode()).decode()
+        else:
+            # Fallback to base64 decoding if crypto not available
+            return base64.b64decode(encrypted_data.encode()).decode()
     except Exception as e:
         logger.error(f"Decryption error: {e}")
         return encrypted_data
@@ -1508,16 +1567,20 @@ def init_db():
                     cursor.execute('UPDATE users SET wallet_number = ? WHERE id = ?', (trial, user_id))
                     break
 
-        # Backfill missing network codes
-        cursor.execute("SELECT id, supplier_id FROM networks WHERE network_code IS NULL OR network_code = ''")
-        missing_codes = cursor.fetchall()
-        for network_id, supplier_id in missing_codes:
-            for _ in range(20):
-                code = ''.join(str(random.randint(0, 9)) for _ in range(5))
-                cursor.execute('SELECT 1 FROM networks WHERE network_code = ?', (code,))
-                if not cursor.fetchone():
-                    cursor.execute('UPDATE networks SET network_code = ? WHERE id = ?', (code, network_id))
-                    break
+        # Backfill missing network codes (only if column exists)
+        try:
+            cursor.execute("SELECT id, supplier_id FROM networks WHERE network_code IS NULL OR network_code = ''")
+            missing_codes = cursor.fetchall()
+            for network_id, supplier_id in missing_codes:
+                for _ in range(20):
+                    code = ''.join(str(random.randint(0, 9)) for _ in range(5))
+                    cursor.execute('SELECT 1 FROM networks WHERE network_code = ?', (code,))
+                    if not cursor.fetchone():
+                        cursor.execute('UPDATE networks SET network_code = ? WHERE id = ?', (code, network_id))
+                        break
+        except sqlite3.OperationalError:
+            # Column doesn't exist yet, will be handled by migration
+            pass
 
         ensure_base_accounts(cursor)
         conn.commit()
