@@ -3081,22 +3081,28 @@ async def complete_purchase(update: Update, context: CallbackContext) -> int:
 async def transfer_to_friend_handler(update: Update, context: CallbackContext) -> int:
     """Start transfer process"""
     try:
-        query = update.callback_query
-        await query.answer()
+        # Handle both callback query and message
+        if update.callback_query:
+            query = update.callback_query
+            await query.answer()
+            user = get_user(query.from_user.id)
+            send_func = query.edit_message_text
+        else:
+            user = get_user(update.effective_user.id)
+            send_func = update.message.reply_text
         
-        user = get_user(query.from_user.id)
         if not user:
-            await query.edit_message_text(f"{EMOJIS['error']} يرجى التسجيل أولاً.")
+            await send_func(f"{EMOJIS['error']} يرجى التسجيل أولاً.")
             return ConversationHandler.END
         
         update_user_activity(user['id'])
         
         # Recalculate balance
         recalc_and_set_user_balance(user['id'])
-        user = get_user(query.from_user.id)  # Refresh data
+        user = get_user(update.effective_user.id)  # Refresh data
         
         if user['balance'] <= 0:
-            await query.edit_message_text(
+            await send_func(
                 f"{EMOJIS['warning']} **رصيدك غير كافي للتحويل!**\n\n"
                 f"{EMOJIS['wallet']} رصيدك الحالي: **{user['balance']:.2f}** ريال\n\n"
                 f"يرجى شحن رصيدك أولاً.",
@@ -3120,11 +3126,17 @@ async def transfer_to_friend_handler(update: Update, context: CallbackContext) -
 أو اكتب /cancel للإلغاء
 """
         
-        await query.edit_message_text(text, parse_mode='Markdown')
+        await send_func(text, parse_mode='Markdown')
         return TRANSFER_TARGET
     except Exception as e:
         logger.error(f"Error in transfer_to_friend_handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في بدء التحويل.")
+        try:
+            if update.callback_query:
+                await update.callback_query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في بدء التحويل.")
+            else:
+                await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في بدء التحويل.")
+        except:
+            pass
         return ConversationHandler.END
 
 async def transfer_target(update: Update, context: CallbackContext) -> int:
@@ -4187,14 +4199,17 @@ def main() -> None:
         persistence = PicklePersistence(filepath='yemen_net_bot_data')
         application = Application.builder().token(BOT_TOKEN).persistence(persistence).build()
         
-        # Set bot commands
-        try:
-            logger.info("Setting bot commands...")
-            application.bot.set_my_commands(QUICK_COMMANDS)
-            application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
-            logger.info("Bot commands set successfully")
-        except Exception as e:
-            logger.warning(f'Failed setting commands/menu: {e}')
+        # Set bot commands (will be done after startup)
+        async def post_init(application):
+            try:
+                logger.info("Setting bot commands...")
+                await application.bot.set_my_commands(QUICK_COMMANDS)
+                await application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+                logger.info("Bot commands set successfully")
+            except Exception as e:
+                logger.warning(f'Failed setting commands/menu: {e}')
+        
+        application.post_init = post_init
         
         # Create conversation handler
         conv_handler = ConversationHandler(
@@ -4227,11 +4242,28 @@ def main() -> None:
             name='yemen_net_conversation',
             persistent=True,
             allow_reentry=True,
+            per_message=False,
         )
+        
+        # Error handler
+        async def error_handler(update: object, context: CallbackContext) -> None:
+            """Log errors and handle them gracefully"""
+            logger.error("Exception while handling an update:", exc_info=context.error)
+            
+            # Try to send error message to user
+            try:
+                if isinstance(update, Update) and update.effective_chat:
+                    await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text=f"{EMOJIS['error']} حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى."
+                    )
+            except Exception:
+                pass
         
         # Add handlers
         application.add_handler(conv_handler)
         application.add_handler(CallbackQueryHandler(button_click_handler))
+        application.add_error_handler(error_handler)
         
         # Start the bot
         logger.info(f'{EMOJIS["fire"]} بدء تشغيل بوت كروت الإنترنت اليمني...')
