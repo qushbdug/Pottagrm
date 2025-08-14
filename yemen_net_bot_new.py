@@ -53,7 +53,11 @@ async def button_click_handler(update: Update, context):
     """Enhanced callback query handler with better error handling"""
     try:
         query = update.callback_query
-        await query.answer()
+        try:
+            await query.answer()
+        except Exception:
+            # Ignore query timeout errors
+            pass
         
         callback_data = query.data
         user = get_user(query.from_user.id)
@@ -123,6 +127,26 @@ async def button_click_handler(update: Update, context):
             await promotions_handler(update, context)
         elif callback_data == 'account_settings':
             await account_settings_handler(update, context)
+        
+        # Role-specific features
+        elif callback_data == 'agent_panel':
+            await agent_panel_handler(update, context)
+        elif callback_data == 'my_commissions':
+            await my_commissions_handler(update, context)
+        elif callback_data == 'supplier_panel':
+            await supplier_panel_handler(update, context)
+        
+        # Additional features
+        elif callback_data == 'view_networks':
+            await view_networks_handler(update, context)
+        elif callback_data == 'search_user':
+            await search_user_handler(update, context)
+        elif callback_data == 'my_sent_ratings':
+            await my_sent_ratings_handler(update, context)
+        elif callback_data == 'transaction_details':
+            await transaction_details_handler(update, context)
+        elif callback_data == 'wallet_stats':
+            await wallet_stats_handler(update, context)
         
         # Refresh balance
         elif callback_data == 'refresh_balance':
@@ -476,6 +500,257 @@ async def transfer_handler(update: Update, context):
     except Exception as e:
         logger.error(f"Error in transfer handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض صفحة التحويل.")
+
+# Additional missing handlers
+async def agent_panel_handler(update: Update, context):
+    """Handle agent panel"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        panel_text = f"""
+💼 **لوحة الوكيل** 💼
+
+👤 **{user['full_name']}**
+💰 رصيدك: **{user['balance']:.2f}** ريال
+
+📊 **إحصائيات الوكيل:**
+⚠️ هذه الميزة قيد التطوير
+
+🔧 **سيتم إضافة:**
+• إحصائيات العمولات
+• تقارير المبيعات
+• إدارة العملاء
+• تتبع الأرباح
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton(f'💰 عمولاتي', callback_data='my_commissions')],
+            [InlineKeyboardButton(f'📊 تقارير المبيعات', callback_data='agent_sales_reports')],
+            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(panel_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in agent panel handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في لوحة الوكيل.")
+
+async def my_commissions_handler(update: Update, context):
+    """Handle my commissions view"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        commissions_text = f"""
+💰 **عمولاتي** 💰
+
+👤 **{user['full_name']}**
+
+📊 **ملخص العمولات:**
+⚠️ هذه الميزة قيد التطوير
+
+🔧 **سيتم إضافة:**
+• إجمالي العمولات المكتسبة
+• العمولات الشهرية
+• تفاصيل كل عمولة
+• رصيد العمولات المتاح
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton(f'💼 لوحة الوكيل', callback_data='agent_panel')],
+            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(commissions_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in my commissions handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض العمولات.")
+
+async def supplier_panel_handler(update: Update, context):
+    """Handle supplier panel"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        panel_text = f"""
+🏪 **لوحة المزود** 🏪
+
+👤 **{user['full_name']}**
+💰 رصيدك: **{user['balance']:.2f}** ريال
+
+📊 **إحصائيات المزود:**
+⚠️ هذه الميزة قيد التطوير
+
+🔧 **سيتم إضافة:**
+• إدارة الشبكات
+• رفع الكروت
+• تقارير المبيعات
+• إحصائيات الأرباح
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton(f'📶 إدارة الشبكات', callback_data='manage_networks')],
+            [InlineKeyboardButton(f'📤 رفع كروت', callback_data='upload_cards')],
+            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(panel_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in supplier panel handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في لوحة المزود.")
+
+async def view_networks_handler(update: Update, context):
+    """Handle view networks"""
+    try:
+        query = update.callback_query
+        
+        networks_text = f"""
+📶 **الشبكات المتاحة** 📶
+
+⚠️ هذه الميزة قيد التطوير
+
+🔧 **سيتم إضافة:**
+• قائمة الشبكات النشطة
+• فئات الكروت المتاحة
+• الأسعار والعروض
+• معلومات المزودين
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton(f'🛒 شراء كروت', callback_data='buy_cards')],
+            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(networks_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in view networks handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض الشبكات.")
+
+async def search_user_handler(update: Update, context):
+    """Handle search user"""
+    try:
+        query = update.callback_query
+        
+        search_text = f"""
+🔍 **البحث عن مستخدم** 🔍
+
+⚠️ هذه الميزة قيد التطوير
+
+🔧 **سيتم إضافة:**
+• البحث برقم المحفظة
+• البحث بالاسم
+• البحث برقم الهاتف
+• عرض تفاصيل المستخدم
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton(f'💸 تحويل رصيد', callback_data='transfer_to_friend')],
+            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(search_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in search user handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في البحث.")
+
+async def my_sent_ratings_handler(update: Update, context):
+    """Handle my sent ratings"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        ratings_text = f"""
+📝 **تقييماتي المرسلة** 📝
+
+👤 **{user['full_name']}**
+
+⚠️ هذه الميزة قيد التطوير
+
+🔧 **سيتم إضافة:**
+• قائمة التقييمات المرسلة
+• تعديل التقييمات
+• إضافة مراجعات
+• إحصائيات التقييمات
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton(f'⭐ تقييماتي', callback_data='my_ratings')],
+            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(ratings_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in my sent ratings handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض التقييمات.")
+
+async def transaction_details_handler(update: Update, context):
+    """Handle transaction details"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        details_text = f"""
+📊 **تفاصيل المعاملات** 📊
+
+👤 **{user['full_name']}**
+
+⚠️ هذه الميزة قيد التطوير
+
+🔧 **سيتم إضافة:**
+• قائمة مفصلة بجميع المعاملات
+• فلترة حسب النوع والتاريخ
+• تفاصيل كل معاملة
+• تصدير المعاملات
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton(f'💳 محفظتي', callback_data='enhanced_wallet')],
+            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(details_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in transaction details handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض تفاصيل المعاملات.")
+
+async def wallet_stats_handler(update: Update, context):
+    """Handle wallet statistics"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        stats_text = f"""
+📈 **إحصائيات المحفظة** 📈
+
+👤 **{user['full_name']}**
+💰 الرصيد الحالي: **{user['balance']:.2f}** ريال
+
+⚠️ هذه الميزة قيد التطوير
+
+🔧 **سيتم إضافة:**
+• رسوم بيانية للمعاملات
+• إحصائيات شهرية وسنوية
+• تحليل أنماط الإنفاق
+• توقعات الرصيد
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton(f'💳 محفظتي', callback_data='enhanced_wallet')],
+            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(stats_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in wallet stats handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض إحصائيات المحفظة.")
 
 async def help_handler(update: Update, context):
     """Show help information"""

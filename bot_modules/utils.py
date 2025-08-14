@@ -120,7 +120,9 @@ def log_activity(user_id: int, activity_type: str, description: str, metadata: d
         conn.commit()
         conn.close()
     except Exception as e:
+        # Silently fail for logging to avoid disrupting user experience
         logger.error(f"Error logging activity: {e}")
+        pass
 
 def create_wallet_transaction(user_id: int, transaction_type: str, amount: float, 
                             balance_before: float, balance_after: float, 

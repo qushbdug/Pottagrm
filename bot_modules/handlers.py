@@ -217,6 +217,10 @@ async def choose_role(update: Update, context: CallbackContext) -> int:
         conn.commit()
         conn.close()
         
+        # Store data before clearing
+        full_name = context.user_data.get('full_name', 'المستخدم')
+        phone = context.user_data.get('phone', 'غير محدد')
+        
         # Clear registration data
         context.user_data.clear()
         
@@ -226,8 +230,8 @@ async def choose_role(update: Update, context: CallbackContext) -> int:
 ✅ **تم إنشاء حسابك بنجاح!**
 
 👤 **معلومات حسابك:**
-📛 الاسم: **{context.user_data['full_name']}**
-📞 الهاتف: **{context.user_data['phone']}**
+📛 الاسم: **{full_name}**
+📞 الهاتف: **{phone}**
 🏷️ النوع: **عميل**
 💳 رقم المحفظة: **{wallet_number}**
 🎫 كود الدعوة: **{invite_code}**
@@ -245,8 +249,8 @@ async def choose_role(update: Update, context: CallbackContext) -> int:
 ✅ **تم إنشاء حساب الوكيل بنجاح!**
 
 👤 **معلومات حسابك:**
-📛 الاسم: **{context.user_data['full_name']}**
-📞 الهاتف: **{context.user_data['phone']}**
+📛 الاسم: **{full_name}**
+📞 الهاتف: **{phone}**
 🏷️ النوع: **وكيل**
 💳 رقم المحفظة: **{wallet_number}**
 🎫 كود الدعوة: **{invite_code}**
@@ -260,8 +264,8 @@ async def choose_role(update: Update, context: CallbackContext) -> int:
 ✅ **تم إنشاء حساب المزود بنجاح!**
 
 👤 **معلومات حسابك:**
-📛 الاسم: **{context.user_data['full_name']}**
-📞 الهاتف: **{context.user_data['phone']}**
+📛 الاسم: **{full_name}**
+📞 الهاتف: **{phone}**
 🏷️ النوع: **مزود**
 💳 رقم المحفظة: **{wallet_number}**
 🎫 كود الدعوة: **{invite_code}**
@@ -439,7 +443,8 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
         if recent_transactions:
             for tx in recent_transactions[:5]:
                 tx_type = "➕" if tx['transaction_type'] == 'credit' else "➖"
-                wallet_text += f"\n{tx_type} {tx['amount']:.2f} ريال - {tx['description'][:30]}..."
+                description = tx['description'] or 'معاملة'
+                wallet_text += f"\n{tx_type} {tx['amount']:.2f} ريال - {description[:30]}..."
         else:
             wallet_text += "\nلا توجد معاملات بعد"
         

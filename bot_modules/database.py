@@ -18,6 +18,10 @@ def get_db_connection():
     try:
         conn = sqlite3.connect(DB_PATH, timeout=30.0)
         conn.execute('PRAGMA foreign_keys = ON')
+        conn.execute('PRAGMA journal_mode = WAL')
+        conn.execute('PRAGMA synchronous = NORMAL')
+        conn.execute('PRAGMA cache_size = 1000')
+        conn.execute('PRAGMA temp_store = memory')
         conn.row_factory = sqlite3.Row
         return conn
     except Exception as e:

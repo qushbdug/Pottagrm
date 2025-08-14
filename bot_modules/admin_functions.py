@@ -596,6 +596,12 @@ async def manage_admins_handler(update, context):
 async def dashboard_handler(update, context):
     return await placeholder_handler(update, context, "لوحة المعلومات")
 
+async def view_all_suppliers_handler(update, context):
+    return await placeholder_handler(update, context, "عرض جميع المزودين")
+
+async def view_supplier_details_handler(update, context):
+    return await placeholder_handler(update, context, "تفاصيل المزودين")
+
 # Export functions for callback routing
 ADMIN_CALLBACKS = {
     'super_admin_panel': lambda u, c: show_super_admin_panel(u, c, get_user(u.effective_user.id)),
@@ -612,4 +618,6 @@ ADMIN_CALLBACKS = {
     'super_security_monitoring': security_monitoring_handler,
     'super_manage_admins': manage_admins_handler,
     'super_dashboard': dashboard_handler,
+    'super_view_all_suppliers': view_all_suppliers_handler,
+    'view_supplier_details': view_supplier_details_handler,
 }
