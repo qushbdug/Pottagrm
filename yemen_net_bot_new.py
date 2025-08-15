@@ -79,6 +79,65 @@ async def button_click_handler(update: Update, context):
             from handlers import enhanced_wallet_handler
             return await enhanced_wallet_handler(update, context)
         
+        # Network search and details
+        elif callback_data == 'search_networks':
+            from handlers import wifi_search_handler
+            return await wifi_search_handler(update, context)
+        elif callback_data.startswith('network_'):
+            from handlers import show_network_details
+            network_id = callback_data.split('_')[1]
+            return await show_network_details(update, context, network_id)
+        elif callback_data == 'all_networks':
+            from handlers import show_all_networks
+            return await show_all_networks(update, context)
+        elif callback_data == 'mobile_networks':
+            from handlers import show_mobile_networks
+            return await show_mobile_networks(update, context)
+        elif callback_data == 'home_networks':
+            from handlers import show_home_networks
+            return await show_home_networks(update, context)
+        
+        # Transfer handlers
+        elif callback_data == 'transfer_to_friend':
+            from handlers import send_balance_handler
+            return await send_balance_handler(update, context)
+        elif callback_data == 'advanced_search_transfer':
+            from handlers import search_user_for_transfer
+            return await search_user_for_transfer(update, context)
+        elif callback_data == 'quick_transfer':
+            from handlers import quick_transfer_handler
+            return await quick_transfer_handler(update, context)
+        elif callback_data.startswith('select_user_'):
+            from handlers import select_user_for_transfer
+            user_id = callback_data.split('_')[2]
+            return await select_user_for_transfer(update, context, user_id)
+        elif callback_data.startswith('amount_'):
+            from handlers import process_amount_selection
+            parts = callback_data.split('_')
+            amount = parts[1]
+            user_id = parts[2]
+            return await process_amount_selection(update, context, amount, user_id)
+        
+        # Purchase handlers
+        elif callback_data.startswith('buy_card_'):
+            from handlers import process_card_purchase
+            category_id = callback_data.split('_')[2]
+            return await process_card_purchase(update, context, category_id)
+        elif callback_data.startswith('confirm_purchase_'):
+            category_id = callback_data.split('_')[2]
+            return await confirm_card_purchase(update, context, category_id)
+        elif callback_data.startswith('confirm_transfer_'):
+            parts = callback_data.split('_')
+            user_id = parts[2]
+            amount = parts[3]
+            return await confirm_user_transfer(update, context, user_id, amount)
+        
+        # Search by type handlers
+        elif callback_data.startswith('search_by_'):
+            from handlers import search_by_type_handler
+            search_type = callback_data.split('_')[2]
+            return await search_by_type_handler(update, context, search_type)
+        
         # Admin panel routing
         elif callback_data == 'admin_panel':
             if user['role'] in ['admin', 'super_admin']:
