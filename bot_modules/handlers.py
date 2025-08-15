@@ -579,7 +579,7 @@ async def process_wifi_search(update: Update, context: CallbackContext):
             SELECT n.*, u.full_name as supplier_name 
             FROM networks n
             JOIN users u ON n.supplier_id = u.id
-            WHERE (n.name LIKE ? OR n.network_code LIKE ? OR n.city LIKE ?)
+            WHERE (n.name LIKE ? OR COALESCE(n.network_code, '') LIKE ? OR n.city LIKE ?)
             AND n.is_active = 1 AND n.is_approved = 1
             ORDER BY n.name
             LIMIT 20
@@ -639,11 +639,14 @@ async def process_wifi_search(update: Update, context: CallbackContext):
             
             price_range = f"{min_price:.0f}" if min_price == max_price else f"{min_price:.0f} - {max_price:.0f}"
             
+            network_code = network.get('network_code') or 'غير محدد'
+            supplier_name = result.get('network', {}).get('supplier_name') or network.get('supplier_name', 'غير محدد')
+            
             results_text += f"""
 **{i}. {network['name']}**
-🆔 الكود: `{network['network_code']}`
+🆔 الكود: `{network_code}`
 🌍 المدينة: {network['city']}
-👤 المزود: {result['network']['supplier_name']}
+👤 المزود: {supplier_name}
 🎫 الفئات: {result['categories_count']} فئة
 💰 الأسعار: {price_range} ريال
 

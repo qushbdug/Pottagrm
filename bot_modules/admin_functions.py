@@ -1459,4 +1459,345 @@ ADMIN_CALLBACKS = {
     'super_print_balance': print_balance_handler,
     'super_broadcast_message': broadcast_message_handler,
     'super_update_commands': update_commands_handler,
+
+
 }
+
+# Missing handler implementations
+
+async def backup_full_handler(update, context):
+    """Handle full backup creation"""
+    query = update.callback_query
+    await query.answer()
+    
+    text = f"""
+💾 **إنشاء نسخة احتياطية كاملة** 💾
+
+🔄 جاري إنشاء النسخة الاحتياطية...
+
+⚠️ قد تستغرق هذه العملية بضع دقائق.
+
+🏠 العودة لإدارة النسخ
+"""
+    
+    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة النسخ', callback_data='super_backup')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+async def backup_data_only_handler(update, context):
+    """Handle data-only backup"""
+    query = update.callback_query
+    await query.answer()
+    
+    text = f"""
+📊 **نسخة احتياطية للبيانات فقط** 📊
+
+هذه الميزة ستقوم بعمل نسخة احتياطية من البيانات فقط بدون الملفات.
+
+🏠 العودة لإدارة النسخ
+"""
+    
+    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة النسخ', callback_data='super_backup')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+async def backup_restore_handler(update, context):
+    """Handle backup restore"""
+    query = update.callback_query
+    await query.answer()
+    
+    text = f"""
+📥 **استعادة من نسخة احتياطية** 📥
+
+هذه الميزة قيد التطوير.
+
+⚠️ **تحذير:** استعادة النسخة الاحتياطية ستحل محل جميع البيانات الحالية.
+
+🏠 العودة لإدارة النسخ
+"""
+    
+    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة النسخ', callback_data='super_backup')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+async def backup_list_handler(update, context):
+    """Handle backup list"""
+    query = update.callback_query
+    await query.answer()
+    
+    text = f"""
+📋 **عرض النسخ المتاحة** 📋
+
+لا توجد نسخ احتياطية متاحة حالياً.
+
+🏠 العودة لإدارة النسخ
+"""
+    
+    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة النسخ', callback_data='super_backup')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+async def backup_schedule_handler(update, context):
+    """Handle backup scheduling"""
+    query = update.callback_query
+    await query.answer()
+    
+    text = f"""
+🕐 **جدولة النسخ التلقائي** 🕐
+
+هذه الميزة قيد التطوير وستتيح جدولة النسخ الاحتياطي التلقائي.
+
+🏠 العودة لإدارة النسخ
+"""
+    
+    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة النسخ', callback_data='super_backup')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+async def backup_settings_handler(update, context):
+    """Handle backup settings"""
+    query = update.callback_query
+    await query.answer()
+    
+    text = f"""
+⚙️ **إعدادات النسخ** ⚙️
+
+هذه الميزة قيد التطوير وستتيح تخصيص إعدادات النسخ الاحتياطي.
+
+🏠 العودة لإدارة النسخ
+"""
+    
+    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة النسخ', callback_data='super_backup')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+# System settings handlers
+async def system_edit_card_commission_handler(update, context):
+    """Handle card commission editing"""
+    query = update.callback_query
+    await query.answer()
+    
+    text = f"""
+💳 **تعديل عمولة البطاقات** 💳
+
+العمولة الحالية: **{CARD_COMMISSION_RATE * 100:.1f}%**
+
+هذه الميزة قيد التطوير للتحكم في عمولة البطاقات.
+
+🏠 العودة لإعدادات النظام
+"""
+    
+    keyboard = [[InlineKeyboardButton('🏠 العودة لإعدادات النظام', callback_data='super_system_settings')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+async def system_edit_agent_commission_handler(update, context):
+    """Handle agent commission editing"""
+    query = update.callback_query
+    await query.answer()
+    
+    text = f"""
+👥 **تعديل عمولة الوكلاء** 👥
+
+العمولة الحالية: **{AGENT_COMMISSION_RATE * 100:.1f}%**
+
+هذه الميزة قيد التطوير للتحكم في عمولة الوكلاء.
+
+🏠 العودة لإعدادات النظام
+"""
+    
+    keyboard = [[InlineKeyboardButton('🏠 العودة لإعدادات النظام', callback_data='super_system_settings')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+async def system_reload_config_handler(update, context):
+    """Handle config reload"""
+    query = update.callback_query
+    await query.answer()
+    
+    text = f"""
+🔄 **إعادة تحميل الإعدادات** 🔄
+
+تم إعادة تحميل إعدادات النظام بنجاح.
+
+🏠 العودة لإعدادات النظام
+"""
+    
+    keyboard = [[InlineKeyboardButton('🏠 العودة لإعدادات النظام', callback_data='super_system_settings')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+async def system_stats_handler(update, context):
+    """Handle system stats"""
+    query = update.callback_query
+    await query.answer()
+    
+    text = f"""
+📊 **إحصائيات النظام** 📊
+
+هذه الميزة قيد التطوير وستعرض إحصائيات مفصلة عن النظام.
+
+🏠 العودة لإعدادات النظام
+"""
+    
+    keyboard = [[InlineKeyboardButton('🏠 العودة لإعدادات النظام', callback_data='super_system_settings')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+# Dashboard handlers
+async def dashboard_users_handler(update, context):
+    """Handle dashboard users detail"""
+    query = update.callback_query
+    await query.answer()
+    
+    text = f"""
+👥 **تفاصيل المستخدمين** 👥
+
+هذه الميزة قيد التطوير وستعرض تفاصيل مُفصلة عن المستخدمين.
+
+🏠 العودة للوحة المعلومات
+"""
+    
+    keyboard = [[InlineKeyboardButton('🏠 العودة للوحة المعلومات', callback_data='super_dashboard')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+async def dashboard_financial_handler(update, context):
+    """Handle dashboard financial detail"""
+    query = update.callback_query
+    await query.answer()
+    
+    text = f"""
+💰 **التقارير المالية** 💰
+
+هذه الميزة قيد التطوير وستعرض تقارير مالية مُفصلة.
+
+🏠 العودة للوحة المعلومات
+"""
+    
+    keyboard = [[InlineKeyboardButton('🏠 العودة للوحة المعلومات', callback_data='super_dashboard')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+async def dashboard_detailed_handler(update, context):
+    """Handle dashboard detailed stats"""
+    query = update.callback_query
+    await query.answer()
+    
+    text = f"""
+📊 **إحصائيات مفصلة** 📊
+
+هذه الميزة قيد التطوير وستعرض إحصائيات مُفصلة للنظام.
+
+🏠 العودة للوحة المعلومات
+"""
+    
+    keyboard = [[InlineKeyboardButton('🏠 العودة للوحة المعلومات', callback_data='super_dashboard')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+# Placeholder handlers for other missing functions
+async def admin_list_all_handler(update, context):
+    query = update.callback_query
+    await query.answer()
+    text = f"👥 **عرض جميع المشرفين** - قيد التطوير"
+    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة المشرفين', callback_data='super_manage_admins')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def admin_add_new_handler(update, context):
+    query = update.callback_query
+    await query.answer()
+    text = f"➕ **إضافة مشرف جديد** - قيد التطوير"
+    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة المشرفين', callback_data='super_manage_admins')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def admin_search_handler(update, context):
+    query = update.callback_query
+    await query.answer()
+    text = f"🔍 **البحث عن مشرف** - قيد التطوير"
+    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة المشرفين', callback_data='super_manage_admins')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def admin_reports_handler(update, context):
+    query = update.callback_query
+    await query.answer()
+    text = f"📊 **تقارير المشرفين** - قيد التطوير"
+    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة المشرفين', callback_data='super_manage_admins')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def admin_permissions_handler(update, context):
+    query = update.callback_query
+    await query.answer()
+    text = f"⚙️ **صلاحيات المشرفين** - قيد التطوير"
+    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة المشرفين', callback_data='super_manage_admins')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def admin_banned_handler(update, context):
+    query = update.callback_query
+    await query.answer()
+    text = f"🚫 **إدارة المحظورين** - قيد التطوير"
+    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة المشرفين', callback_data='super_manage_admins')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def users_list_all_handler(update, context):
+    query = update.callback_query
+    await query.answer()
+    text = f"👥 **عرض جميع المستخدمين** - قيد التطوير"
+    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة المستخدمين', callback_data='super_manage_users')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def users_search_handler(update, context):
+    query = update.callback_query
+    await query.answer()
+    text = f"🔍 **البحث عن مستخدم** - قيد التطوير"
+    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة المستخدمين', callback_data='super_manage_users')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def users_reports_handler(update, context):
+    query = update.callback_query
+    await query.answer()
+    text = f"📊 **تقارير المستخدمين** - قيد التطوير"
+    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة المستخدمين', callback_data='super_manage_users')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def users_balance_mgmt_handler(update, context):
+    query = update.callback_query
+    await query.answer()
+    text = f"💰 **إدارة الأرصدة** - قيد التطوير"
+    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة المستخدمين', callback_data='super_manage_users')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def users_banned_handler(update, context):
+    query = update.callback_query
+    await query.answer()
+    text = f"🚫 **المستخدمين المحظورين** - قيد التطوير"
+    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة المستخدمين', callback_data='super_manage_users')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def users_top_handler(update, context):
+    query = update.callback_query
+    await query.answer()
+    text = f"⭐ **أفضل المستخدمين** - قيد التطوير"
+    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة المستخدمين', callback_data='super_manage_users')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+# Update ADMIN_CALLBACKS with newly defined handlers
+ADMIN_CALLBACKS.update({
+    # Backup handlers
+    'backup_full': backup_full_handler,
+    'backup_data_only': backup_data_only_handler,
+    'backup_restore': backup_restore_handler,
+    'backup_list': backup_list_handler,
+    'backup_schedule': backup_schedule_handler,
+    'backup_settings': backup_settings_handler,
+    # System settings handlers
+    'system_edit_card_commission': system_edit_card_commission_handler,
+    'system_edit_agent_commission': system_edit_agent_commission_handler,
+    'system_reload_config': system_reload_config_handler,
+    'system_stats': system_stats_handler,
+    # Dashboard handlers
+    'dashboard_users': dashboard_users_handler,
+    'dashboard_financial': dashboard_financial_handler,
+    'dashboard_detailed': dashboard_detailed_handler,
+    # Admin management handlers
+    'admin_list_all': admin_list_all_handler,
+    'admin_add_new': admin_add_new_handler,
+    'admin_search': admin_search_handler,
+    'admin_reports': admin_reports_handler,
+    'admin_permissions': admin_permissions_handler,
+    'admin_banned': admin_banned_handler,
+    # User management handlers
+    'users_list_all': users_list_all_handler,
+    'users_search': users_search_handler,
+    'users_reports': users_reports_handler,
+    'users_balance_mgmt': users_balance_mgmt_handler,
+    'users_banned': users_banned_handler,
+    'users_top': users_top_handler,
+})
