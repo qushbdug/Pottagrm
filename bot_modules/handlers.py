@@ -1927,7 +1927,15 @@ async def show_network_details(update: Update, context: CallbackContext, network
             for category in categories:
                 cat_id, cat_name, cat_value, cat_price, cat_stock = category
                 
-                # تحديد حالة التوفر
+                # تحديد حالة التوفر مع احتساب احتياطي من جدول الكروت الفعلي عند نفاد المخزون المسجل
+                if not cat_stock or cat_stock <= 0:
+                    try:
+                        cursor.execute('SELECT COUNT(*) FROM network_cards WHERE network_id = ? AND card_category = ? AND is_sold = 0', (network_id, int(cat_value)))
+                        derived_stock = cursor.fetchone()[0] or 0
+                        cat_stock = derived_stock
+                    except Exception:
+                        pass
+                
                 availability = "✅ متوفر" if cat_stock > 0 else "❌ نفذ"
                 stock_info = f"({cat_stock} كرت)" if cat_stock > 0 else "(نفذ)"
                 
@@ -2395,8 +2403,8 @@ async def process_card_purchase(update: Update, context: CallbackContext, catego
 """
         
         keyboard = [
-            [InlineKeyboardButton('✅ تأكيد الشراء', callback_data=f'confirm_purchase_{category_id}'),
-             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')],
+            [InlineKeyboardButton('✅ تأكيد الشراء', callback_data=f'confirm_purchase_{category_id}')],
+            [InlineKeyboardButton('❌ إلغاء', callback_data='cancel')],
             [InlineKeyboardButton('🔙 اختيار كرت آخر', callback_data=f'network_{network_id}')]
         ]
         
