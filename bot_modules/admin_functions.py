@@ -75,8 +75,8 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
 """
         
         keyboard = [
-            [InlineKeyboardButton(f'💰 إنشاء رصيد', callback_data='super_issue_balance'),
-             InlineKeyboardButton(f'💸 تحويل لمستخدم', callback_data='super_transfer_to_user')],
+            [InlineKeyboardButton(f'💰 الرصيد والمحفظة', callback_data='admin_wallet'),
+             InlineKeyboardButton(f'💸 إرسال رصيد', callback_data='admin_send_money')],
             [InlineKeyboardButton(f'✅ تفعيل مزودين', callback_data='super_activate_suppliers'),
              InlineKeyboardButton(f'👥 إدارة المستخدمين', callback_data='super_manage_users')],
             [InlineKeyboardButton(f'🏛️ إدارة المنصة', callback_data='super_platform_management'),
@@ -331,46 +331,38 @@ async def process_balance_issue(update: Update, context: CallbackContext):
         await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في تحويل الرصيد.")
 
 # Add transfer to user button in admin panel
-async def admin_transfer_to_user_handler(update: Update, context: CallbackContext):
-    """Handle transfer from admin to user"""
+async def admin_send_money_handler(update: Update, context: CallbackContext):
+    """Simple money sending from admin"""
     try:
         query = update.callback_query
         await query.answer()
         
         user = get_user(query.from_user.id)
         if not user or user['role'] != 'super_admin':
-            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            await query.edit_message_text(f"❌ ليس لديك صلاحية لهذه العملية.")
             return
         
         text = f"""
-💸 **تحويل رصيد لمستخدم** 💸
+💸 **إرسال رصيد** 💸
 
-{EMOJIS['admin']} مرحباً **{user['full_name']}**
-💵 رصيدك الحالي: **{user['balance']:,.2f}** ريال
+👤 {user['full_name']}
+💵 رصيدك: **{user['balance']:,.0f}** ريال
 
-📋 **تعليمات التحويل:**
-1️⃣ أدخل رقم المحفظة (9 أرقام تبدأ بـ 79)
-2️⃣ أدخل المبلغ المراد تحويله
-3️⃣ أدخل سبب التحويل (اختياري)
+💡 اكتب: رقم المحفظة والمبلغ
 
-💡 **مثال:**
-`791234567 500 مكافأة للعميل المتميز`
-
-⚠️ **ملاحظة:**
-سيتم خصم المبلغ من محفظتك وتحويله للمستخدم
-
-📝 أدخل البيانات بالتنسيق التالي:
-`رقم_المحفظة المبلغ السبب`
-
-أو اكتب /cancel للإلغاء
+🔤 مثال: `791234567 100`
 """
         
-        await query.edit_message_text(text, parse_mode='Markdown')
-        context.user_data['awaiting_balance_issue'] = True
+        keyboard = [
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        context.user_data['awaiting_simple_send'] = True
         
     except Exception as e:
-        logger.error(f"Error in admin transfer to user handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في بدء التحويل.")
+        logger.error(f"Error in admin send money: {e}")
+        await query.edit_message_text("❌ حدث خطأ في إرسال الرصيد.")
         
 
 
@@ -1310,6 +1302,37 @@ async def process_recharge_cards_issue(update: Update, context: CallbackContext)
     except Exception as e:
         logger.error(f"Error in process recharge cards issue: {e}")
         await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في إصدار البطاقات.")
+
+async def admin_wallet_handler(update: Update, context: CallbackContext):
+    """Simple admin wallet - view balance and add money"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"❌ ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        text = f"""
+💰 **محفظة المدير** 💰
+
+👤 {user['full_name']}
+💵 رصيدك: **{user['balance']:,.0f}** ريال
+
+💡 اكتب المبلغ الذي تريد إضافته لمحفظتك:
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        context.user_data['awaiting_money_creation'] = True
+        
+    except Exception as e:
+        logger.error(f"Error in admin wallet: {e}")
+        await query.edit_message_text("❌ حدث خطأ في عرض المحفظة.")
 
 async def print_balance_handler(update: Update, context: CallbackContext):
     """Print super admin wallet balance"""
@@ -2525,9 +2548,10 @@ async def print_balance_handler(update: Update, context: CallbackContext):
 
 # Update ADMIN_CALLBACKS with newly defined handlers
 ADMIN_CALLBACKS.update({
-    # Core admin functions
-    'super_print_balance': print_balance_handler,
-    'super_transfer_to_user': admin_transfer_to_user_handler,
+    # Core admin functions - simplified
+    'admin_wallet': admin_wallet_handler,
+    'admin_send_money': admin_send_money_handler,
+    'super_print_balance': print_balance_handler,  # Keep for compatibility
     'super_system_settings': system_settings_handler,
     'super_manage_admins': manage_admins_handler,
     'super_manage_users': manage_users_handler,

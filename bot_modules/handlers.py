@@ -305,17 +305,13 @@ async def show_main_menu(update: Update, context: CallbackContext, role: str) ->
         keyboard = create_main_keyboard(role)
         
         menu_text = f"""
-{EMOJIS['fire']} **بوت كروت الإنترنت اليمني المطور** {EMOJIS['fire']}
+🌐 **بوت كروت الإنترنت** 🌐
 
-{EMOJIS['user']} مرحباً **{user['full_name']}**
-🏷️ النوع: **{USER_ROLES.get(role, role)}**
-{EMOJIS['wallet']} رصيدك: **{user['balance']:.2f}** ريال
+👤 مرحباً **{user['full_name']}**
+💵 رصيدك: **{user['balance']:,.0f}** ريال
 💳 محفظتك: **{user['wallet_number']}**
 
-📱 **النسخة:** 2.1.0 Enhanced
-⚡ **الحالة:** {"مفعل" if user['is_active'] else "في انتظار التفعيل"}
-
-🎯 **اختر العملية المطلوبة:**
+اختر ما تريد:
 """
         
         if update.message:
@@ -338,43 +334,17 @@ def create_main_keyboard(role: str):
     """Create main menu keyboard based on user role"""
     try:
         base_buttons = [
-            [InlineKeyboardButton(f'{EMOJIS["wallet"]} محفظتي المطورة', callback_data='enhanced_wallet')],
-            [InlineKeyboardButton(f'{EMOJIS["purchase"]} شراء كروت', callback_data='buy_cards'),
-             InlineKeyboardButton(f'{EMOJIS["transfer"]} تحويل رصيد', callback_data='transfer_to_friend')],
-            [InlineKeyboardButton(f'📊 تقاريري الشخصية', callback_data='personal_reports'),
-             InlineKeyboardButton(f'⭐ تقييماتي', callback_data='my_ratings')],
-            [InlineKeyboardButton(f'🔔 إشعاراتي', callback_data='my_notifications'),
-             InlineKeyboardButton(f'🎁 العروض والخصومات', callback_data='promotions')],
-            [InlineKeyboardButton(f'⚙️ إعدادات الحساب', callback_data='account_settings')]
+            [InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet')],
+            [InlineKeyboardButton('🛒 شراء كروت', callback_data='buy_cards'),
+             InlineKeyboardButton('💸 إرسال رصيد', callback_data='transfer_to_friend')],
+            [InlineKeyboardButton('🔍 البحث', callback_data='search_networks')]
         ]
         
-        # Add role-specific buttons
-        if role == 'agent':
-            base_buttons.extend([
-                [InlineKeyboardButton(f'💼 لوحة الوكيل', callback_data='agent_panel'),
-                 InlineKeyboardButton(f'💰 عمولاتي', callback_data='my_commissions')]
-            ])
-        elif role == 'supplier':
-            base_buttons.extend([
-                [InlineKeyboardButton(f'🏪 لوحة المزود', callback_data='supplier_panel'),
-                 InlineKeyboardButton(f'📶 إدارة الشبكات', callback_data='manage_networks')],
-                [InlineKeyboardButton(f'📤 رفع كروت', callback_data='upload_cards'),
-                 InlineKeyboardButton(f'📊 تقارير المبيعات', callback_data='sales_reports')]
-            ])
+        # Add simple role-specific buttons
+        if role == 'supplier':
+            base_buttons.append([InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')])
         elif role in ['admin', 'super_admin']:
-            base_buttons.extend([
-                [InlineKeyboardButton(f'👑 لوحة الإدارة', callback_data='admin_panel'),
-                 InlineKeyboardButton(f'📈 التقارير التنفيذية', callback_data='executive_reports')]
-            ])
-            
-            if role == 'super_admin':
-                base_buttons.append([
-                    InlineKeyboardButton(f'💰 إصدار رصيد', callback_data='super_issue_balance'),
-                    InlineKeyboardButton(f'✅ تفعيل مزودين', callback_data='super_activate_suppliers')
-                ])
-        
-        # Add help button
-        base_buttons.append([InlineKeyboardButton(f'❓ المساعدة', callback_data='help')])
+            base_buttons.append([InlineKeyboardButton('👑 لوحة الإدارة', callback_data='admin_panel')])
         
         return base_buttons
     except Exception as e:
@@ -513,6 +483,14 @@ async def handle_text_message(update: Update, context: CallbackContext):
         # Check if waiting for transfer step 2 (amount)
         if context.user_data.get('awaiting_transfer_step2'):
             return await process_transfer_step2(update, context)
+        
+        # Check if waiting for simple admin send
+        if context.user_data.get('awaiting_simple_send'):
+            return await process_simple_admin_send(update, context)
+        
+        # Check if waiting for simple transfer
+        if context.user_data.get('awaiting_simple_transfer'):
+            return await process_simple_transfer(update, context)
         
         # Check if waiting for balance send (old method - keep for compatibility)
         if context.user_data.get('awaiting_balance_send'):
@@ -689,41 +667,35 @@ async def process_wifi_search(update: Update, context: CallbackContext):
         await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في البحث.")
 
 async def send_balance_handler(update: Update, context: CallbackContext):
-    """Handle sending balance to another user - Step 1: Ask for wallet number"""
+    """Simple balance sending for users"""
     try:
         user = get_user(update.effective_user.id)
         if not user:
-            await update.message.reply_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
+            await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
             return
         
-        if user['balance'] <= 0:
-            await update.message.reply_text(f"{EMOJIS['error']} رصيدك غير كافي. رصيدك الحالي: {user['balance']:.2f} ريال")
+        if user['balance'] <= 10:
+            await update.message.reply_text(f"❌ رصيدك غير كافي\nرصيدك: {user['balance']:.0f} ريال")
             return
         
         text = f"""
-💸 **إرسال رصيد لصديق** 💸
+💸 **إرسال رصيد** 💸
 
-{EMOJIS['user']} مرحباً **{user['full_name']}**
-💰 رصيدك الحالي: **{user['balance']:,.2f}** ريال
+👤 {user['full_name']}
+💵 رصيدك: **{user['balance']:,.0f}** ريال
 
-📋 **الخطوة الأولى:**
-أدخل رقم هاتف المستخدم أو رقم محفظته
+💡 اكتب: رقم المحفظة والمبلغ
+🔤 مثال: `791234567 50`
 
-💡 **أمثلة:**
-• رقم الهاتف: `773123456`
-• رقم المحفظة: `791234567`
-
-📝 أدخل رقم الهاتف أو رقم المحفظة:
-
-أو اكتب /cancel للإلغاء
+⚠️ رسوم التحويل: 1%
 """
         
         await update.message.reply_text(text, parse_mode='Markdown')
-        context.user_data['awaiting_transfer_step1'] = True
+        context.user_data['awaiting_simple_transfer'] = True
         
     except Exception as e:
         logger.error(f"Error in send balance handler: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في بدء إرسال الرصيد.")
+        await update.message.reply_text("❌ حدث خطأ في بدء الإرسال.")
 
 async def process_balance_send(update: Update, context: CallbackContext):
     """Process balance sending to another user"""
@@ -1047,6 +1019,216 @@ async def process_transfer_step2(update: Update, context: CallbackContext):
         logger.error(f"Error in process transfer step 2: {e}")
         await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في معالجة المبلغ.")
 
+async def process_simple_admin_send(update: Update, context: CallbackContext):
+    """Simple admin money sending"""
+    try:
+        if not context.user_data.get('awaiting_simple_send'):
+            return
+        
+        user = get_user(update.effective_user.id)
+        if not user or user['role'] != 'super_admin':
+            await update.message.reply_text("❌ ليس لديك صلاحية.")
+            return
+        
+        # Parse input: wallet_number amount
+        parts = update.message.text.strip().split()
+        if len(parts) < 2:
+            await update.message.reply_text("❌ اكتب: رقم المحفظة والمبلغ\nمثال: 791234567 100")
+            return
+        
+        wallet_number = parts[0]
+        try:
+            amount = float(parts[1])
+        except ValueError:
+            await update.message.reply_text("❌ المبلغ يجب أن يكون رقماً.")
+            return
+        
+        if amount <= 0:
+            await update.message.reply_text("❌ المبلغ يجب أن يكون أكبر من صفر.")
+            return
+        
+        if amount > user['balance']:
+            await update.message.reply_text(f"❌ رصيدك غير كافي.\nرصيدك: {user['balance']:,.0f} ريال")
+            return
+        
+        # Find target user
+        from bot_modules.database import get_db_connection
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT * FROM users WHERE wallet_number = ?', (wallet_number,))
+        target_user = cursor.fetchone()
+        
+        if not target_user:
+            await update.message.reply_text(f"❌ لم يتم العثور على محفظة: {wallet_number}")
+            conn.close()
+            return
+        
+        # Transfer money
+        import uuid
+        from datetime import datetime
+        
+        transaction_id = str(uuid.uuid4())
+        cursor.execute('''
+            INSERT INTO transactions 
+            (id, from_user, to_user, amount, type, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (transaction_id, user['id'], target_user['id'], amount, 'admin_transfer', 'تحويل من المدير', datetime.now()))
+        
+        # Update balances
+        from bot_modules.utils import recalc_and_set_user_balance
+        admin_new_balance = recalc_and_set_user_balance(user['id'])
+        target_new_balance = recalc_and_set_user_balance(target_user['id'])
+        
+        conn.commit()
+        conn.close()
+        
+        # Clear state
+        context.user_data.pop('awaiting_simple_send', None)
+        
+        # Send confirmation
+        await update.message.reply_text(f"""
+✅ **تم الإرسال بنجاح!**
+
+👤 المستلم: {target_user['full_name']}
+💰 المبلغ: {amount:,.0f} ريال
+💵 رصيدك الجديد: {admin_new_balance:,.0f} ريال
+""", parse_mode='Markdown')
+        
+        # Notify receiver
+        try:
+            await context.bot.send_message(
+                chat_id=target_user['telegram_id'],
+                text=f"💰 تم استلام {amount:,.0f} ريال من الإدارة\n💵 رصيدك الجديد: {target_new_balance:,.0f} ريال"
+            )
+        except Exception:
+            pass
+        
+        logger.info(f"Admin {user['full_name']} sent {amount} to {target_user['full_name']}")
+        
+    except Exception as e:
+        logger.error(f"Error in simple admin send: {e}")
+        await update.message.reply_text("❌ حدث خطأ في الإرسال.")
+
+async def process_simple_transfer(update: Update, context: CallbackContext):
+    """Simple user-to-user transfer"""
+    try:
+        if not context.user_data.get('awaiting_simple_transfer'):
+            return
+        
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.message.reply_text("❌ يرجى التسجيل أولاً.")
+            return
+        
+        # Parse input: wallet_number amount
+        parts = update.message.text.strip().split()
+        if len(parts) < 2:
+            await update.message.reply_text("❌ اكتب: رقم المحفظة والمبلغ\nمثال: 791234567 50")
+            return
+        
+        wallet_number = parts[0]
+        try:
+            amount = float(parts[1])
+        except ValueError:
+            await update.message.reply_text("❌ المبلغ يجب أن يكون رقماً.")
+            return
+        
+        if amount <= 0:
+            await update.message.reply_text("❌ المبلغ يجب أن يكون أكبر من صفر.")
+            return
+        
+        if amount < 10:
+            await update.message.reply_text("❌ أقل مبلغ للتحويل هو 10 ريال.")
+            return
+        
+        # Calculate fees
+        transfer_fee = amount * 0.01  # 1%
+        total_deduction = amount + transfer_fee
+        
+        if total_deduction > user['balance']:
+            await update.message.reply_text(f"""❌ رصيدك غير كافي
+
+💰 المبلغ: {amount:.0f} ريال
+💳 الرسوم: {transfer_fee:.0f} ريال
+📊 المطلوب: {total_deduction:.0f} ريال
+💵 رصيدك: {user['balance']:.0f} ريال""")
+            return
+        
+        # Find target user
+        from bot_modules.database import get_db_connection
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT * FROM users WHERE wallet_number = ?', (wallet_number,))
+        target_user = cursor.fetchone()
+        
+        if not target_user:
+            await update.message.reply_text(f"❌ لم يتم العثور على محفظة: {wallet_number}")
+            conn.close()
+            return
+        
+        if target_user['id'] == user['id']:
+            await update.message.reply_text("❌ لا يمكنك إرسال رصيد لنفسك!")
+            conn.close()
+            return
+        
+        # Transfer money
+        import uuid
+        from datetime import datetime
+        
+        # Transfer transaction
+        transfer_id = str(uuid.uuid4())
+        cursor.execute('''
+            INSERT INTO transactions 
+            (id, from_user, to_user, amount, type, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (transfer_id, user['id'], target_user['id'], amount, 'transfer', 'تحويل رصيد', datetime.now()))
+        
+        # Fee transaction
+        fee_id = str(uuid.uuid4())
+        cursor.execute('''
+            INSERT INTO transactions 
+            (id, from_user, amount, type, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (fee_id, user['id'], transfer_fee, 'transfer_fee', 'رسوم تحويل', datetime.now()))
+        
+        # Update balances
+        from bot_modules.utils import recalc_and_set_user_balance
+        sender_new_balance = recalc_and_set_user_balance(user['id'])
+        receiver_new_balance = recalc_and_set_user_balance(target_user['id'])
+        
+        conn.commit()
+        conn.close()
+        
+        # Clear state
+        context.user_data.pop('awaiting_simple_transfer', None)
+        
+        # Send confirmation
+        await update.message.reply_text(f"""
+✅ **تم الإرسال بنجاح!**
+
+👤 المستلم: {target_user['full_name']}
+💰 المبلغ: {amount:.0f} ريال
+💳 الرسوم: {transfer_fee:.0f} ريال
+💵 رصيدك الجديد: {sender_new_balance:.0f} ريال
+""", parse_mode='Markdown')
+        
+        # Notify receiver
+        try:
+            await context.bot.send_message(
+                chat_id=target_user['telegram_id'],
+                text=f"💰 تم استلام {amount:.0f} ريال من {user['full_name']}\n💵 رصيدك الجديد: {receiver_new_balance:.0f} ريال"
+            )
+        except Exception:
+            pass
+        
+        logger.info(f"User {user['full_name']} sent {amount} to {target_user['full_name']} (fee: {transfer_fee})")
+        
+    except Exception as e:
+        logger.error(f"Error in simple transfer: {e}")
+        await update.message.reply_text("❌ حدث خطأ في التحويل.")
+
 # Export main handlers for use in main bot file
 COMMAND_HANDLERS = {
     'start': start,
@@ -1055,6 +1237,8 @@ COMMAND_HANDLERS = {
     'cancel': cancel,
     'wifi_search': wifi_search_handler,
     'send_balance': send_balance_handler,
+    'search_networks': wifi_search_handler,  # Use existing wifi search
+    'transfer_to_friend': send_balance_handler,  # Simplified transfer
 }
 
 from telegram.ext import MessageHandler, CallbackQueryHandler, filters
