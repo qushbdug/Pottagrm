@@ -712,35 +712,65 @@ async def process_wifi_search(update: Update, context: CallbackContext):
         await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في البحث.")
 
 async def send_balance_handler(update: Update, context: CallbackContext):
-    """Simple balance sending for users"""
+    """إرسال رصيد مع البحث المتقدم"""
     try:
         user = get_user(update.effective_user.id)
         if not user:
-            await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
+            if update.message:
+                await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
+            else:
+                await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
             return
         
         if user['balance'] <= 10:
-            await update.message.reply_text(f"❌ رصيدك غير كافي\nرصيدك: {user['balance']:.0f} ريال")
+            error_msg = f"❌ رصيدك غير كافي\nرصيدك: {user['balance']:.2f} ريال\nالحد الأدنى: 60 ريال (50 + 10 رسوم)"
+            if update.message:
+                await update.message.reply_text(error_msg)
+            else:
+                await update.callback_query.edit_message_text(error_msg)
             return
         
         text = f"""
-💸 **إرسال رصيد** 💸
+💸 **تحويل رصيد** 💸
 
-👤 {user['full_name']}
-💵 رصيدك: **{user['balance']:,.0f}** ريال
+👤 مرحباً **{user['full_name']}**
+💰 رصيدك: **{user['balance']:,.2f}** ريال
 
-💡 اكتب: رقم المحفظة والمبلغ
-🔤 مثال: `791234567 50`
+🎯 **اختر طريقة التحويل:**
 
-⚠️ رسوم التحويل: 1%
+1️⃣ **البحث المتقدم**
+   ابحث عن المستخدم بالاسم، المحفظة، الهاتف أو المعرف
+
+2️⃣ **التحويل السريع**
+   اكتب رقم المحفظة والمبلغ مباشرة
+   مثال: `791234567 100`
+
+⚠️ **ملاحظات مهمة:**
+• رسوم التحويل: 10 ريال
+• الحد الأدنى: 50 ريال
+• الحد الأقصى: {min(user['balance'] - 10, 50000):,.0f} ريال
 """
         
-        await update.message.reply_text(text, parse_mode='Markdown')
-        context.user_data['awaiting_simple_transfer'] = True
+        keyboard = [
+            [InlineKeyboardButton('🔍 البحث المتقدم', callback_data='advanced_search_transfer'),
+             InlineKeyboardButton('⚡ تحويل سريع', callback_data='quick_transfer')],
+            [InlineKeyboardButton('📋 سجل التحويلات', callback_data='transfer_history'),
+             InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet')],
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        if update.message:
+            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        else:
+            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
     except Exception as e:
         logger.error(f"Error in send balance handler: {e}")
-        await update.message.reply_text("❌ حدث خطأ في بدء الإرسال.")
+        error_text = "❌ حدث خطأ"
+        if update.message:
+            await update.message.reply_text(error_text)
+        else:
+            await update.callback_query.edit_message_text(error_text)
 
 async def process_balance_send(update: Update, context: CallbackContext):
     """Process balance sending to another user"""
@@ -1389,6 +1419,274 @@ async def help_handler(update: Update, context: CallbackContext):
         else:
             await update.callback_query.edit_message_text(error_text)
 
+async def search_user_for_transfer(update: Update, context: CallbackContext):
+    """البحث عن مستخدم لإرسال رصيد"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
+            return
+
+        search_text = f"""
+🔍 **البحث عن مستخدم لإرسال الرصيد** 🔍
+
+👤 مرحباً **{user['full_name']}**
+💰 رصيدك: **{user['balance']:,.2f}** ريال
+
+📝 **طرق البحث المتاحة:**
+
+1️⃣ **بالاسم الكامل**
+   اكتب: الاسم أحمد محمد
+
+2️⃣ **برقم المحفظة**
+   اكتب: المحفظة 791234567
+
+3️⃣ **برقم الهاتف**
+   اكتب: الهاتف 770123456
+
+4️⃣ **بمعرف التلغرام**
+   اكتب: المعرف @username
+
+💡 **أمثلة:**
+• `الاسم أحمد محمد علي`
+• `المحفظة 791234567`
+• `الهاتف 770123456`
+• `المعرف @ahmed123`
+
+اكتب طريقة البحث والقيمة:
+"""
+
+        keyboard = [
+            [InlineKeyboardButton('💳 البحث بالمحفظة', callback_data='search_by_wallet'),
+             InlineKeyboardButton('👤 البحث بالاسم', callback_data='search_by_name')],
+            [InlineKeyboardButton('📱 البحث بالهاتف', callback_data='search_by_phone'),
+             InlineKeyboardButton('🆔 البحث بالمعرف', callback_data='search_by_username')],
+            [InlineKeyboardButton('🔙 عودة', callback_data='main_menu'),
+             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
+        ]
+
+        await update.callback_query.edit_message_text(
+            search_text, 
+            reply_markup=InlineKeyboardMarkup(keyboard), 
+            parse_mode='Markdown'
+        )
+        
+        context.user_data['awaiting_user_search'] = True
+
+    except Exception as e:
+        logger.error(f"Error in search user for transfer: {e}")
+        await update.callback_query.edit_message_text("❌ حدث خطأ في البحث")
+
+async def process_user_search(update: Update, context: CallbackContext, search_text: str):
+    """معالجة البحث عن المستخدم"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
+            return
+
+        # تحليل نص البحث
+        search_text = search_text.strip()
+        search_results = []
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if search_text.startswith('الاسم '):
+            # البحث بالاسم
+            name = search_text[5:].strip()
+            cursor.execute("""
+                SELECT id, full_name, wallet_number, phone, telegram_username, balance, is_active, role
+                FROM users 
+                WHERE full_name LIKE ? AND id != ?
+                ORDER BY full_name
+                LIMIT 10
+            """, (f"%{name}%", user['id']))
+            
+        elif search_text.startswith('المحفظة '):
+            # البحث برقم المحفظة
+            wallet = search_text[8:].strip()
+            cursor.execute("""
+                SELECT id, full_name, wallet_number, phone, telegram_username, balance, is_active, role
+                FROM users 
+                WHERE wallet_number = ? AND id != ?
+            """, (wallet, user['id']))
+            
+        elif search_text.startswith('الهاتف '):
+            # البحث برقم الهاتف
+            phone = search_text[7:].strip()
+            cursor.execute("""
+                SELECT id, full_name, wallet_number, phone, telegram_username, balance, is_active, role
+                FROM users 
+                WHERE phone LIKE ? AND id != ?
+                ORDER BY full_name
+                LIMIT 10
+            """, (f"%{phone}%", user['id']))
+            
+        elif search_text.startswith('المعرف '):
+            # البحث بمعرف التلغرام
+            username = search_text[7:].strip().replace('@', '')
+            cursor.execute("""
+                SELECT id, full_name, wallet_number, phone, telegram_username, balance, is_active, role
+                FROM users 
+                WHERE telegram_username LIKE ? AND id != ?
+                ORDER BY full_name
+                LIMIT 10
+            """, (f"%{username}%", user['id']))
+        else:
+            # بحث عام في جميع الحقول
+            cursor.execute("""
+                SELECT id, full_name, wallet_number, phone, telegram_username, balance, is_active, role
+                FROM users 
+                WHERE (full_name LIKE ? OR wallet_number LIKE ? OR phone LIKE ? OR telegram_username LIKE ?) 
+                AND id != ?
+                ORDER BY full_name
+                LIMIT 10
+            """, (f"%{search_text}%", f"%{search_text}%", f"%{search_text}%", f"%{search_text}%", user['id']))
+
+        search_results = cursor.fetchall()
+        conn.close()
+
+        if not search_results:
+            await update.message.reply_text(
+                f"❌ **لم يتم العثور على نتائج**\n\n"
+                f"🔍 تم البحث عن: `{search_text}`\n"
+                f"💡 تأكد من صحة البيانات وحاول مرة أخرى\n\n"
+                f"🔄 للبحث مرة أخرى: /transfer",
+                parse_mode='Markdown'
+            )
+            context.user_data.pop('awaiting_user_search', None)
+            return
+
+        # عرض النتائج
+        result_text = f"""
+🔍 **نتائج البحث** 🔍
+
+👤 **{user['full_name']}**
+💰 رصيدك: **{user['balance']:,.2f}** ريال
+
+📊 **تم العثور على {len(search_results)} نتيجة:**
+
+"""
+
+        keyboard = []
+        for i, result in enumerate(search_results, 1):
+            user_id, full_name, wallet_number, phone, telegram_username, balance, is_active, role = result
+            status_emoji = "✅" if is_active else "⏳"
+            role_emoji = "👑" if role == 'admin' else "🏪" if role == 'supplier' else "💼" if role == 'agent' else "👤"
+            
+            result_text += f"""
+{i}️⃣ {status_emoji} **{full_name}** {role_emoji}
+   💳 المحفظة: `{wallet_number}`
+   📱 الهاتف: {phone or 'غير متاح'}
+   💰 الرصيد: {balance:,.2f} ريال
+   ━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+            
+            # إضافة زر للاختيار
+            keyboard.append([InlineKeyboardButton(
+                f"{i}️⃣ {full_name[:20]}... - {wallet_number}",
+                callback_data=f"select_user_{user_id}"
+            )])
+
+        # إضافة أزرار إضافية
+        keyboard.extend([
+            [InlineKeyboardButton('🔍 بحث جديد', callback_data='transfer_to_friend'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')],
+            [InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
+        ])
+
+        await update.message.reply_text(
+            result_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+        # حفظ النتائج للاختيار
+        context.user_data['search_results'] = {str(result[0]): result for result in search_results}
+        context.user_data.pop('awaiting_user_search', None)
+
+    except Exception as e:
+        logger.error(f"Error in process user search: {e}")
+        await update.message.reply_text("❌ حدث خطأ في البحث")
+        context.user_data.pop('awaiting_user_search', None)
+
+async def select_user_for_transfer(update: Update, context: CallbackContext, selected_user_id: str):
+    """اختيار مستخدم لإرسال الرصيد"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
+            return
+
+        # الحصول على بيانات المستخدم المختار
+        search_results = context.user_data.get('search_results', {})
+        if selected_user_id not in search_results:
+            await update.callback_query.edit_message_text("❌ المستخدم غير موجود")
+            return
+
+        selected_user = search_results[selected_user_id]
+        target_id, target_name, target_wallet, target_phone, target_username, target_balance, target_active, target_role = selected_user
+
+        if not target_active:
+            await update.callback_query.edit_message_text(
+                "❌ **المستخدم غير مفعل**\n\n"
+                f"👤 {target_name}\n"
+                f"💳 {target_wallet}\n\n"
+                "لا يمكن إرسال رصيد لمستخدم غير مفعل"
+            )
+            return
+
+        # طلب المبلغ
+        transfer_text = f"""
+💸 **تحويل رصيد** 💸
+
+👤 **المرسل:** {user['full_name']}
+💰 **رصيدك:** {user['balance']:,.2f} ريال
+
+📤 **المستقبل:**
+👤 الاسم: **{target_name}**
+💳 المحفظة: **{target_wallet}**
+📱 الهاتف: {target_phone or 'غير متاح'}
+💰 رصيده: {target_balance:,.2f} ريال
+
+💡 **اكتب المبلغ الذي تريد إرساله:**
+
+⚠️ **ملاحظات مهمة:**
+• رسوم التحويل: 10 ريال
+• الحد الأدنى: 50 ريال
+• الحد الأقصى: {min(user['balance'] - 10, 50000):,.0f} ريال
+• تأكد من صحة البيانات قبل التأكيد
+"""
+
+        keyboard = [
+            [InlineKeyboardButton('💰 100 ريال', callback_data=f'amount_100_{selected_user_id}'),
+             InlineKeyboardButton('💰 500 ريال', callback_data=f'amount_500_{selected_user_id}')],
+            [InlineKeyboardButton('💰 1000 ريال', callback_data=f'amount_1000_{selected_user_id}'),
+             InlineKeyboardButton('💰 5000 ريال', callback_data=f'amount_5000_{selected_user_id}')],
+            [InlineKeyboardButton('🔙 اختيار مستخدم آخر', callback_data='transfer_to_friend'),
+             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
+        ]
+
+        await update.callback_query.edit_message_text(
+            transfer_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+
+        # حفظ بيانات التحويل
+        context.user_data['transfer_target'] = {
+            'id': target_id,
+            'name': target_name,
+            'wallet': target_wallet,
+            'phone': target_phone
+        }
+        context.user_data['awaiting_transfer_amount'] = True
+
+    except Exception as e:
+        logger.error(f"Error in select user for transfer: {e}")
+        await update.callback_query.edit_message_text("❌ حدث خطأ في اختيار المستخدم")
+
 # Export main handlers for use in main bot file
 COMMAND_HANDLERS = {
     'start': start,
@@ -1419,6 +1717,13 @@ COMMAND_HANDLERS = {
     'wallet_settings': lambda u, c: enhanced_placeholder_handler(u, c, "⚙️ إعدادات المحفظة", "تخصيص إعدادات وأمان المحفظة"),
     'contact_admin': lambda u, c: enhanced_placeholder_handler(u, c, "📞 التواصل مع الإدارة", "إرسال رسالة للدعم الفني"),
     'account_status': lambda u, c: enhanced_placeholder_handler(u, c, "📊 حالة الحساب", "عرض حالة وتفاصيل حسابك"),
+    'advanced_search_transfer': search_user_for_transfer,
+    'quick_transfer': quick_transfer_handler,
+    'transfer_history': lambda u, c: enhanced_placeholder_handler(u, c, "📋 سجل التحويلات", "عرض سجل جميع تحويلاتك"),
+    'search_by_wallet': lambda u, c: search_by_type_handler(u, c, "wallet"),
+    'search_by_name': lambda u, c: search_by_type_handler(u, c, "name"),
+    'search_by_phone': lambda u, c: search_by_type_handler(u, c, "phone"),
+    'search_by_username': lambda u, c: search_by_type_handler(u, c, "username"),
 }
 
 from telegram.ext import MessageHandler, CallbackQueryHandler, filters
