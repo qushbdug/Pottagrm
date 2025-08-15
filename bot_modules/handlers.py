@@ -537,6 +537,14 @@ async def handle_text_message(update: Update, context: CallbackContext):
         if context.user_data.get('awaiting_simple_transfer'):
             return await process_simple_transfer(update, context)
         
+        # Check if waiting for network name
+        if context.user_data.get('awaiting_network_name'):
+            return await process_network_creation(update, context, update.message.text)
+        
+        # Check if waiting for network description
+        if context.user_data.get('awaiting_network_description'):
+            return await process_network_description(update, context, update.message.text)
+        
         # Check if waiting for balance send (old method - keep for compatibility)
         if context.user_data.get('awaiting_balance_send'):
             return await process_balance_send(update, context)
@@ -595,41 +603,75 @@ async def wifi_search_handler(update: Update, context: CallbackContext):
         
         conn.close()
         
-        text = f"""
-📶 **البحث عن الشبكات** 📶
+        if active_networks_count == 0:
+            text = f"""
+📶 **البحث عن شبكات الواي فاي** 📶
+
+👤 مرحباً **{user['full_name']}**
+💰 رصيدك: **{user['balance']:,.2f}** ريال
+
+🏪 **لا توجد شبكات متاحة حالياً**
+
+📋 **نحن نتعامل حصرياً مع:**
+• 🌐 كروت شبكات الواي فاي المنزلية
+• 💳 كروت الخدمات المقدمة من المزودين المعتمدين
+• 📶 شبكات الإنترنت اللاسلكي
+
+⏳ **الشبكات ستظهر عندما:**
+• يقوم المزودون بإضافة شبكاتهم
+• يتم رفع كروت الواي فاي المتاحة
+• يتم تفعيل الخدمات الجديدة
+
+💡 **للمزودين:**
+يمكنكم إضافة شبكاتكم من لوحة المزود
+
+🔔 **سيتم إشعارك فور توفر شبكات جديدة!**
+"""
+        else:
+            text = f"""
+📶 **البحث عن شبكات الواي فاي** 📶
 
 👤 مرحباً **{user['full_name']}**
 💰 رصيدك: **{user['balance']:,.2f}** ريال
 
 📊 **إحصائيات الشبكات:**
-🌐 الشبكات النشطة: **{active_networks_count}** شبكة
+🌐 الشبكات المتاحة: **{active_networks_count}** شبكة
 💳 فئات الكروت: **{available_categories_count}** فئة
 📦 إجمالي المخزون: **{total_stock:,}** كرت
 
 🔍 **خيارات البحث:**
 
 1️⃣ **عرض جميع الشبكات**
-   استعرض كافة الشبكات المتاحة
+   استعرض كافة الشبكات المضافة من المزودين
 
 2️⃣ **البحث بالاسم**
-   ابحث عن شبكة معينة
+   ابحث عن شبكة واي فاي معينة
 
 3️⃣ **حسب نوع الخدمة**
-   إنترنت منزلي، محمول، واي فاي
+   شبكات الواي فاي المنزلية
 
 4️⃣ **حسب السعر**
    اختر حسب ميزانيتك
 """
         
-        keyboard = [
-            [InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks'),
-             InlineKeyboardButton('🔍 بحث بالاسم', callback_data='search_by_network_name')],
-            [InlineKeyboardButton('📱 شبكات المحمول', callback_data='mobile_networks'),
-             InlineKeyboardButton('🏠 إنترنت منزلي', callback_data='home_networks')],
-            [InlineKeyboardButton('💰 حسب السعر', callback_data='networks_by_price'),
-             InlineKeyboardButton('⭐ الأكثر طلباً', callback_data='popular_networks')],
-            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-        ]
+        if active_networks_count == 0:
+            keyboard = [
+                [InlineKeyboardButton('🔄 تحديث الشبكات', callback_data='search_networks'),
+                 InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')],
+                [InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet'),
+                 InlineKeyboardButton('📞 الدعم الفني', callback_data='help')],
+                [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            ]
+        else:
+            keyboard = [
+                [InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks'),
+                 InlineKeyboardButton('🔍 بحث بالاسم', callback_data='search_by_network_name')],
+                [InlineKeyboardButton('📶 شبكات الواي فاي', callback_data='wifi_networks'),
+                 InlineKeyboardButton('🏠 شبكات منزلية', callback_data='home_networks')],
+                [InlineKeyboardButton('💰 حسب السعر', callback_data='networks_by_price'),
+                 InlineKeyboardButton('⭐ الأكثر طلباً', callback_data='popular_networks')],
+                [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            ]
         
         if update.message:
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
@@ -2388,7 +2430,7 @@ COMMAND_HANDLERS = {
     'agent_panel': lambda u, c: enhanced_placeholder_handler(u, c, "💼 لوحة الوكيل", "لوحة تحكم خاصة بالوكلاء"),
     'my_commissions': lambda u, c: enhanced_placeholder_handler(u, c, "💰 عمولاتي", "عرض العمولات والأرباح"),
     'supplier_panel': lambda u, c: enhanced_placeholder_handler(u, c, "🏪 لوحة المزود", "لوحة تحكم خاصة بالمزودين"),
-    'manage_networks': lambda u, c: enhanced_placeholder_handler(u, c, "📶 إدارة الشبكات", "إضافة وإدارة شبكاتك"),
+    'manage_networks': lambda u, c: supplier_manage_networks(u, c),
     'upload_cards': lambda u, c: enhanced_placeholder_handler(u, c, "📤 رفع كروت", "رفع وإدارة كروت الشحن"),
     'sales_reports': lambda u, c: enhanced_placeholder_handler(u, c, "📈 تقارير المبيعات", "تقارير مفصلة عن مبيعاتك"),
     'buy_cards': lambda u, c: enhanced_placeholder_handler(u, c, "🛒 شراء كروت", "تصفح وشراء كروت الإنترنت"),
@@ -2414,6 +2456,11 @@ COMMAND_HANDLERS = {
     'networks_by_price': lambda u, c: enhanced_placeholder_handler(u, c, "💰 ترتيب بالسعر", "ترتيب الشبكات حسب السعر"),
     'popular_networks': lambda u, c: enhanced_placeholder_handler(u, c, "⭐ الأكثر طلباً", "الشبكات الأكثر شعبية"),
     'insufficient_balance': lambda u, c: enhanced_placeholder_handler(u, c, "💰 رصيد غير كافي", "تحتاج لشحن رصيدك أولاً"),
+    'supplier_manage_networks': lambda u, c: supplier_manage_networks(u, c),
+    'add_new_network': lambda u, c: add_new_network_handler(u, c),
+    'network_sales_reports': lambda u, c: enhanced_placeholder_handler(u, c, "📊 تقارير المبيعات", "عرض تقارير مفصلة عن مبيعات شبكاتك"),
+    'manage_stock': lambda u, c: enhanced_placeholder_handler(u, c, "📦 إدارة المخزون", "إدارة وتحديث مخزون شبكاتك"),
+    'profit_analysis': lambda u, c: enhanced_placeholder_handler(u, c, "💰 تحليل الأرباح", "تحليل وتقييم أرباح شبكاتك"),
 }
 
 from telegram.ext import MessageHandler, CallbackQueryHandler, filters
@@ -2423,3 +2470,326 @@ CONVERSATION_STATES = {
     GET_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone)],
     CHOOSE_ROLE: [CallbackQueryHandler(choose_role, pattern='^role_')],
 }
+
+async def supplier_manage_networks(update: Update, context: CallbackContext):
+    """إدارة الشبكات للمزودين"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
+            return
+        
+        if user['role'] != 'supplier':
+            await update.callback_query.edit_message_text("❌ هذه الميزة متاحة للمزودين فقط")
+            return
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # الحصول على شبكات المزود
+        cursor.execute('''
+            SELECT id, name, description, is_active, created_at
+            FROM networks 
+            WHERE created_by = ?
+            ORDER BY created_at DESC
+        ''', (user['id'],))
+        
+        my_networks = cursor.fetchall()
+        
+        # الحصول على إجمالي الكروت المباعة
+        cursor.execute('''
+            SELECT COUNT(*) as total_sold, SUM(cc.price) as total_revenue
+            FROM cards c
+            JOIN card_categories cc ON c.category_id = cc.id
+            JOIN networks n ON cc.network_id = n.id
+            WHERE n.created_by = ? AND c.is_sold = 1
+        ''', (user['id'],))
+        
+        sales_data = cursor.fetchone()
+        total_sold = sales_data[0] if sales_data else 0
+        total_revenue = sales_data[1] if sales_data else 0.0
+        
+        conn.close()
+        
+        text = f"""
+🏪 **إدارة شبكاتي** 🏪
+
+👤 المزود: **{user['full_name']}**
+💰 رصيدك: **{user['balance']:,.2f}** ريال
+
+📊 **إحصائيات المبيعات:**
+💳 إجمالي الكروت المباعة: **{total_sold:,}** كرت
+💰 إجمالي الإيرادات: **{total_revenue:,.2f}** ريال
+
+🌐 **شبكاتي ({len(my_networks)} شبكة):**
+
+"""
+
+        keyboard = []
+        
+        if my_networks:
+            for network in my_networks:
+                network_id, name, description, is_active, created_at = network
+                status_emoji = "✅" if is_active else "⏳"
+                
+                text += f"""
+{status_emoji} **{name}**
+📝 {description or 'شبكة واي فاي منزلية'}
+📅 أضيفت: {created_at[:10]}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+
+"""
+                
+                keyboard.append([InlineKeyboardButton(
+                    f"{status_emoji} {name}",
+                    callback_data=f"manage_network_{network_id}"
+                )])
+        else:
+            text += """
+📋 **لم تقم بإضافة أي شبكات بعد**
+
+💡 **لإضافة شبكة جديدة:**
+• اضغط على "إضافة شبكة جديدة"
+• أدخل اسم الشبكة
+• أضف وصفاً للشبكة
+• أضف فئات الكروت والأسعار
+
+🎯 **فوائد إضافة الشبكات:**
+• زيادة مبيعاتك
+• وصول أكبر للعملاء
+• إدارة سهلة للمخزون
+"""
+
+        # إضافة أزرار الإدارة
+        keyboard.extend([
+            [InlineKeyboardButton('➕ إضافة شبكة جديدة', callback_data='add_new_network'),
+             InlineKeyboardButton('📊 تقارير المبيعات', callback_data='network_sales_reports')],
+            [InlineKeyboardButton('📦 إدارة المخزون', callback_data='manage_stock'),
+             InlineKeyboardButton('💰 تحليل الأرباح', callback_data='profit_analysis')],
+            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ])
+
+        await update.callback_query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+
+    except Exception as e:
+        logger.error(f"Error in supplier manage networks: {e}")
+        await update.callback_query.edit_message_text("❌ حدث خطأ في إدارة الشبكات")
+
+async def add_new_network_handler(update: Update, context: CallbackContext):
+    """إضافة شبكة جديدة"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
+            return
+        
+        if user['role'] != 'supplier':
+            await update.callback_query.edit_message_text("❌ هذه الميزة متاحة للمزودين فقط")
+            return
+        
+        text = f"""
+➕ **إضافة شبكة واي فاي جديدة** ➕
+
+👤 المزود: **{user['full_name']}**
+
+📝 **أدخل اسم الشبكة:**
+
+💡 **أمثلة على أسماء الشبكات:**
+• `واي فاي الرحمن`
+• `شبكة النور للإنترنت`
+• `واي فاي البركة`
+• `إنترنت الأمل المنزلي`
+
+⚠️ **ملاحظات مهمة:**
+• اختر اسماً واضحاً وجذاباً
+• تجنب الأسماء المكررة
+• يفضل أن يعكس الاسم منطقتك أو خدمتك
+• لا تستخدم رموز غريبة
+
+📝 **اكتب اسم الشبكة:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🔙 إدارة شبكاتي', callback_data='manage_networks'),
+             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
+        ]
+        
+        await update.callback_query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+        context.user_data['awaiting_network_name'] = True
+        
+    except Exception as e:
+        logger.error(f"Error in add new network handler: {e}")
+        await update.callback_query.edit_message_text("❌ حدث خطأ في إضافة شبكة جديدة")
+
+async def process_network_creation(update: Update, context: CallbackContext, network_name: str):
+    """معالجة إنشاء شبكة جديدة"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
+            return
+        
+        if user['role'] != 'supplier':
+            await update.message.reply_text("❌ هذه الميزة متاحة للمزودين فقط")
+            return
+        
+        network_name = network_name.strip()
+        
+        if len(network_name) < 3:
+            await update.message.reply_text("❌ اسم الشبكة قصير جداً. يجب أن يكون على الأقل 3 أحرف")
+            return
+        
+        if len(network_name) > 50:
+            await update.message.reply_text("❌ اسم الشبكة طويل جداً. الحد الأقصى 50 حرف")
+            return
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # التحقق من عدم تكرار الاسم
+        cursor.execute('SELECT id FROM networks WHERE name = ?', (network_name,))
+        if cursor.fetchone():
+            await update.message.reply_text("❌ اسم الشبكة موجود بالفعل. اختر اسماً آخر")
+            return
+        
+        # إضافة الشبكة الجديدة
+        cursor.execute('''
+            INSERT INTO networks (name, provider, description, created_by, is_active)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (network_name, user['full_name'], f'شبكة واي فاي منزلية - {network_name}', user['id'], 0))
+        
+        network_id = cursor.lastrowid
+        
+        conn.commit()
+        conn.close()
+        
+        # طلب وصف الشبكة
+        text = f"""
+✅ **تم إنشاء الشبكة بنجاح!** ✅
+
+🌐 **اسم الشبكة:** {network_name}
+👤 **المزود:** {user['full_name']}
+📅 **تاريخ الإنشاء:** اليوم
+
+📝 **الآن أدخل وصفاً للشبكة:**
+
+💡 **أمثلة على الوصف:**
+• `شبكة واي فاي منزلية عالية السرعة في منطقة الصافية`
+• `إنترنت منزلي مستقر للألعاب والدراسة`
+• `واي فاي منزلي سريع ومناسب للعائلات`
+
+⚠️ **نصائح للوصف:**
+• اذكر المنطقة إذا أمكن
+• أشر إلى جودة الخدمة
+• اذكر الاستخدامات المناسبة
+• لا تتجاوز 100 حرف
+
+📝 **اكتب وصف الشبكة:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('⏭️ تخطي الوصف', callback_data=f'skip_description_{network_id}'),
+             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
+        ]
+        
+        await update.message.reply_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+        context.user_data['awaiting_network_description'] = True
+        context.user_data['new_network_id'] = network_id
+        context.user_data.pop('awaiting_network_name', None)
+        
+    except Exception as e:
+        logger.error(f"Error in process network creation: {e}")
+        await update.message.reply_text("❌ حدث خطأ في إنشاء الشبكة")
+
+async def process_network_description(update: Update, context: CallbackContext, description: str):
+    """معالجة وصف الشبكة"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
+            return
+        
+        if user['role'] != 'supplier':
+            await update.message.reply_text("❌ هذه الميزة متاحة للمزودين فقط")
+            return
+        
+        network_id = context.user_data.get('new_network_id')
+        if not network_id:
+            await update.message.reply_text("❌ لم يتم العثور على معرف الشبكة")
+            return
+        
+        description = description.strip()
+        
+        if len(description) > 100:
+            await update.message.reply_text("❌ الوصف طويل جداً. الحد الأقصى 100 حرف")
+            return
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # تحديث وصف الشبكة
+        cursor.execute('''
+            UPDATE networks 
+            SET description = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND created_by = ?
+        ''', (description, network_id, user['id']))
+        
+        conn.commit()
+        conn.close()
+        
+        # عرض خيارات إضافة فئات الكروت
+        text = f"""
+✅ **تم تحديث وصف الشبكة بنجاح!** ✅
+
+📝 **الوصف المضاف:** {description}
+
+💳 **الآن أضف فئات الكروت:**
+
+🎯 **خطوات إضافة فئة كرت:**
+1️⃣ اختر نوع الكرت (جيجا أو رصيد)
+2️⃣ حدد القيمة (مثل: 1 جيجا أو 1000 ريال)
+3️⃣ حدد السعر للكرت الواحد
+4️⃣ حدد عدد الكروت المتوفرة
+
+💡 **أمثلة على فئات الكروت:**
+• كرت 500 ميجا - 1000 ريال (50 كرت متوفر)
+• كرت 1 جيجا - 1800 ريال (30 كرت متوفر)
+• كرت 2 جيجا - 3200 ريال (20 كرت متوفر)
+
+🚀 **بدء إضافة الفئات:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('💳 إضافة فئة كرت جديدة', callback_data=f'add_card_category_{network_id}'),
+             InlineKeyboardButton('⏭️ إنهاء لاحقاً', callback_data='manage_networks')],
+            [InlineKeyboardButton('🔙 إدارة شبكاتي', callback_data='manage_networks'),
+             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
+        ]
+        
+        await update.message.reply_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+        context.user_data.pop('awaiting_network_description', None)
+        context.user_data.pop('new_network_id', None)
+        
+    except Exception as e:
+        logger.error(f"Error in process network description: {e}")
+        await update.message.reply_text("❌ حدث خطأ في معالجة وصف الشبكة")
