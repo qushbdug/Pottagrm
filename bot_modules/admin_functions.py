@@ -85,6 +85,10 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
              InlineKeyboardButton(f'🚨 مراقبة الأمان', callback_data='super_security_monitoring')],
             [InlineKeyboardButton(f'👑 إدارة المشرفين', callback_data='super_manage_admins'),
              InlineKeyboardButton(f'📈 لوحة المعلومات', callback_data='super_dashboard')],
+            [InlineKeyboardButton(f'🎫 إصدار بطاقات شحن', callback_data='super_issue_recharge_cards'),
+             InlineKeyboardButton(f'💰 طباعة رصيد المحفظة', callback_data='super_print_balance')],
+            [InlineKeyboardButton(f'📢 إرسال رسالة جماعية', callback_data='super_broadcast_message'),
+             InlineKeyboardButton(f'🔄 تحديث أوامر البوت', callback_data='super_update_commands')],
             [InlineKeyboardButton(f'{EMOJIS["home"]} العودة للقائمة', callback_data='main_menu')]
         ]
         
@@ -602,6 +606,836 @@ async def view_all_suppliers_handler(update, context):
 async def view_supplier_details_handler(update, context):
     return await placeholder_handler(update, context, "تفاصيل المزودين")
 
+# New Enhanced Features
+
+async def issue_recharge_cards_handler(update: Update, context: CallbackContext):
+    """Handle recharge cards issuance for super admin"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        text = f"""
+🎫 **إصدار بطاقات شحن** 🎫
+
+{EMOJIS['admin']} مرحباً **{user['full_name']}**
+
+📋 **تعليمات الإصدار:**
+1️⃣ أدخل قيمة البطاقة (ريال)
+2️⃣ أدخل سعر البيع للعملاء (ريال)  
+3️⃣ أدخل الكمية المطلوبة
+4️⃣ أدخل اسم الشبكة (اختياري)
+
+💡 **مثال:**
+`100 110 50 يمن نت`
+
+⚠️ **ملاحظات مهمة:**
+• سيتم إنشاء البطاقات تلقائياً برموز فريدة
+• يمكن للعملاء شراؤها من متجر البطاقات
+• سيتم حفظ البطاقات في قاعدة البيانات
+
+📝 أدخل البيانات بالتنسيق التالي:
+`قيمة_البطاقة سعر_البيع الكمية اسم_الشبكة`
+
+أو اكتب /cancel للإلغاء
+"""
+        
+        await query.edit_message_text(text, parse_mode='Markdown')
+        context.user_data['awaiting_card_issue'] = True
+        
+    except Exception as e:
+        logger.error(f"Error in issue recharge cards handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في بدء عملية إصدار البطاقات.")
+
+async def process_recharge_cards_issue(update: Update, context: CallbackContext):
+    """Process recharge cards issuance from super admin"""
+    try:
+        if not context.user_data.get('awaiting_card_issue'):
+            return
+        
+        user = get_user(update.effective_user.id)
+        if not user or user['role'] != 'super_admin':
+            await update.message.reply_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # Parse input
+        parts = update.message.text.strip().split()
+        if len(parts) < 3:
+            await update.message.reply_text(f"{EMOJIS['error']} تنسيق غير صحيح. أدخل: قيمة_البطاقة سعر_البيع الكمية اسم_الشبكة")
+            return
+        
+        try:
+            card_value = float(parts[0])
+            price = float(parts[1])
+            quantity = int(parts[2])
+        except ValueError:
+            await update.message.reply_text(f"{EMOJIS['error']} القيم يجب أن تكون أرقاماً صحيحة.")
+            return
+        
+        network_name = ' '.join(parts[3:]) if len(parts) > 3 else 'يمن نت'
+        
+        # Validate values
+        if card_value <= 0 or price <= 0 or quantity <= 0:
+            await update.message.reply_text(f"{EMOJIS['error']} جميع القيم يجب أن تكون أكبر من صفر.")
+            return
+        
+        if quantity > 1000:
+            await update.message.reply_text(f"{EMOJIS['error']} لا يمكن إصدار أكثر من 1000 بطاقة في المرة الواحدة.")
+            return
+        
+        # Create recharge cards
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        created_cards = []
+        for i in range(quantity):
+            card_code = generate_card_code()
+            serial_number = generate_serial_number()
+            
+            cursor.execute('''
+                INSERT INTO recharge_cards 
+                (code, serial_number, value, price, network_name, status, created_by, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (card_code, serial_number, card_value, price, network_name, 'available', 
+                  user['id'], datetime.now()))
+            
+            created_cards.append({
+                'code': card_code,
+                'serial': serial_number,
+                'value': card_value,
+                'price': price
+            })
+        
+        conn.commit()
+        conn.close()
+        
+        # Clear user state
+        context.user_data.pop('awaiting_card_issue', None)
+        
+        # Send confirmation
+        success_text = f"""
+✅ **تم إصدار البطاقات بنجاح!** 
+
+📊 **تفاصيل الإصدار:**
+🎫 عدد البطاقات: **{quantity}** بطاقة
+💰 قيمة البطاقة: **{card_value}** ريال
+💵 سعر البيع: **{price}** ريال
+🌐 الشبكة: **{network_name}**
+
+📈 **الإحصائيات:**
+💰 إجمالي القيمة: **{card_value * quantity:,.0f}** ريال
+💵 إجمالي المبيعات المتوقعة: **{price * quantity:,.0f}** ريال
+📊 الربح المتوقع: **{(price - card_value) * quantity:,.0f}** ريال
+
+{EMOJIS['success']} البطاقات متاحة الآن للعملاء في متجر البطاقات
+"""
+        
+        await update.message.reply_text(success_text, parse_mode='Markdown')
+        
+        # Log the action
+        logger.info(f"Super admin {user['full_name']} issued {quantity} recharge cards of {card_value} YER each")
+        
+    except Exception as e:
+        logger.error(f"Error in process recharge cards issue: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في إصدار البطاقات.")
+
+async def print_balance_handler(update: Update, context: CallbackContext):
+    """Print super admin wallet balance"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # Get detailed balance information
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get latest transactions
+        cursor.execute('''
+            SELECT type, amount, description, created_at 
+            FROM transactions 
+            WHERE from_user = ? OR to_user = ?
+            ORDER BY created_at DESC 
+            LIMIT 10
+        ''', (user['id'], user['id']))
+        
+        recent_transactions = cursor.fetchall()
+        
+        # Get commission earnings
+        cursor.execute('''
+            SELECT SUM(amount) as total_commissions 
+            FROM transactions 
+            WHERE to_user = ? AND type = 'commission'
+        ''', (user['id'],))
+        
+        total_commissions = cursor.fetchone()['total_commissions'] or 0
+        
+        # Get total issued balance
+        cursor.execute('''
+            SELECT SUM(amount) as total_issued 
+            FROM transactions 
+            WHERE type = 'admin_issue'
+        ''', ())
+        
+        total_issued = cursor.fetchone()['total_issued'] or 0
+        
+        conn.close()
+        
+        # Format transactions
+        transactions_text = ""
+        for trans in recent_transactions[:5]:
+            date_str = trans['created_at'][:10]
+            trans_type = "➕" if trans['type'] in ['admin_issue', 'commission', 'deposit'] else "➖"
+            transactions_text += f"{trans_type} {trans['amount']:.0f} ريال - {trans['description'][:30]}... ({date_str})\n"
+        
+        balance_text = f"""
+💰 **محفظة المشرف الأعلى** 💰
+
+{EMOJIS['admin']} **{user['full_name']}**
+🆔 رقم المحفظة: **{user.get('wallet_number', 'غير محدد')}**
+
+💵 **الرصيد الحالي:** **{user['balance']:,.2f}** ريال
+
+📊 **إحصائيات مالية:**
+🎯 إجمالي العمولات: **{total_commissions:,.2f}** ريال
+💳 إجمالي الأرصدة المصدرة: **{total_issued:,.2f}** ريال
+📈 نسبة العمولة: **{CARD_COMMISSION_RATE * 100:.1f}%**
+
+📋 **آخر المعاملات:**
+{transactions_text or "لا توجد معاملات حديثة"}
+
+🕐 **تاريخ الطباعة:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+"""
+        
+        await query.edit_message_text(balance_text, parse_mode='Markdown')
+        
+        # Log the action
+        logger.info(f"Super admin {user['full_name']} printed balance: {user['balance']}")
+        
+    except Exception as e:
+        logger.error(f"Error in print balance handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في طباعة الرصيد.")
+
+async def broadcast_message_handler(update: Update, context: CallbackContext):
+    """Handle broadcast message for super admin"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        text = f"""
+📢 **إرسال رسالة جماعية** 📢
+
+{EMOJIS['admin']} مرحباً **{user['full_name']}**
+
+📋 **تعليمات الإرسال:**
+✍️ اكتب الرسالة التي تريد إرسالها لجميع مستخدمي البوت
+
+⚠️ **ملاحظات مهمة:**
+• سيتم إرسال الرسالة لجميع المستخدمين النشطين
+• تأكد من صحة المحتوى قبل الإرسال
+• يمكن استخدام نصوص تنسيق Markdown
+
+💡 **نصائح:**
+• استخدم رسائل قصيرة وواضحة
+• تجنب الرسائل الإعلانية المفرطة
+• أضف معلومات مفيدة للمستخدمين
+
+📝 اكتب رسالتك الآن:
+
+أو اكتب /cancel للإلغاء
+"""
+        
+        await query.edit_message_text(text, parse_mode='Markdown')
+        context.user_data['awaiting_broadcast'] = True
+        
+    except Exception as e:
+        logger.error(f"Error in broadcast message handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في بدء الإرسال الجماعي.")
+
+async def process_broadcast_message(update: Update, context: CallbackContext):
+    """Process broadcast message from super admin"""
+    try:
+        if not context.user_data.get('awaiting_broadcast'):
+            return
+        
+        user = get_user(update.effective_user.id)
+        if not user or user['role'] != 'super_admin':
+            await update.message.reply_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        message_text = update.message.text.strip()
+        
+        if len(message_text) < 10:
+            await update.message.reply_text(f"{EMOJIS['error']} الرسالة قصيرة جداً. اكتب رسالة أطول من 10 أحرف.")
+            return
+        
+        if len(message_text) > 2000:
+            await update.message.reply_text(f"{EMOJIS['error']} الرسالة طويلة جداً. أقصى حد 2000 حرف.")
+            return
+        
+        # Get all active users
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT telegram_id, full_name FROM users WHERE is_active = 1')
+        active_users = cursor.fetchall()
+        conn.close()
+        
+        # Prepare broadcast message
+        broadcast_text = f"""
+📢 **رسالة من إدارة البوت** 📢
+
+{message_text}
+
+───────────────────
+👑 إدارة {context.bot.first_name}
+🕐 {datetime.now().strftime('%Y-%m-%d %H:%M')}
+"""
+        
+        # Send to all users
+        sent_count = 0
+        failed_count = 0
+        
+        await update.message.reply_text(f"{EMOJIS['loading']} جاري إرسال الرسالة لـ {len(active_users)} مستخدم...")
+        
+        for target_user in active_users:
+            try:
+                await context.bot.send_message(
+                    chat_id=target_user['telegram_id'],
+                    text=broadcast_text,
+                    parse_mode='Markdown'
+                )
+                sent_count += 1
+            except Exception as e:
+                failed_count += 1
+                logger.warning(f"Failed to send broadcast to user {target_user['telegram_id']}: {e}")
+        
+        # Clear user state
+        context.user_data.pop('awaiting_broadcast', None)
+        
+        # Send summary
+        summary_text = f"""
+✅ **تم الإرسال الجماعي!**
+
+📊 **إحصائيات الإرسال:**
+✅ تم الإرسال: **{sent_count}** مستخدم
+❌ فشل الإرسال: **{failed_count}** مستخدم
+📱 إجمالي المستهدفين: **{len(active_users)}** مستخدم
+
+💬 **محتوى الرسالة:**
+{message_text[:100]}{'...' if len(message_text) > 100 else ''}
+
+🕐 **وقت الإرسال:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+"""
+        
+        await update.message.reply_text(summary_text, parse_mode='Markdown')
+        
+        # Log the action
+        logger.info(f"Super admin {user['full_name']} sent broadcast message to {sent_count} users")
+        
+    except Exception as e:
+        logger.error(f"Error in process broadcast message: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في الإرسال الجماعي.")
+
+async def update_commands_handler(update: Update, context: CallbackContext):
+    """Update bot sidebar commands"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # Update bot commands
+        await context.bot.set_my_commands(QUICK_COMMANDS)
+        
+        success_text = f"""
+✅ **تم تحديث أوامر البوت!**
+
+🔄 **الأوامر المحدثة:**
+"""
+        for cmd in QUICK_COMMANDS[:10]:  # Show first 10 commands
+            success_text += f"/{cmd.command} - {cmd.description}\n"
+        
+        success_text += f"\n📝 إجمالي الأوامر: **{len(QUICK_COMMANDS)}** أمر"
+        
+        await query.edit_message_text(success_text, parse_mode='Markdown')
+        
+        # Log the action
+        logger.info(f"Super admin {user['full_name']} updated bot commands")
+        
+    except Exception as e:
+        logger.error(f"Error in update commands handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحديث الأوامر.")
+
+def generate_card_code():
+    """Generate unique recharge card code"""
+    import random
+    import string
+    
+    # Generate format: XXXX-XXXX-XXXX
+    parts = []
+    for _ in range(3):
+        part = ''.join(random.choices(string.digits + string.ascii_uppercase, k=4))
+        parts.append(part)
+    
+    return '-'.join(parts)
+
+def generate_serial_number():
+    """Generate unique serial number"""
+    import random
+    
+    # Generate 16-digit serial number
+    return ''.join([str(random.randint(0, 9)) for _ in range(16)])
+
+# Missing Admin Functions Implementation
+
+async def system_settings_handler(update: Update, context: CallbackContext):
+    """Handle system settings management"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        text = f"""
+⚙️ **إدارة إعدادات النظام** ⚙️
+
+{EMOJIS['admin']} مرحباً **{user['full_name']}**
+
+📊 **الإعدادات الحالية:**
+💳 نسبة عمولة البطاقات: **{CARD_COMMISSION_RATE * 100:.1f}%**
+👥 نسبة عمولة الوكلاء: **{AGENT_COMMISSION_RATE * 100:.1f}%**
+🗄️ مسار قاعدة البيانات: `{DB_PATH}`
+
+🔧 **الخيارات المتاحة:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('💳 تعديل عمولة البطاقات', callback_data='system_edit_card_commission'),
+             InlineKeyboardButton('👥 تعديل عمولة الوكلاء', callback_data='system_edit_agent_commission')],
+            [InlineKeyboardButton('🔄 إعادة تحميل الإعدادات', callback_data='system_reload_config'),
+             InlineKeyboardButton('📊 عرض إحصائيات النظام', callback_data='system_stats')],
+            [InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in system settings handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إدارة إعدادات النظام.")
+
+async def dashboard_handler(update: Update, context: CallbackContext):
+    """Handle dashboard view"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # Get comprehensive dashboard statistics
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Users statistics
+        cursor.execute('SELECT COUNT(*) as total_users FROM users')
+        total_users = cursor.fetchone()['total_users']
+        
+        cursor.execute('SELECT COUNT(*) as active_users FROM users WHERE is_active = 1')
+        active_users = cursor.fetchone()['active_users']
+        
+        cursor.execute('SELECT COUNT(*) as customers FROM users WHERE role = "customer"')
+        customers = cursor.fetchone()['customers']
+        
+        cursor.execute('SELECT COUNT(*) as agents FROM users WHERE role = "agent"')
+        agents = cursor.fetchone()['agents']
+        
+        cursor.execute('SELECT COUNT(*) as suppliers FROM users WHERE role = "supplier"')
+        suppliers = cursor.fetchone()['suppliers']
+        
+        # Financial statistics
+        cursor.execute('SELECT SUM(balance) as total_balance FROM users')
+        total_balance = cursor.fetchone()['total_balance'] or 0
+        
+        cursor.execute('SELECT COUNT(*) as total_transactions FROM transactions')
+        total_transactions = cursor.fetchone()['total_transactions']
+        
+        cursor.execute('SELECT SUM(amount) as total_volume FROM transactions WHERE type IN ("purchase", "transfer")')
+        total_volume = cursor.fetchone()['total_volume'] or 0
+        
+        cursor.execute('SELECT SUM(amount) as total_commissions FROM transactions WHERE type = "commission"')
+        total_commissions = cursor.fetchone()['total_commissions'] or 0
+        
+        # Networks and cards statistics
+        cursor.execute('SELECT COUNT(*) as total_networks FROM networks WHERE is_active = 1')
+        total_networks = cursor.fetchone()['total_networks']
+        
+        cursor.execute('SELECT COUNT(*) as total_cards FROM cards WHERE is_used = 0')
+        available_cards = cursor.fetchone()['total_cards']
+        
+        cursor.execute('SELECT COUNT(*) as sold_cards FROM cards WHERE is_used = 1')
+        sold_cards = cursor.fetchone()['sold_cards']
+        
+        # Recharge cards statistics
+        cursor.execute('SELECT COUNT(*) as available_recharge_cards FROM recharge_cards WHERE status = "available"')
+        available_recharge_cards = cursor.fetchone()['available_recharge_cards']
+        
+        cursor.execute('SELECT COUNT(*) as sold_recharge_cards FROM recharge_cards WHERE status = "sold"')
+        sold_recharge_cards = cursor.fetchone()['sold_recharge_cards']
+        
+        # Recent activity
+        cursor.execute('''
+            SELECT COUNT(*) as recent_transactions 
+            FROM transactions 
+            WHERE created_at >= datetime('now', '-24 hours')
+        ''')
+        recent_transactions = cursor.fetchone()['recent_transactions']
+        
+        cursor.execute('''
+            SELECT COUNT(*) as new_users_today 
+            FROM users 
+            WHERE created_at >= datetime('now', '-24 hours')
+        ''')
+        new_users_today = cursor.fetchone()['new_users_today']
+        
+        conn.close()
+        
+        # Calculate percentages
+        active_percentage = (active_users / total_users * 100) if total_users > 0 else 0
+        
+        dashboard_text = f"""
+📈 **لوحة المعلومات الشاملة** 📈
+
+{EMOJIS['admin']} **{user['full_name']}**
+🕐 آخر تحديث: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+👥 **إحصائيات المستخدمين:**
+📊 إجمالي المستخدمين: **{total_users:,}**
+✅ النشطين: **{active_users:,}** ({active_percentage:.1f}%)
+🛒 العملاء: **{customers:,}**
+👥 الوكلاء: **{agents:,}**
+🏪 المزودين: **{suppliers:,}**
+
+💰 **الإحصائيات المالية:**
+💵 إجمالي الأرصدة: **{total_balance:,.2f}** ريال
+💸 إجمالي المعاملات: **{total_transactions:,}**
+📈 حجم التداول: **{total_volume:,.2f}** ريال
+🎯 إجمالي العمولات: **{total_commissions:,.2f}** ريال
+
+🌐 **الشبكات والبطاقات:**
+📡 الشبكات النشطة: **{total_networks:,}**
+🎫 البطاقات المتاحة: **{available_cards:,}**
+✅ البطاقات المباعة: **{sold_cards:,}**
+
+🎫 **بطاقات الشحن المُصدرة:**
+📦 متاحة: **{available_recharge_cards:,}**
+💰 مباعة: **{sold_recharge_cards:,}**
+
+⚡ **النشاط الحديث (آخر 24 ساعة):**
+💸 معاملات جديدة: **{recent_transactions:,}**
+👤 مستخدمين جدد: **{new_users_today:,}**
+
+───────────────────
+💡 استخدم الأزرار أدناه للمزيد من التفاصيل
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('👥 تفاصيل المستخدمين', callback_data='dashboard_users'),
+             InlineKeyboardButton('💰 التقارير المالية', callback_data='dashboard_financial')],
+            [InlineKeyboardButton('📊 إحصائيات مفصلة', callback_data='dashboard_detailed'),
+             InlineKeyboardButton('🔄 تحديث البيانات', callback_data='super_dashboard')],
+            [InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(dashboard_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+        # Log the action
+        logger.info(f"Super admin {user['full_name']} viewed dashboard")
+        
+    except Exception as e:
+        logger.error(f"Error in dashboard handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض لوحة المعلومات.")
+
+async def manage_admins_handler(update: Update, context: CallbackContext):
+    """Handle admin management"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # Get admin statistics
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT COUNT(*) as total_admins FROM users WHERE role IN ("admin", "super_admin")')
+        total_admins = cursor.fetchone()['total_admins']
+        
+        cursor.execute('SELECT COUNT(*) as active_admins FROM users WHERE role IN ("admin", "super_admin") AND is_active = 1')
+        active_admins = cursor.fetchone()['active_admins']
+        
+        cursor.execute('SELECT COUNT(*) as super_admins FROM users WHERE role = "super_admin"')
+        super_admins = cursor.fetchone()['super_admins']
+        
+        cursor.execute('SELECT COUNT(*) as regular_admins FROM users WHERE role = "admin"')
+        regular_admins = cursor.fetchone()['regular_admins']
+        
+        conn.close()
+        
+        text = f"""
+👑 **إدارة المشرفين** 👑
+
+{EMOJIS['admin']} مرحباً **{user['full_name']}**
+
+📊 **إحصائيات المشرفين:**
+👥 إجمالي المشرفين: **{total_admins}**
+✅ النشطين: **{active_admins}**
+👑 المشرفين الأعلى: **{super_admins}**
+🛡️ المشرفين العاديين: **{regular_admins}**
+
+🔧 **خيارات الإدارة:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('👥 عرض جميع المشرفين', callback_data='admin_list_all'),
+             InlineKeyboardButton('➕ إضافة مشرف جديد', callback_data='admin_add_new')],
+            [InlineKeyboardButton('🔍 البحث عن مشرف', callback_data='admin_search'),
+             InlineKeyboardButton('📊 تقارير المشرفين', callback_data='admin_reports')],
+            [InlineKeyboardButton('⚙️ صلاحيات المشرفين', callback_data='admin_permissions'),
+             InlineKeyboardButton('🚫 إدارة المحظورين', callback_data='admin_banned')],
+            [InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in manage admins handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إدارة المشرفين.")
+
+async def manage_users_handler(update: Update, context: CallbackContext):
+    """Handle user management"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # Get user statistics
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT COUNT(*) as total_users FROM users')
+        total_users = cursor.fetchone()['total_users']
+        
+        cursor.execute('SELECT COUNT(*) as active_users FROM users WHERE is_active = 1')
+        active_users = cursor.fetchone()['active_users']
+        
+        cursor.execute('SELECT COUNT(*) as customers FROM users WHERE role = "customer"')
+        customers = cursor.fetchone()['customers']
+        
+        cursor.execute('SELECT COUNT(*) as agents FROM users WHERE role = "agent"')
+        agents = cursor.fetchone()['agents']
+        
+        cursor.execute('SELECT COUNT(*) as suppliers FROM users WHERE role = "supplier"')
+        suppliers = cursor.fetchone()['suppliers']
+        
+        cursor.execute('''
+            SELECT COUNT(*) as new_users_today 
+            FROM users 
+            WHERE created_at >= datetime('now', '-24 hours')
+        ''')
+        new_users_today = cursor.fetchone()['new_users_today']
+        
+        cursor.execute('''
+            SELECT COUNT(*) as new_users_week 
+            FROM users 
+            WHERE created_at >= datetime('now', '-7 days')
+        ''')
+        new_users_week = cursor.fetchone()['new_users_week']
+        
+        conn.close()
+        
+        text = f"""
+👥 **إدارة المستخدمين** 👥
+
+{EMOJIS['admin']} مرحباً **{user['full_name']}**
+
+📊 **إحصائيات المستخدمين:**
+👤 إجمالي المستخدمين: **{total_users:,}**
+✅ النشطين: **{active_users:,}**
+🛒 العملاء: **{customers:,}**
+👥 الوكلاء: **{agents:,}**
+🏪 المزودين: **{suppliers:,}**
+
+📈 **النمو:**
+🆕 جدد اليوم: **{new_users_today:,}**
+📅 جدد هذا الأسبوع: **{new_users_week:,}**
+
+🔧 **خيارات الإدارة:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('👥 عرض جميع المستخدمين', callback_data='users_list_all'),
+             InlineKeyboardButton('🔍 البحث عن مستخدم', callback_data='users_search')],
+            [InlineKeyboardButton('📊 تقارير المستخدمين', callback_data='users_reports'),
+             InlineKeyboardButton('💰 إدارة الأرصدة', callback_data='users_balance_mgmt')],
+            [InlineKeyboardButton('🚫 المستخدمين المحظورين', callback_data='users_banned'),
+             InlineKeyboardButton('⭐ أفضل المستخدمين', callback_data='users_top')],
+            [InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in manage users handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إدارة المستخدمين.")
+
+async def backup_handler(update: Update, context: CallbackContext):
+    """Handle backup operations"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        text = f"""
+💾 **النسخ الاحتياطي** 💾
+
+{EMOJIS['admin']} مرحباً **{user['full_name']}**
+
+📋 **خيارات النسخ الاحتياطي:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('💾 إنشاء نسخة احتياطية كاملة', callback_data='backup_full'),
+             InlineKeyboardButton('📊 نسخة احتياطية للبيانات فقط', callback_data='backup_data_only')],
+            [InlineKeyboardButton('📥 استعادة من نسخة احتياطية', callback_data='backup_restore'),
+             InlineKeyboardButton('📋 عرض النسخ المتاحة', callback_data='backup_list')],
+            [InlineKeyboardButton('🕐 جدولة النسخ التلقائي', callback_data='backup_schedule'),
+             InlineKeyboardButton('⚙️ إعدادات النسخ', callback_data='backup_settings')],
+            [InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in backup handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إدارة النسخ الاحتياطي.")
+
+# Placeholder functions for features that need detailed implementation
+async def platform_management_handler(update, context):
+    """Handle platform management"""
+    query = update.callback_query
+    await query.answer()
+    
+    text = f"""
+🏛️ **إدارة المنصة** 🏛️
+
+هذه الميزة قيد التطوير وستكون متاحة قريباً.
+
+🔧 **الميزات المخططة:**
+• إدارة إعدادات المنصة
+• تحكم في الوصول والصلاحيات
+• إدارة الخدمات والمكونات
+• مراقبة الأداء والاستقرار
+
+🏠 العودة للوحة الإدارة
+"""
+    
+    keyboard = [[InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+async def commission_settings_handler(update, context):
+    """Handle commission settings"""
+    query = update.callback_query
+    await query.answer()
+    
+    text = f"""
+💳 **إعدادات العمولات** 💳
+
+العمولة الحالية للبطاقات: **{CARD_COMMISSION_RATE * 100:.1f}%**
+العمولة الحالية للوكلاء: **{AGENT_COMMISSION_RATE * 100:.1f}%**
+
+هذه الميزة قيد التطوير للتحكم الكامل في العمولات.
+
+🏠 العودة للوحة الإدارة
+"""
+    
+    keyboard = [[InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+async def executive_reports_handler(update, context):
+    """Handle executive reports"""
+    query = update.callback_query
+    await query.answer()
+    
+    text = f"""
+📊 **التقارير التنفيذية** 📊
+
+هذه الميزة قيد التطوير وستتضمن:
+
+📈 **التقارير المالية المفصلة**
+📊 **تحليلات الأداء**
+📉 **إحصائيات المبيعات**
+📋 **تقارير المستخدمين**
+
+🏠 العودة للوحة الإدارة
+"""
+    
+    keyboard = [[InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+async def security_monitoring_handler(update, context):
+    """Handle security monitoring"""
+    query = update.callback_query
+    await query.answer()
+    
+    text = f"""
+🚨 **مراقبة الأمان** 🚨
+
+هذه الميزة قيد التطوير وستتضمن:
+
+🔒 **مراقبة تسجيلات الدخول المشبوهة**
+🛡️ **كشف المحاولات الاحتيالية**
+⚠️ **تنبيهات الأمان**
+📋 **سجلات الأنشطة الحساسة**
+
+🏠 العودة للوحة الإدارة
+"""
+    
+    keyboard = [[InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
 # Export functions for callback routing
 ADMIN_CALLBACKS = {
     'super_admin_panel': lambda u, c: show_super_admin_panel(u, c, get_user(u.effective_user.id)),
@@ -620,4 +1454,9 @@ ADMIN_CALLBACKS = {
     'super_dashboard': dashboard_handler,
     'super_view_all_suppliers': view_all_suppliers_handler,
     'view_supplier_details': view_supplier_details_handler,
+    # New enhanced features
+    'super_issue_recharge_cards': issue_recharge_cards_handler,
+    'super_print_balance': print_balance_handler,
+    'super_broadcast_message': broadcast_message_handler,
+    'super_update_commands': update_commands_handler,
 }

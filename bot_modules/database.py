@@ -142,6 +142,26 @@ def init_db():
             )
         ''')
 
+        # Recharge cards table for super admin issued cards
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS recharge_cards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT UNIQUE NOT NULL,
+                serial_number TEXT UNIQUE NOT NULL,
+                value REAL NOT NULL,
+                price REAL NOT NULL,
+                network_name TEXT NOT NULL,
+                status TEXT DEFAULT 'available',
+                created_by INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                purchased_by INTEGER,
+                purchased_at TIMESTAMP,
+                used_at TIMESTAMP,
+                FOREIGN KEY(created_by) REFERENCES users(id),
+                FOREIGN KEY(purchased_by) REFERENCES users(id)
+            )
+        ''')
+
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS product_inventory (
                 id TEXT PRIMARY KEY,

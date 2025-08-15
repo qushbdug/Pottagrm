@@ -38,6 +38,8 @@ QUICK_COMMANDS = [
     BotCommand('promotions', '🎁 العروض والخصومات'),
     BotCommand('settings', '⚙️ إعدادات الحساب'),
     BotCommand('invite', '👥 دعوة الأصدقاء'),
+    BotCommand('wifi_search', '🔍 البحث عن شبكة واي فاي'),
+    BotCommand('send_balance', '💸 إرسال رصيد لصديق'),
     BotCommand('admin', '👑 لوحة الإدارة'),
     BotCommand('help', '❓ المساعدة والدعم'),
     BotCommand('cancel', '❌ إلغاء العملية الحالية'),

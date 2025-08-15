@@ -482,6 +482,24 @@ async def handle_text_message(update: Update, context: CallbackContext):
             from bot_modules.admin_functions import process_balance_issue
             return await process_balance_issue(update, context)
         
+        # Check if waiting for recharge cards issue
+        if context.user_data.get('awaiting_card_issue'):
+            from bot_modules.admin_functions import process_recharge_cards_issue
+            return await process_recharge_cards_issue(update, context)
+        
+        # Check if waiting for broadcast message
+        if context.user_data.get('awaiting_broadcast'):
+            from bot_modules.admin_functions import process_broadcast_message
+            return await process_broadcast_message(update, context)
+        
+        # Check if waiting for WiFi search
+        if context.user_data.get('awaiting_wifi_search'):
+            return await process_wifi_search(update, context)
+        
+        # Check if waiting for balance send
+        if context.user_data.get('awaiting_balance_send'):
+            return await process_balance_send(update, context)
+        
         # Regular message handling
         user = get_user(update.effective_user.id)
         if not user:
@@ -497,12 +515,369 @@ async def handle_text_message(update: Update, context: CallbackContext):
         logger.error(f"Error in handle text message: {e}")
         await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في معالجة الرسالة.")
 
+# Enhanced User Features
+
+async def wifi_search_handler(update: Update, context: CallbackContext):
+    """Handle WiFi network search by name or ID"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.message.reply_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
+            return
+        
+        text = f"""
+🔍 **البحث عن شبكة واي فاي** 🔍
+
+{EMOJIS['user']} مرحباً **{user['full_name']}**
+
+📋 **طرق البحث:**
+1️⃣ البحث بالاسم: اكتب اسم الشبكة
+2️⃣ البحث بالرقم: اكتب رقم المعرف
+3️⃣ البحث بالمدينة: اكتب اسم المدينة
+
+💡 **أمثلة:**
+• `يمن نت`
+• `NET123`
+• `صنعاء`
+
+📝 اكتب كلمة البحث:
+
+أو اكتب /cancel للإلغاء
+"""
+        
+        await update.message.reply_text(text, parse_mode='Markdown')
+        context.user_data['awaiting_wifi_search'] = True
+        
+    except Exception as e:
+        logger.error(f"Error in WiFi search handler: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في بدء البحث.")
+
+async def process_wifi_search(update: Update, context: CallbackContext):
+    """Process WiFi search query"""
+    try:
+        if not context.user_data.get('awaiting_wifi_search'):
+            return
+        
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.message.reply_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
+            return
+        
+        search_term = update.message.text.strip()
+        
+        if len(search_term) < 2:
+            await update.message.reply_text(f"{EMOJIS['error']} كلمة البحث قصيرة جداً. أدخل على الأقل حرفين.")
+            return
+        
+        # Search in networks
+        from bot_modules.database import get_db_connection
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Search by name, code, or city
+        cursor.execute('''
+            SELECT n.*, u.full_name as supplier_name 
+            FROM networks n
+            JOIN users u ON n.supplier_id = u.id
+            WHERE (n.name LIKE ? OR n.network_code LIKE ? OR n.city LIKE ?)
+            AND n.is_active = 1 AND n.is_approved = 1
+            ORDER BY n.name
+            LIMIT 20
+        ''', (f'%{search_term}%', f'%{search_term}%', f'%{search_term}%'))
+        
+        networks = cursor.fetchall()
+        
+        # Get card categories for each network
+        results = []
+        for network in networks:
+            cursor.execute('''
+                SELECT COUNT(*) as categories_count, MIN(price) as min_price, MAX(price) as max_price
+                FROM card_categories 
+                WHERE network_id = ? AND is_available = 1
+            ''', (network['id'],))
+            
+            category_info = cursor.fetchone()
+            
+            results.append({
+                'network': network,
+                'categories_count': category_info['categories_count'],
+                'min_price': category_info['min_price'],
+                'max_price': category_info['max_price']
+            })
+        
+        conn.close()
+        
+        # Clear user state
+        context.user_data.pop('awaiting_wifi_search', None)
+        
+        if not results:
+            await update.message.reply_text(f"""
+{EMOJIS['error']} **لم يتم العثور على نتائج**
+
+🔍 **كلمة البحث:** `{search_term}`
+
+💡 **اقتراحات:**
+• تأكد من صحة الإملاء
+• جرب كلمات أخرى
+• ابحث باسم المدينة
+• استخدم /wifi_search للبحث مرة أخرى
+""", parse_mode='Markdown')
+            return
+        
+        # Format results
+        results_text = f"""
+🔍 **نتائج البحث عن: {search_term}**
+
+📊 **تم العثور على {len(results)} شبكة**
+
+"""
+        
+        for i, result in enumerate(results[:10], 1):
+            network = result['network']
+            min_price = result['min_price'] or 0
+            max_price = result['max_price'] or 0
+            
+            price_range = f"{min_price:.0f}" if min_price == max_price else f"{min_price:.0f} - {max_price:.0f}"
+            
+            results_text += f"""
+**{i}. {network['name']}**
+🆔 الكود: `{network['network_code']}`
+🌍 المدينة: {network['city']}
+👤 المزود: {result['network']['supplier_name']}
+🎫 الفئات: {result['categories_count']} فئة
+💰 الأسعار: {price_range} ريال
+
+"""
+        
+        if len(results) > 10:
+            results_text += f"\n... و {len(results) - 10} شبكة أخرى"
+        
+        results_text += f"""
+───────────────────
+💡 لشراء البطاقات استخدم /buy
+🔍 للبحث مرة أخرى استخدم /wifi_search
+"""
+        
+        await update.message.reply_text(results_text, parse_mode='Markdown')
+        
+        # Log the search
+        logger.info(f"User {user['full_name']} searched for WiFi: {search_term} - Found {len(results)} results")
+        
+    except Exception as e:
+        logger.error(f"Error in process WiFi search: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في البحث.")
+
+async def send_balance_handler(update: Update, context: CallbackContext):
+    """Handle sending balance to another user"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.message.reply_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
+            return
+        
+        if user['balance'] <= 0:
+            await update.message.reply_text(f"{EMOJIS['error']} رصيدك غير كافي. رصيدك الحالي: {user['balance']:.2f} ريال")
+            return
+        
+        text = f"""
+💸 **إرسال رصيد لمستخدم آخر** 💸
+
+{EMOJIS['user']} مرحباً **{user['full_name']}**
+💰 رصيدك الحالي: **{user['balance']:,.2f}** ريال
+
+📋 **تعليمات الإرسال:**
+1️⃣ أدخل رقم المحفظة للمستخدم المستهدف (9 أرقام تبدأ بـ 79)
+2️⃣ أدخل المبلغ المراد إرساله
+3️⃣ أدخل سبب التحويل (اختياري)
+
+💡 **مثال:**
+`791234567 100 هدية عيد ميلاد`
+
+⚠️ **ملاحظات مهمة:**
+• تأكد من صحة رقم المحفظة
+• المبلغ لا يمكن استرداده بعد الإرسال
+• سيتم خصم 1% رسوم تحويل
+
+📝 أدخل البيانات بالتنسيق التالي:
+`رقم_المحفظة المبلغ السبب`
+
+أو اكتب /cancel للإلغاء
+"""
+        
+        await update.message.reply_text(text, parse_mode='Markdown')
+        context.user_data['awaiting_balance_send'] = True
+        
+    except Exception as e:
+        logger.error(f"Error in send balance handler: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في بدء إرسال الرصيد.")
+
+async def process_balance_send(update: Update, context: CallbackContext):
+    """Process balance sending to another user"""
+    try:
+        if not context.user_data.get('awaiting_balance_send'):
+            return
+        
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.message.reply_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
+            return
+        
+        # Parse input
+        parts = update.message.text.strip().split()
+        if len(parts) < 2:
+            await update.message.reply_text(f"{EMOJIS['error']} تنسيق غير صحيح. أدخل: رقم_المحفظة المبلغ السبب")
+            return
+        
+        target_wallet = parts[0]
+        try:
+            amount = float(parts[1])
+        except ValueError:
+            await update.message.reply_text(f"{EMOJIS['error']} المبلغ يجب أن يكون رقماً صحيحاً.")
+            return
+        
+        reason = ' '.join(parts[2:]) if len(parts) > 2 else 'تحويل رصيد من صديق'
+        
+        # Validate amount
+        if amount <= 0:
+            await update.message.reply_text(f"{EMOJIS['error']} المبلغ يجب أن يكون أكبر من صفر.")
+            return
+        
+        # Calculate transfer fee (1%)
+        transfer_fee = amount * 0.01
+        total_deduction = amount + transfer_fee
+        
+        if total_deduction > user['balance']:
+            await update.message.reply_text(f"""
+{EMOJIS['error']} **رصيدك غير كافي!**
+
+💰 المبلغ المطلوب: **{amount:.2f}** ريال
+💳 رسوم التحويل (1%): **{transfer_fee:.2f}** ريال
+📊 إجمالي الخصم: **{total_deduction:.2f}** ريال
+💵 رصيدك الحالي: **{user['balance']:.2f}** ريال
+❌ النقص: **{total_deduction - user['balance']:.2f}** ريال
+""", parse_mode='Markdown')
+            return
+        
+        # Find target user
+        from bot_modules.database import get_db_connection
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT * FROM users WHERE wallet_number = ?', (target_wallet,))
+        target_user = cursor.fetchone()
+        
+        if not target_user:
+            await update.message.reply_text(f"""
+{EMOJIS['error']} **لم يتم العثور على المستخدم!**
+
+🔍 رقم المحفظة: `{target_wallet}`
+
+💡 **تأكد من:**
+• صحة رقم المحفظة
+• أن الرقم يتكون من 9 أرقام
+• أن الرقم يبدأ بـ 79
+""", parse_mode='Markdown')
+            conn.close()
+            return
+        
+        if target_user['id'] == user['id']:
+            await update.message.reply_text(f"{EMOJIS['error']} لا يمكنك إرسال رصيد لنفسك!")
+            conn.close()
+            return
+        
+        # Create transactions
+        import uuid
+        from datetime import datetime
+        
+        # Transfer transaction
+        transfer_id = str(uuid.uuid4())
+        cursor.execute('''
+            INSERT INTO transactions 
+            (id, from_user, to_user, amount, type, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (transfer_id, user['id'], target_user['id'], amount, 'transfer', reason, datetime.now()))
+        
+        # Fee transaction
+        fee_id = str(uuid.uuid4())
+        cursor.execute('''
+            INSERT INTO transactions 
+            (id, from_user, amount, type, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (fee_id, user['id'], transfer_fee, 'transfer_fee', f'رسوم تحويل رصيد إلى {target_user["full_name"]}', datetime.now()))
+        
+        # Update balances
+        from bot_modules.utils import recalc_and_set_user_balance
+        sender_new_balance = recalc_and_set_user_balance(user['id'])
+        receiver_new_balance = recalc_and_set_user_balance(target_user['id'])
+        
+        conn.commit()
+        conn.close()
+        
+        # Clear user state
+        context.user_data.pop('awaiting_balance_send', None)
+        
+        # Send confirmation to sender
+        success_text = f"""
+✅ **تم إرسال الرصيد بنجاح!**
+
+📤 **تفاصيل التحويل:**
+👤 المستلم: **{target_user['full_name']}**
+💰 المبلغ المرسل: **{amount:.2f}** ريال
+💳 رسوم التحويل: **{transfer_fee:.2f}** ريال
+📊 إجمالي الخصم: **{total_deduction:.2f}** ريال
+
+💵 **الأرصدة:**
+🔻 رصيدك الجديد: **{sender_new_balance:.2f}** ريال
+🔺 رصيد المستلم: **{receiver_new_balance:.2f}** ريال
+
+💬 **السبب:** {reason}
+🕐 **وقت التحويل:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+📱 سيتم إشعار المستلم فوراً
+"""
+        
+        await update.message.reply_text(success_text, parse_mode='Markdown')
+        
+        # Send notification to receiver
+        try:
+            notification_text = f"""
+💰 **تم استلام رصيد جديد!** 💰
+
+📥 **تفاصيل الاستلام:**
+👤 المرسل: **{user['full_name']}**
+💰 المبلغ المستلم: **{amount:.2f}** ريال
+💵 رصيدك الجديد: **{receiver_new_balance:.2f}** ريال
+
+💬 **السبب:** {reason}
+🕐 **وقت التحويل:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+───────────────────
+💡 استخدم /wallet لعرض محفظتك
+"""
+            
+            await context.bot.send_message(
+                chat_id=target_user['telegram_id'],
+                text=notification_text,
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send notification to receiver {target_user['telegram_id']}: {e}")
+        
+        # Log the transfer
+        logger.info(f"User {user['full_name']} sent {amount} YER to {target_user['full_name']} (fee: {transfer_fee})")
+        
+    except Exception as e:
+        logger.error(f"Error in process balance send: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في إرسال الرصيد.")
+
 # Export main handlers for use in main bot file
 COMMAND_HANDLERS = {
     'start': start,
     'wallet': wallet_handler,
     'admin': admin_handler,
     'cancel': cancel,
+    'wifi_search': wifi_search_handler,
+    'send_balance': send_balance_handler,
 }
 
 from telegram.ext import MessageHandler, CallbackQueryHandler, filters
