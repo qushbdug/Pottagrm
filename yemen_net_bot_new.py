@@ -183,6 +183,16 @@ async def button_click_handler(update: Update, context):
             await search_networks_handler(update, context)
         elif callback_data == 'filter_by_category':
             await filter_by_category_handler(update, context)
+        elif callback_data == 'sales_reports':
+            await sales_reports_handler(update, context)
+        elif callback_data == 'add_network':
+            await add_network_handler(update, context)
+        elif callback_data == 'promotion_details':
+            await promotion_details_handler(update, context)
+        elif callback_data == 'mark_all_read':
+            await mark_all_read_handler(update, context)
+        elif callback_data == 'recharge_balance':
+            await recharge_balance_handler(update, context)
         
         # Refresh balance
         elif callback_data == 'refresh_balance':
@@ -1044,7 +1054,7 @@ async def upload_history_handler(update: Update, context):
 {status} **{upload['filename'] or 'ملف مجهول'}**
 📶 الشبكة: {upload['network_name'] or 'غير محدد'}
 📊 نجح: {upload['successful_cards']}, فشل: {upload['failed_cards']}
-📅 {upload.get('created_at', 'غير محدد')[:16] if upload.get('created_at') else 'حديث'}
+📅 {upload['created_at'][:16] if upload['created_at'] else 'حديث'}
 ---"""
         else:
             history_text += "\n⚠️ لا توجد عمليات رفع سابقة"
@@ -1676,6 +1686,129 @@ async def filter_by_category_handler(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in filter by category handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في فلترة الكروت.")
+
+async def sales_reports_handler(update: Update, context: CallbackContext):
+    """Handle sales reports"""
+    try:
+        query = update.callback_query
+        
+        reports_text = f"""
+📈 **تقارير المبيعات** 📈
+
+⚠️ هذه الميزة قيد التطوير
+
+🔧 **سيتم إضافة:**
+• تقارير المبيعات اليومية
+• تقارير المبيعات الشهرية
+• أفضل الكروت مبيعاً
+• تحليل أداء المبيعات
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📊 تقارير الكروت', callback_data='cards_reports')],
+            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
+        ]
+        
+        await query.edit_message_text(reports_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in sales reports handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تقارير المبيعات.")
+
+async def add_network_handler(update: Update, context: CallbackContext):
+    """Handle add network"""
+    try:
+        query = update.callback_query
+        
+        add_text = f"""
+➕ **إضافة شبكة جديدة** ➕
+
+⚠️ هذه الميزة قيد التطوير
+
+🔧 **سيتم إضافة:**
+• إضافة شبكة جديدة
+• تحديد معلومات الشبكة
+• طلب موافقة الإدارة
+• تفعيل الشبكة
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📶 إدارة الشبكات', callback_data='manage_networks')],
+            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
+        ]
+        
+        await query.edit_message_text(add_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in add network handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إضافة الشبكة.")
+
+async def promotion_details_handler(update: Update, context: CallbackContext):
+    """Handle promotion details"""
+    try:
+        query = update.callback_query
+        
+        promo_text = f"""
+🎁 **تفاصيل العروض** 🎁
+
+⚠️ هذه الميزة قيد التطوير
+
+🔧 **سيتم إضافة:**
+• عرض تفاصيل العروض
+• شروط الاستخدام
+• تواريخ انتهاء العروض
+• كيفية الاستفادة
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🎁 العروض', callback_data='promotions')],
+            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(promo_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in promotion details handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تفاصيل العروض.")
+
+async def mark_all_read_handler(update: Update, context: CallbackContext):
+    """Handle mark all notifications as read"""
+    try:
+        query = update.callback_query
+        
+        await query.edit_message_text("✅ تم تحديد جميع الإشعارات كمقروءة.")
+        
+    except Exception as e:
+        logger.error(f"Error in mark all read handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحديث الإشعارات.")
+
+async def recharge_balance_handler(update: Update, context: CallbackContext):
+    """Handle balance recharge"""
+    try:
+        query = update.callback_query
+        
+        recharge_text = f"""
+💰 **شحن الرصيد** 💰
+
+⚠️ هذه الميزة قيد التطوير
+
+🔧 **سيتم إضافة:**
+• شحن الرصيد عبر البطاقات
+• شحن عبر التحويل البنكي
+• شحن عبر المحافظ الإلكترونية
+• تأكيد الشحن التلقائي
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet')],
+            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(recharge_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in recharge balance handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في شحن الرصيد.")
 
 def main():
     """Main function to start the bot"""

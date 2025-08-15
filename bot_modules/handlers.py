@@ -44,7 +44,7 @@ async def wallet_handler(update: Update, context: CallbackContext):
 async def admin_handler(update: Update, context: CallbackContext):
     """Handle /admin command"""
     try:
-        from .admin_functions import admin_panel_handler
+        from bot_modules.admin_functions import admin_panel_handler
         return await admin_panel_handler(update, context)
     except Exception as e:
         logger.error(f"Error in admin handler: {e}")
@@ -444,7 +444,10 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
             for tx in recent_transactions[:5]:
                 tx_type = "➕" if tx['transaction_type'] == 'credit' else "➖"
                 description = tx['description'] or 'معاملة'
-                amount = tx['amount'] or 0.0
+                try:
+                    amount = float(tx['amount']) if tx['amount'] is not None else 0.0
+                except (ValueError, TypeError):
+                    amount = 0.0
                 wallet_text += f"\n{tx_type} {amount:.2f} ريال - {description[:30]}..."
         else:
             wallet_text += "\nلا توجد معاملات بعد"
