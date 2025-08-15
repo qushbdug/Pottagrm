@@ -444,7 +444,8 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
             for tx in recent_transactions[:5]:
                 tx_type = "➕" if tx['transaction_type'] == 'credit' else "➖"
                 description = tx['description'] or 'معاملة'
-                wallet_text += f"\n{tx_type} {tx['amount']:.2f} ريال - {description[:30]}..."
+                amount = tx['amount'] or 0.0
+                wallet_text += f"\n{tx_type} {amount:.2f} ريال - {description[:30]}..."
         else:
             wallet_text += "\nلا توجد معاملات بعد"
         

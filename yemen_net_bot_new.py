@@ -169,6 +169,14 @@ async def button_click_handler(update: Update, context):
             await cancel_upload(update, context)
         elif callback_data == 'confirm_upload':
             await confirm_upload(update, context)
+        elif callback_data == 'notification_settings':
+            await notification_settings_handler(update, context)
+        elif callback_data == 'choose_upload_method':
+            await choose_upload_method_handler(update, context)
+        elif callback_data == 'network_details':
+            await network_details_handler(update, context)
+        elif callback_data == 'privacy_settings':
+            await privacy_settings_handler(update, context)
         
         # Refresh balance
         elif callback_data == 'refresh_balance':
@@ -617,7 +625,7 @@ async def supplier_panel_handler(update: Update, context):
         sold_cards = cursor.fetchone()['count']
         
         # Recent uploads
-        cursor.execute('SELECT COUNT(*) as count FROM card_upload_batches WHERE supplier_id = ? AND created_at > datetime("now", "-7 days")', (user['id'],))
+        cursor.execute('SELECT COUNT(*) as count FROM card_upload_batches WHERE supplier_id = ?', (user['id'],))
         recent_uploads = cursor.fetchone()['count']
         
         conn.close()
@@ -858,7 +866,7 @@ async def manage_networks_handler(update: Update, context):
         # Get user's networks
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT * FROM networks WHERE supplier_id = ? ORDER BY created_at DESC', (user['id'],))
+        cursor.execute('SELECT * FROM networks WHERE supplier_id = ? ORDER BY id DESC', (user['id'],))
         networks = cursor.fetchall()
         conn.close()
         
@@ -878,7 +886,6 @@ async def manage_networks_handler(update: Update, context):
                 networks_text += f"""
 📶 **{network['name']}**
 🏙️ المدينة: {network['city']}
-🔢 الكود: {network['network_code']}
 📊 الحالة: {status}
 ✅ الاعتماد: {approval}
 ---"""
@@ -1005,7 +1012,7 @@ async def upload_history_handler(update: Update, context):
             FROM card_upload_batches cb
             LEFT JOIN networks n ON cb.network_id = n.id
             WHERE cb.supplier_id = ? 
-            ORDER BY cb.created_at DESC 
+            ORDER BY cb.id DESC 
             LIMIT 10
         ''', (user['id'],))
         
@@ -1029,7 +1036,7 @@ async def upload_history_handler(update: Update, context):
 {status} **{upload['filename'] or 'ملف مجهول'}**
 📶 الشبكة: {upload['network_name'] or 'غير محدد'}
 📊 نجح: {upload['successful_cards']}, فشل: {upload['failed_cards']}
-📅 {upload['created_at'][:16]}
+📅 {upload.get('created_at', 'غير محدد')[:16] if upload.get('created_at') else 'حديث'}
 ---"""
         else:
             history_text += "\n⚠️ لا توجد عمليات رفع سابقة"
@@ -1164,8 +1171,16 @@ async def handle_document(update: Update, context: CallbackContext):
         file_content = await file.download_as_bytearray()
         
         # Store file temporarily in context
+        try:
+            content = file_content.decode('utf-8') if file_name.endswith('.txt') else file_content
+        except UnicodeDecodeError:
+            try:
+                content = file_content.decode('utf-8-sig')  # Try with BOM
+            except UnicodeDecodeError:
+                content = file_content.decode('latin-1')  # Fallback encoding
+        
         context.user_data['upload_file'] = {
-            'content': file_content.decode('utf-8') if file_name.endswith('.txt') else file_content,
+            'content': content,
             'filename': file_name,
             'size': file_size
         }
@@ -1350,6 +1365,151 @@ async def confirm_upload(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error confirming upload: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في معالجة الرفع.")
+
+async def notification_settings_handler(update: Update, context: CallbackContext):
+    """Handle notification settings"""
+    try:
+        query = update.callback_query
+        
+        settings_text = f"""
+🔔 **إعدادات الإشعارات** 🔔
+
+⚠️ هذه الميزة قيد التطوير
+
+🔧 **سيتم إضافة:**
+• إعدادات الإشعارات العامة
+• إشعارات المبيعات
+• إشعارات الرصيد
+• إشعارات النظام
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(settings_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in notification settings handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إعدادات الإشعارات.")
+
+async def choose_upload_method_handler(update: Update, context: CallbackContext):
+    """Handle upload method selection"""
+    try:
+        query = update.callback_query
+        
+        method_text = f"""
+📁 **اختر طريقة رفع الكروت** 📁
+
+📋 **الطرق المتاحة:**
+
+1️⃣ **ملف نصي (.txt)**
+• كل رقم في سطر منفصل
+• يمكن إضافة القيمة: رقم,قيمة
+
+2️⃣ **ملف CSV (.csv)**
+• تنسيق: رقم_الكارت,القيمة
+• فصل بالفواصل
+
+3️⃣ **ملف Excel (.xlsx)**
+• عمود الأرقام في العمود الأول
+• القيم في العمود الثاني (اختياري)
+
+💡 **تعليمات:**
+قم برفع الملف مباشرة إلى المحادثة بعد هذه الرسالة
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📤 رفع الملف الآن', callback_data='upload_cards')],
+            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
+        ]
+        
+        await query.edit_message_text(method_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in choose upload method handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في اختيار طريقة الرفع.")
+
+async def network_details_handler(update: Update, context: CallbackContext):
+    """Handle network details view"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        # Get detailed network info
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT n.*, COUNT(nc.id) as card_count
+            FROM networks n
+            LEFT JOIN network_cards nc ON n.id = nc.network_id
+            WHERE n.supplier_id = ?
+            GROUP BY n.id
+        ''', (user['id'],))
+        networks = cursor.fetchall()
+        conn.close()
+        
+        details_text = f"""
+📊 **تفاصيل الشبكات المفصلة** 📊
+
+👤 **{user['full_name']}**
+📶 **إجمالي الشبكات: {len(networks)}**
+
+"""
+        
+        if networks:
+            for network in networks:
+                status = "✅ مفعلة" if network['is_active'] else "⏸️ متوقفة"
+                approval = "✅ معتمدة" if network['is_approved'] else "⏳ في انتظار الموافقة"
+                details_text += f"""
+🏷️ **{network['name']}**
+🏙️ المدينة: {network['city']}
+📊 الحالة: {status}
+✅ الاعتماد: {approval}
+💳 عدد الكروت: {network.get('card_count', 0)}
+🆔 معرف الشبكة: `{network['id'][:8]}...`
+---
+"""
+        else:
+            details_text += "\n⚠️ لا توجد شبكات مسجلة"
+        
+        keyboard = [
+            [InlineKeyboardButton('📶 إدارة الشبكات', callback_data='manage_networks')],
+            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
+        ]
+        
+        await query.edit_message_text(details_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in network details handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض تفاصيل الشبكات.")
+
+async def privacy_settings_handler(update: Update, context: CallbackContext):
+    """Handle privacy settings"""
+    try:
+        query = update.callback_query
+        
+        privacy_text = f"""
+🔒 **إعدادات الخصوصية** 🔒
+
+⚠️ هذه الميزة قيد التطوير
+
+🔧 **سيتم إضافة:**
+• إعدادات مشاركة البيانات
+• خصوصية المعاملات
+• إخفاء المعلومات الشخصية
+• إعدادات الأمان
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(privacy_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in privacy settings handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إعدادات الخصوصية.")
 
 def main():
     """Main function to start the bot"""
