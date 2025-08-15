@@ -305,13 +305,15 @@ async def show_main_menu(update: Update, context: CallbackContext, role: str) ->
         keyboard = create_main_keyboard(role)
         
         menu_text = f"""
-🌐 **بوت كروت الإنترنت** 🌐
+🚀 **بوت كروت الإنترنت اليمني المطور** 🚀
 
-👤 مرحباً **{user['full_name']}**
-💵 رصيدك: **{user['balance']:,.0f}** ريال
-💳 محفظتك: **{user['wallet_number']}**
+👤 أهلاً وسهلاً **{user['full_name']}**
+🏷️ النوع: **{USER_ROLES.get(role, role)}**
+💰 رصيدك: **{user['balance']:,.2f}** ريال
+💳 رقم محفظتك: **{user['wallet_number']}**
+⚡ الحالة: **{"✅ مفعل" if user['is_active'] else "⏳ في انتظار التفعيل"}**
 
-اختر ما تريد:
+🎯 **اختر العملية المطلوبة:**
 """
         
         if update.message:
@@ -333,18 +335,46 @@ async def show_main_menu(update: Update, context: CallbackContext, role: str) ->
 def create_main_keyboard(role: str):
     """Create main menu keyboard based on user role"""
     try:
+        # Core features for all users
         base_buttons = [
-            [InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet')],
+            [InlineKeyboardButton('💳 محفظتي المطورة', callback_data='enhanced_wallet')],
             [InlineKeyboardButton('🛒 شراء كروت', callback_data='buy_cards'),
-             InlineKeyboardButton('💸 إرسال رصيد', callback_data='transfer_to_friend')],
-            [InlineKeyboardButton('🔍 البحث', callback_data='search_networks')]
+             InlineKeyboardButton('💸 تحويل رصيد', callback_data='transfer_to_friend')],
+            [InlineKeyboardButton('🔍 البحث عن شبكات', callback_data='search_networks'),
+             InlineKeyboardButton('📊 تقاريري الشخصية', callback_data='personal_reports')],
+            [InlineKeyboardButton('🎁 العروض والخصومات', callback_data='promotions'),
+             InlineKeyboardButton('🔔 إشعاراتي', callback_data='my_notifications')],
+            [InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings'),
+             InlineKeyboardButton('⭐ تقييماتي', callback_data='my_ratings')]
         ]
         
-        # Add simple role-specific buttons
-        if role == 'supplier':
-            base_buttons.append([InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')])
+        # Role-specific features
+        if role == 'agent':
+            base_buttons.extend([
+                [InlineKeyboardButton('💼 لوحة الوكيل', callback_data='agent_panel'),
+                 InlineKeyboardButton('💰 عمولاتي', callback_data='my_commissions')]
+            ])
+        elif role == 'supplier':
+            base_buttons.extend([
+                [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel'),
+                 InlineKeyboardButton('📶 إدارة الشبكات', callback_data='manage_networks')],
+                [InlineKeyboardButton('📤 رفع كروت', callback_data='upload_cards'),
+                 InlineKeyboardButton('📈 تقارير المبيعات', callback_data='sales_reports')]
+            ])
         elif role in ['admin', 'super_admin']:
-            base_buttons.append([InlineKeyboardButton('👑 لوحة الإدارة', callback_data='admin_panel')])
+            base_buttons.extend([
+                [InlineKeyboardButton('👑 لوحة الإدارة', callback_data='admin_panel'),
+                 InlineKeyboardButton('📊 التقارير التنفيذية', callback_data='executive_reports')]
+            ])
+            
+            if role == 'super_admin':
+                base_buttons.append([
+                    InlineKeyboardButton('💰 إدارة الأرصدة', callback_data='admin_wallet'),
+                    InlineKeyboardButton('✅ تفعيل مزودين', callback_data='super_activate_suppliers')
+                ])
+        
+        # Add help and support
+        base_buttons.append([InlineKeyboardButton('❓ المساعدة والدعم', callback_data='help')])
         
         return base_buttons
     except Exception as e:
@@ -400,17 +430,28 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
         total_debits = summary['total_debits'] or 0.0
         total_transactions = summary['total_transactions'] or 0
         
+        # Calculate wallet analytics
+        available_balance = user['balance']
+        total_spent = total_debits
+        savings_rate = ((total_credits - total_debits) / max(total_credits, 1)) * 100 if total_credits > 0 else 0
+        
         wallet_text = f"""
 💳 **محفظتي المطورة** 💳
 
 👤 **{user['full_name']}**
-💰 **الرصيد الحالي:** {user['balance']:.2f} ريال
-🆔 **رقم المحفظة:** {user['wallet_number']}
+🏷️ نوع الحساب: **{USER_ROLES.get(user.get('role', 'customer'), 'عميل')}**
+⚡ حالة الحساب: **{"✅ مفعل" if user['is_active'] else "⏳ في انتظار التفعيل"}**
 
-📊 **ملخص المعاملات:**
-📈 إجمالي الإيداعات: **{total_credits:.2f}** ريال
-📉 إجمالي المصروفات: **{total_debits:.2f}** ريال
-🔢 عدد المعاملات: **{total_transactions}**
+💰 **الرصيد والإحصائيات:**
+💵 الرصيد المتاح: **{available_balance:,.2f}** ريال
+🆔 رقم المحفظة: **{user['wallet_number']}**
+📊 معدل الادخار: **{savings_rate:.1f}%**
+
+📈 **ملخص المعاملات:**
+🔺 إجمالي الإيداعات: **{total_credits:,.2f}** ريال
+🔻 إجمالي المصروفات: **{total_debits:,.2f}** ريال
+🔢 عدد المعاملات: **{total_transactions:,}** معاملة
+💰 صافي الرصيد: **{(total_credits - total_debits):,.2f}** ريال
 
 📝 **آخر المعاملات:**
 """
@@ -428,11 +469,15 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
             wallet_text += "\nلا توجد معاملات بعد"
         
         keyboard = [
-            [InlineKeyboardButton(f'📊 تفاصيل المعاملات', callback_data='transaction_details'),
-             InlineKeyboardButton(f'💸 تحويل رصيد', callback_data='transfer_to_friend')],
-            [InlineKeyboardButton(f'🔄 تحديث الرصيد', callback_data='refresh_balance'),
-             InlineKeyboardButton(f'📈 إحصائيات مفصلة', callback_data='wallet_stats')],
-            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+            [InlineKeyboardButton('📊 تفاصيل المعاملات', callback_data='transaction_details'),
+             InlineKeyboardButton('💸 تحويل رصيد', callback_data='transfer_to_friend')],
+            [InlineKeyboardButton('📈 إحصائيات مفصلة', callback_data='wallet_stats'),
+             InlineKeyboardButton('💳 كشف حساب', callback_data='account_statement')],
+            [InlineKeyboardButton('🔄 تحديث الرصيد', callback_data='enhanced_wallet'),
+             InlineKeyboardButton('💰 إيداع رصيد', callback_data='deposit_balance')],
+            [InlineKeyboardButton('⚙️ إعدادات المحفظة', callback_data='wallet_settings'),
+             InlineKeyboardButton('📞 الدعم', callback_data='help')],
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
         if update.message:
@@ -1229,6 +1274,121 @@ async def process_simple_transfer(update: Update, context: CallbackContext):
         logger.error(f"Error in simple transfer: {e}")
         await update.message.reply_text("❌ حدث خطأ في التحويل.")
 
+async def enhanced_placeholder_handler(update: Update, context: CallbackContext, title: str, description: str):
+    """Enhanced placeholder for future features"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            if update.message:
+                await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
+            else:
+                await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
+            return
+        
+        text = f"""
+✨ **{title}** ✨
+
+👤 مرحباً **{user['full_name']}**
+
+🚀 **قريباً جداً!**
+{description}
+
+💡 **متوقع قريباً:**
+• تحسينات رائعة
+• ميزات متقدمة  
+• تجربة أفضل
+
+🔔 سيتم إشعارك فور توفر هذه الميزة!
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🏠 العودة للقائمة الرئيسية', callback_data='main_menu'),
+             InlineKeyboardButton('🔄 تحديث', callback_data='main_menu')]
+        ]
+        
+        if update.message:
+            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        else:
+            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            
+    except Exception as e:
+        logger.error(f"Error in enhanced placeholder: {e}")
+        error_text = "❌ حدث خطأ مؤقت"
+        if update.message:
+            await update.message.reply_text(error_text)
+        else:
+            await update.callback_query.edit_message_text(error_text)
+
+async def help_handler(update: Update, context: CallbackContext):
+    """Enhanced help and support"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            if update.message:
+                await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
+            else:
+                await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
+            return
+        
+        help_text = f"""
+❓ **المساعدة والدعم** ❓
+
+👤 مرحباً **{user['full_name']}**
+🆔 رقم محفظتك: **{user['wallet_number']}**
+
+📋 **الأوامر الأساسية:**
+• `/start` - بدء أو إعادة تشغيل البوت
+• `/menu` - عرض القائمة الرئيسية
+• `/wallet` - عرض محفظتك
+• `/cancel` - إلغاء العملية الحالية
+
+💡 **طريقة الاستخدام:**
+1️⃣ اختر الميزة من القائمة الرئيسية
+2️⃣ اتبع التعليمات المعروضة
+3️⃣ استخدم الأزرار للتنقل
+
+🛒 **لشراء الكروت:**
+• اختر "🛒 شراء كروت"
+• اختر الشبكة والفئة
+• ادفع واستلم الكرت
+
+💸 **لتحويل الرصيد:**
+• اختر "💸 تحويل رصيد"
+• اكتب: رقم المحفظة المبلغ
+• مثال: `791234567 100`
+
+📞 **للدعم الفني:**
+• تواصل مع الإدارة
+• اشرح مشكلتك بوضوح
+• ستتم الإجابة في أسرع وقت
+
+🔧 **نصائح مهمة:**
+• احتفظ برقم محفظتك آمناً
+• لا تشارك معلوماتك مع أحد
+• تأكد من صحة البيانات قبل التأكيد
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📞 التواصل مع الإدارة', callback_data='contact_admin'),
+             InlineKeyboardButton('🔔 الإشعارات', callback_data='my_notifications')],
+            [InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings'),
+             InlineKeyboardButton('📊 حالة الحساب', callback_data='account_status')],
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        if update.message:
+            await update.message.reply_text(help_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        else:
+            await update.callback_query.edit_message_text(help_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            
+    except Exception as e:
+        logger.error(f"Error in help handler: {e}")
+        error_text = "❌ حدث خطأ في تحميل المساعدة"
+        if update.message:
+            await update.message.reply_text(error_text)
+        else:
+            await update.callback_query.edit_message_text(error_text)
+
 # Export main handlers for use in main bot file
 COMMAND_HANDLERS = {
     'start': start,
@@ -1237,8 +1397,28 @@ COMMAND_HANDLERS = {
     'cancel': cancel,
     'wifi_search': wifi_search_handler,
     'send_balance': send_balance_handler,
-    'search_networks': wifi_search_handler,  # Use existing wifi search
-    'transfer_to_friend': send_balance_handler,  # Simplified transfer
+    'search_networks': wifi_search_handler,
+    'transfer_to_friend': send_balance_handler,
+    'personal_reports': lambda u, c: enhanced_placeholder_handler(u, c, "📊 تقاريري الشخصية", "عرض تقارير مفصلة عن نشاطك ومعاملاتك"),
+    'promotions': lambda u, c: enhanced_placeholder_handler(u, c, "🎁 العروض والخصومات", "عروض حصرية وخصومات على الكروت"),
+    'my_notifications': lambda u, c: enhanced_placeholder_handler(u, c, "🔔 إشعاراتي", "إدارة إشعاراتك وتنبيهاتك"),
+    'account_settings': lambda u, c: enhanced_placeholder_handler(u, c, "⚙️ إعدادات الحساب", "تعديل بيانات حسابك وإعداداتك"),
+    'my_ratings': lambda u, c: enhanced_placeholder_handler(u, c, "⭐ تقييماتي", "عرض وإدارة تقييماتك"),
+    'agent_panel': lambda u, c: enhanced_placeholder_handler(u, c, "💼 لوحة الوكيل", "لوحة تحكم خاصة بالوكلاء"),
+    'my_commissions': lambda u, c: enhanced_placeholder_handler(u, c, "💰 عمولاتي", "عرض العمولات والأرباح"),
+    'supplier_panel': lambda u, c: enhanced_placeholder_handler(u, c, "🏪 لوحة المزود", "لوحة تحكم خاصة بالمزودين"),
+    'manage_networks': lambda u, c: enhanced_placeholder_handler(u, c, "📶 إدارة الشبكات", "إضافة وإدارة شبكاتك"),
+    'upload_cards': lambda u, c: enhanced_placeholder_handler(u, c, "📤 رفع كروت", "رفع وإدارة كروت الشحن"),
+    'sales_reports': lambda u, c: enhanced_placeholder_handler(u, c, "📈 تقارير المبيعات", "تقارير مفصلة عن مبيعاتك"),
+    'buy_cards': lambda u, c: enhanced_placeholder_handler(u, c, "🛒 شراء كروت", "تصفح وشراء كروت الإنترنت"),
+    'help': help_handler,
+    'transaction_details': lambda u, c: enhanced_placeholder_handler(u, c, "📊 تفاصيل المعاملات", "عرض تفاصيل شاملة لجميع معاملاتك"),
+    'wallet_stats': lambda u, c: enhanced_placeholder_handler(u, c, "📈 إحصائيات مفصلة", "تحليلات وإحصائيات مفصلة لمحفظتك"),
+    'account_statement': lambda u, c: enhanced_placeholder_handler(u, c, "💳 كشف حساب", "كشف حساب شامل لفترة محددة"),
+    'deposit_balance': lambda u, c: enhanced_placeholder_handler(u, c, "💰 إيداع رصيد", "إيداع رصيد في محفظتك بطرق مختلفة"),
+    'wallet_settings': lambda u, c: enhanced_placeholder_handler(u, c, "⚙️ إعدادات المحفظة", "تخصيص إعدادات وأمان المحفظة"),
+    'contact_admin': lambda u, c: enhanced_placeholder_handler(u, c, "📞 التواصل مع الإدارة", "إرسال رسالة للدعم الفني"),
+    'account_status': lambda u, c: enhanced_placeholder_handler(u, c, "📊 حالة الحساب", "عرض حالة وتفاصيل حسابك"),
 }
 
 from telegram.ext import MessageHandler, CallbackQueryHandler, filters

@@ -75,7 +75,7 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
 """
         
         keyboard = [
-            [InlineKeyboardButton(f'💰 الرصيد والمحفظة', callback_data='admin_wallet'),
+            [InlineKeyboardButton(f'💰 إدارة الأرصدة', callback_data='admin_wallet'),
              InlineKeyboardButton(f'💸 إرسال رصيد', callback_data='admin_send_money')],
             [InlineKeyboardButton(f'✅ تفعيل مزودين', callback_data='super_activate_suppliers'),
              InlineKeyboardButton(f'👥 إدارة المستخدمين', callback_data='super_manage_users')],
@@ -1314,17 +1314,49 @@ async def admin_wallet_handler(update: Update, context: CallbackContext):
             await query.edit_message_text(f"❌ ليس لديك صلاحية لهذه العملية.")
             return
         
+        # Get some statistics
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get total money created
+        cursor.execute('SELECT SUM(amount) FROM transactions WHERE type = "money_creation" AND to_user = ?', (user['id'],))
+        total_created = cursor.fetchone()[0] or 0
+        
+        # Get total sent to users
+        cursor.execute('SELECT SUM(amount) FROM transactions WHERE type = "admin_transfer" AND from_user = ?', (user['id'],))
+        total_sent = cursor.fetchone()[0] or 0
+        
+        # Get number of users
+        cursor.execute('SELECT COUNT(*) FROM users WHERE role != "super_admin"')
+        total_users = cursor.fetchone()[0] or 0
+        
+        conn.close()
+        
         text = f"""
-💰 **محفظة المدير** 💰
+💰 **إدارة الأرصدة** 💰
 
-👤 {user['full_name']}
-💵 رصيدك: **{user['balance']:,.0f}** ريال
+👑 **المشرف الأعلى:** {user['full_name']}
+💵 **رصيدك الحالي:** {user['balance']:,.2f} ريال
 
-💡 اكتب المبلغ الذي تريد إضافته لمحفظتك:
+📊 **إحصائيات الأرصدة:**
+💰 إجمالي المُنشأ: **{total_created:,.2f}** ريال
+💸 إجمالي المُرسل: **{total_sent:,.2f}** ريال
+👥 عدد المستخدمين: **{total_users:,}** مستخدم
+
+💡 **العمليات المتاحة:**
+🔹 إنشاء رصيد جديد
+🔹 عرض الرصيد الحالي
+🔹 إرسال رصيد للمستخدمين
+
+📝 **لإنشاء رصيد جديد:**
+اكتب المبلغ الذي تريد إضافته لمحفظتك
 """
         
         keyboard = [
-            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            [InlineKeyboardButton('💸 إرسال رصيد لمستخدم', callback_data='admin_send_money'),
+             InlineKeyboardButton('📊 تقرير مفصل', callback_data='super_print_balance')],
+            [InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
