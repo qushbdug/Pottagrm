@@ -88,6 +88,12 @@ async def button_click_handler(update: Update, context):
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية للوصول لهذه اللوحة.")
                 return
         
+        # Transfer confirmation handlers
+        elif callback_data == 'confirm_transfer_yes':
+            return await confirm_transfer_handler(update, context, True)
+        elif callback_data == 'confirm_transfer_no':
+            return await confirm_transfer_handler(update, context, False)
+        
         # Super admin functions
         elif callback_data in ADMIN_CALLBACKS:
             if user['role'] == 'super_admin':
@@ -1809,6 +1815,143 @@ async def recharge_balance_handler(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in recharge balance handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في شحن الرصيد.")
+
+async def confirm_transfer_handler(update: Update, context: CallbackContext, confirmed: bool):
+    """Handle transfer confirmation"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user:
+            await query.edit_message_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
+            return
+        
+        if not confirmed:
+            # User cancelled the transfer
+            context.user_data.clear()
+            await query.edit_message_text(f"""
+❌ **تم إلغاء التحويل**
+
+العملية ألغيت بنجاح. لم يتم خصم أي مبلغ من رصيدك.
+
+💰 رصيدك الحالي: **{user['balance']:,.2f}** ريال
+
+💡 يمكنك استخدام /send_balance لبدء تحويل جديد
+""", parse_mode='Markdown')
+            return
+        
+        # User confirmed the transfer - execute it
+        if not context.user_data.get('awaiting_transfer_confirmation'):
+            await query.edit_message_text(f"{EMOJIS['error']} انتهت صلاحية العملية. يرجى البدء من جديد.")
+            return
+        
+        # Get transfer details
+        target_user_id = context.user_data.get('target_user_id')
+        target_user_name = context.user_data.get('target_user_name')
+        amount = context.user_data.get('transfer_amount')
+        transfer_fee = context.user_data.get('transfer_fee')
+        
+        if not all([target_user_id, amount, transfer_fee]):
+            await query.edit_message_text(f"{EMOJIS['error']} معلومات التحويل مفقودة. يرجى البدء من جديد.")
+            return
+        
+        # Execute the transfer
+        from bot_modules.database import get_db_connection
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get target user details
+        cursor.execute('SELECT * FROM users WHERE id = ?', (target_user_id,))
+        target_user = cursor.fetchone()
+        
+        if not target_user:
+            await query.edit_message_text(f"{EMOJIS['error']} المستخدم المستهدف غير موجود.")
+            conn.close()
+            return
+        
+        # Create transfer transactions
+        import uuid
+        from datetime import datetime
+        
+        # Transfer transaction
+        transfer_id = str(uuid.uuid4())
+        cursor.execute('''
+            INSERT INTO transactions 
+            (id, from_user, to_user, amount, type, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (transfer_id, user['id'], target_user['id'], amount, 'transfer', 'تحويل رصيد من صديق', datetime.now()))
+        
+        # Fee transaction
+        fee_id = str(uuid.uuid4())
+        cursor.execute('''
+            INSERT INTO transactions 
+            (id, from_user, amount, type, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (fee_id, user['id'], transfer_fee, 'transfer_fee', f'رسوم تحويل رصيد إلى {target_user["full_name"]}', datetime.now()))
+        
+        # Update balances
+        from bot_modules.utils import recalc_and_set_user_balance
+        sender_new_balance = recalc_and_set_user_balance(user['id'])
+        receiver_new_balance = recalc_and_set_user_balance(target_user['id'])
+        
+        conn.commit()
+        conn.close()
+        
+        # Clear user state
+        context.user_data.clear()
+        
+        # Send confirmation to sender
+        success_text = f"""
+✅ **تم إرسال الرصيد بنجاح!**
+
+📤 **تفاصيل التحويل:**
+👤 المستلم: **{target_user['full_name']}**
+💰 المبلغ المرسل: **{amount:.2f}** ريال
+💳 رسوم التحويل: **{transfer_fee:.2f}** ريال
+📊 إجمالي الخصم: **{amount + transfer_fee:.2f}** ريال
+
+💵 **الأرصدة:**
+🔻 رصيدك الجديد: **{sender_new_balance:.2f}** ريال
+🔺 رصيد المستلم: **{receiver_new_balance:.2f}** ريال
+
+🕐 **وقت التحويل:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+📱 سيتم إشعار المستلم فوراً
+"""
+        
+        await query.edit_message_text(success_text, parse_mode='Markdown')
+        
+        # Send notification to receiver
+        try:
+            notification_text = f"""
+💰 **تم استلام رصيد جديد!** 💰
+
+📥 **تفاصيل الاستلام:**
+👤 المرسل: **{user['full_name']}**
+💰 المبلغ المستلم: **{amount:.2f}** ريال
+💵 رصيدك الجديد: **{receiver_new_balance:.2f}** ريال
+
+🕐 **وقت التحويل:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+───────────────────
+💡 استخدم /wallet لعرض محفظتك
+"""
+            
+            await context.bot.send_message(
+                chat_id=target_user['telegram_id'],
+                text=notification_text,
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send notification to receiver {target_user['telegram_id']}: {e}")
+        
+        # Log the transfer
+        logger.info(f"User {user['full_name']} sent {amount} YER to {target_user['full_name']} (fee: {transfer_fee})")
+        
+    except Exception as e:
+        logger.error(f"Error in confirm transfer handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تنفيذ التحويل.")
 
 def main():
     """Main function to start the bot"""

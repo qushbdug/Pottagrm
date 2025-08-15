@@ -477,6 +477,11 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
 async def handle_text_message(update: Update, context: CallbackContext):
     """Handle text messages for special operations"""
     try:
+        # Check if waiting for money creation
+        if context.user_data.get('awaiting_money_creation'):
+            from bot_modules.admin_functions import process_money_creation
+            return await process_money_creation(update, context)
+        
         # Check if waiting for balance issue
         if context.user_data.get('awaiting_balance_issue'):
             from bot_modules.admin_functions import process_balance_issue
@@ -496,7 +501,15 @@ async def handle_text_message(update: Update, context: CallbackContext):
         if context.user_data.get('awaiting_wifi_search'):
             return await process_wifi_search(update, context)
         
-        # Check if waiting for balance send
+        # Check if waiting for transfer step 1 (wallet number)
+        if context.user_data.get('awaiting_transfer_step1'):
+            return await process_transfer_step1(update, context)
+        
+        # Check if waiting for transfer step 2 (amount)
+        if context.user_data.get('awaiting_transfer_step2'):
+            return await process_transfer_step2(update, context)
+        
+        # Check if waiting for balance send (old method - keep for compatibility)
         if context.user_data.get('awaiting_balance_send'):
             return await process_balance_send(update, context)
         
@@ -671,7 +684,7 @@ async def process_wifi_search(update: Update, context: CallbackContext):
         await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في البحث.")
 
 async def send_balance_handler(update: Update, context: CallbackContext):
-    """Handle sending balance to another user"""
+    """Handle sending balance to another user - Step 1: Ask for wallet number"""
     try:
         user = get_user(update.effective_user.id)
         if not user:
@@ -683,32 +696,25 @@ async def send_balance_handler(update: Update, context: CallbackContext):
             return
         
         text = f"""
-💸 **إرسال رصيد لمستخدم آخر** 💸
+💸 **إرسال رصيد لصديق** 💸
 
 {EMOJIS['user']} مرحباً **{user['full_name']}**
 💰 رصيدك الحالي: **{user['balance']:,.2f}** ريال
 
-📋 **تعليمات الإرسال:**
-1️⃣ أدخل رقم المحفظة للمستخدم المستهدف (9 أرقام تبدأ بـ 79)
-2️⃣ أدخل المبلغ المراد إرساله
-3️⃣ أدخل سبب التحويل (اختياري)
+📋 **الخطوة الأولى:**
+أدخل رقم هاتف المستخدم أو رقم محفظته
 
-💡 **مثال:**
-`791234567 100 هدية عيد ميلاد`
+💡 **أمثلة:**
+• رقم الهاتف: `773123456`
+• رقم المحفظة: `791234567`
 
-⚠️ **ملاحظات مهمة:**
-• تأكد من صحة رقم المحفظة
-• المبلغ لا يمكن استرداده بعد الإرسال
-• سيتم خصم 1% رسوم تحويل
-
-📝 أدخل البيانات بالتنسيق التالي:
-`رقم_المحفظة المبلغ السبب`
+📝 أدخل رقم الهاتف أو رقم المحفظة:
 
 أو اكتب /cancel للإلغاء
 """
         
         await update.message.reply_text(text, parse_mode='Markdown')
-        context.user_data['awaiting_balance_send'] = True
+        context.user_data['awaiting_transfer_step1'] = True
         
     except Exception as e:
         logger.error(f"Error in send balance handler: {e}")
@@ -872,6 +878,169 @@ async def process_balance_send(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in process balance send: {e}")
         await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في إرسال الرصيد.")
+
+# New Enhanced Transfer System
+
+async def process_transfer_step1(update: Update, context: CallbackContext):
+    """Process step 1 - Find user by phone or wallet number"""
+    try:
+        if not context.user_data.get('awaiting_transfer_step1'):
+            return
+        
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.message.reply_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
+            return
+        
+        search_input = update.message.text.strip()
+        
+        # Find target user by phone or wallet number
+        from bot_modules.database import get_db_connection
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Search by wallet number first, then by phone
+        cursor.execute('SELECT * FROM users WHERE wallet_number = ? OR phone = ?', (search_input, search_input))
+        target_user = cursor.fetchone()
+        
+        if not target_user:
+            await update.message.reply_text(f"""
+{EMOJIS['error']} **لم يتم العثور على المستخدم!**
+
+🔍 البحث عن: `{search_input}`
+
+💡 **تأكد من:**
+• صحة رقم الهاتف أو رقم المحفظة
+• أن المستخدم مسجل في البوت
+• أن الرقم مكتوب بالطريقة الصحيحة
+
+📝 جرب مرة أخرى أو اكتب /cancel للإلغاء
+""", parse_mode='Markdown')
+            conn.close()
+            return
+        
+        if target_user['id'] == user['id']:
+            await update.message.reply_text(f"{EMOJIS['error']} لا يمكنك إرسال رصيد لنفسك!")
+            conn.close()
+            return
+        
+        conn.close()
+        
+        # Save target user info and move to step 2
+        context.user_data['target_user_id'] = target_user['id']
+        context.user_data['target_user_name'] = target_user['full_name']
+        context.user_data['target_wallet'] = target_user.get('wallet_number', 'غير محدد')
+        context.user_data.pop('awaiting_transfer_step1', None)
+        context.user_data['awaiting_transfer_step2'] = True
+        
+        text = f"""
+✅ **تم العثور على المستخدم!**
+
+👤 **المستلم:** {target_user['full_name']}
+🆔 **رقم المحفظة:** {target_user.get('wallet_number', 'غير محدد')}
+📱 **رقم الهاتف:** {target_user['phone']}
+
+💰 **رصيدك الحالي:** {user['balance']:,.2f} ريال
+
+📋 **الخطوة الثانية:**
+أدخل المبلغ الذي تريد إرساله
+
+💡 **مثال:** `100`
+
+⚠️ **ملاحظة:** سيتم خصم 1% رسوم تحويل
+
+📝 أدخل المبلغ:
+
+أو اكتب /cancel للإلغاء
+"""
+        
+        await update.message.reply_text(text, parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in process transfer step 1: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في البحث عن المستخدم.")
+
+async def process_transfer_step2(update: Update, context: CallbackContext):
+    """Process step 2 - Get amount and show confirmation"""
+    try:
+        if not context.user_data.get('awaiting_transfer_step2'):
+            return
+        
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.message.reply_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
+            return
+        
+        # Parse amount
+        try:
+            amount = float(update.message.text.strip())
+        except ValueError:
+            await update.message.reply_text(f"{EMOJIS['error']} المبلغ يجب أن يكون رقماً صحيحاً.")
+            return
+        
+        # Validate amount
+        if amount <= 0:
+            await update.message.reply_text(f"{EMOJIS['error']} المبلغ يجب أن يكون أكبر من صفر.")
+            return
+        
+        # Calculate transfer fee (1%)
+        transfer_fee = amount * 0.01
+        total_deduction = amount + transfer_fee
+        
+        if total_deduction > user['balance']:
+            await update.message.reply_text(f"""
+{EMOJIS['error']} **رصيدك غير كافي!**
+
+💰 المبلغ المطلوب: **{amount:.2f}** ريال
+💳 رسوم التحويل (1%): **{transfer_fee:.2f}** ريال
+📊 إجمالي الخصم: **{total_deduction:.2f}** ريال
+💵 رصيدك الحالي: **{user['balance']:.2f}** ريال
+❌ النقص: **{total_deduction - user['balance']:.2f}** ريال
+
+📝 جرب مبلغاً أقل أو اكتب /cancel للإلغاء
+""", parse_mode='Markdown')
+            return
+        
+        # Save amount and show confirmation
+        context.user_data['transfer_amount'] = amount
+        context.user_data['transfer_fee'] = transfer_fee
+        
+        target_name = context.user_data.get('target_user_name', 'غير محدد')
+        target_wallet = context.user_data.get('target_wallet', 'غير محدد')
+        
+        confirmation_text = f"""
+🔍 **تأكيد التحويل** 🔍
+
+📤 **تفاصيل التحويل:**
+👤 المستلم: **{target_name}**
+🆔 رقم المحفظة: **{target_wallet}**
+💰 المبلغ: **{amount:,.2f}** ريال
+💳 رسوم التحويل: **{transfer_fee:.2f}** ريال
+📊 إجمالي الخصم: **{total_deduction:.2f}** ريال
+
+💵 **رصيدك بعد التحويل:** **{user['balance'] - total_deduction:.2f}** ريال
+
+❓ **هل تريد المتابعة؟**
+"""
+        
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        keyboard = [
+            [InlineKeyboardButton('✅ نعم، أرسل الرصيد', callback_data='confirm_transfer_yes'),
+             InlineKeyboardButton('❌ لا، إلغاء العملية', callback_data='confirm_transfer_no')]
+        ]
+        
+        await update.message.reply_text(
+            confirmation_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+        context.user_data.pop('awaiting_transfer_step2', None)
+        context.user_data['awaiting_transfer_confirmation'] = True
+        
+    except Exception as e:
+        logger.error(f"Error in process transfer step 2: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في معالجة المبلغ.")
 
 # Export main handlers for use in main bot file
 COMMAND_HANDLERS = {

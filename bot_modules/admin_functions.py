@@ -75,10 +75,10 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
 """
         
         keyboard = [
-            [InlineKeyboardButton(f'💰 إصدار رصيد', callback_data='super_issue_balance'),
-             InlineKeyboardButton(f'✅ تفعيل مزودين', callback_data='super_activate_suppliers')],
-            [InlineKeyboardButton(f'👥 إدارة المستخدمين', callback_data='super_manage_users'),
-             InlineKeyboardButton(f'📊 التقارير التنفيذية', callback_data='super_executive_reports')],
+            [InlineKeyboardButton(f'💰 إنشاء رصيد', callback_data='super_issue_balance'),
+             InlineKeyboardButton(f'💸 تحويل لمستخدم', callback_data='super_transfer_to_user')],
+            [InlineKeyboardButton(f'✅ تفعيل مزودين', callback_data='super_activate_suppliers'),
+             InlineKeyboardButton(f'👥 إدارة المستخدمين', callback_data='super_manage_users')],
             [InlineKeyboardButton(f'🏛️ إدارة المنصة', callback_data='super_platform_management'),
              InlineKeyboardButton(f'🔧 إعدادات النظام', callback_data='super_system_settings')],
             [InlineKeyboardButton(f'💾 النسخ الاحتياطي', callback_data='super_backup'),
@@ -102,7 +102,7 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
         await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في تحميل لوحة المشرف الأعلى.")
 
 async def issue_balance_handler(update: Update, context: CallbackContext):
-    """Handle balance issuance for super admin"""
+    """Handle balance issuance for super admin - Create money to admin wallet"""
     try:
         query = update.callback_query
         await query.answer()
@@ -113,36 +113,103 @@ async def issue_balance_handler(update: Update, context: CallbackContext):
             return
         
         text = f"""
-💰 **إصدار رصيد للمستخدمين** 💰
+💰 **إنشاء رصيد جديد** 💰
 
 {EMOJIS['admin']} مرحباً **{user['full_name']}**
+💵 رصيدك الحالي: **{user['balance']:,.2f}** ريال
 
-📋 **تعليمات الإصدار:**
-1️⃣ أدخل رقم المحفظة (9 أرقام تبدأ بـ 79)
-2️⃣ أدخل المبلغ المراد إصداره
-3️⃣ أدخل سبب الإصدار (اختياري)
+📋 **تعليمات الإنشاء:**
+أدخل المبلغ الذي تريد إنشاؤه وإضافته لمحفظتك
 
 💡 **مثال:**
-`791234567 1000 رصيد هدية للعميل`
+`5000`
 
-⚠️ **تنبيه مهم:**
-يجب أن تكون حذراً عند إصدار الأرصدة حيث أنها عملية مالية مهمة
+⚠️ **ملاحظة:**
+سيتم إضافة المبلغ مباشرة لمحفظتك كمشرف أعلى
 
-📝 أدخل البيانات بالتنسيق التالي:
-`رقم_المحفظة المبلغ السبب`
+📝 أدخل المبلغ:
 
 أو اكتب /cancel للإلغاء
 """
         
         await query.edit_message_text(text, parse_mode='Markdown')
-        context.user_data['awaiting_balance_issue'] = True
+        context.user_data['awaiting_money_creation'] = True
         
     except Exception as e:
         logger.error(f"Error in issue balance handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في بدء عملية إصدار الرصيد.")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في بدء عملية إنشاء الرصيد.")
+
+async def process_money_creation(update: Update, context: CallbackContext):
+    """Process money creation for super admin"""
+    try:
+        if not context.user_data.get('awaiting_money_creation'):
+            return
+        
+        user = get_user(update.effective_user.id)
+        if not user or user['role'] != 'super_admin':
+            await update.message.reply_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # Parse input
+        try:
+            amount = float(update.message.text.strip())
+        except ValueError:
+            await update.message.reply_text(f"{EMOJIS['error']} المبلغ يجب أن يكون رقماً صحيحاً.")
+            return
+        
+        # Validate amount
+        if amount <= 0:
+            await update.message.reply_text(f"{EMOJIS['error']} المبلغ يجب أن يكون أكبر من صفر.")
+            return
+        
+        if amount > 100000:  # Security limit
+            await update.message.reply_text(f"{EMOJIS['error']} لا يمكن إنشاء أكثر من 100,000 ريال في العملية الواحدة.")
+            return
+        
+        # Create money transaction for super admin
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        transaction_id = str(uuid.uuid4())
+        cursor.execute('''
+            INSERT INTO transactions 
+            (id, to_user, amount, type, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (transaction_id, user['id'], amount, 'money_creation', 'إنشاء رصيد من المشرف الأعلى', datetime.now()))
+        
+        # Update admin balance
+        from bot_modules.utils import recalc_and_set_user_balance
+        new_balance = recalc_and_set_user_balance(user['id'])
+        
+        conn.commit()
+        conn.close()
+        
+        # Clear user state
+        context.user_data.pop('awaiting_money_creation', None)
+        
+        # Send confirmation
+        success_text = f"""
+✅ **تم إنشاء الرصيد بنجاح!**
+
+💰 **تفاصيل العملية:**
+💵 المبلغ المُنشأ: **{amount:,.2f}** ريال
+💳 رصيدك الجديد: **{new_balance:,.2f}** ريال
+🕐 وقت العملية: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+✨ يمكنك الآن تحويل الرصيد للمستخدمين أو استخدامه في العمليات الإدارية.
+"""
+        
+        await update.message.reply_text(success_text, parse_mode='Markdown')
+        
+        # Log the action
+        logger.info(f"Super admin {user['full_name']} created {amount} YER money. New balance: {new_balance}")
+        
+    except Exception as e:
+        logger.error(f"Error in process money creation: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في إنشاء الرصيد.")
 
 async def process_balance_issue(update: Update, context: CallbackContext):
-    """Process balance issuance from super admin"""
+    """Process balance transfer from super admin to user"""
     try:
         if not context.user_data.get('awaiting_balance_issue'):
             return
@@ -165,15 +232,23 @@ async def process_balance_issue(update: Update, context: CallbackContext):
             await update.message.reply_text(f"{EMOJIS['error']} المبلغ يجب أن يكون رقماً صحيحاً.")
             return
         
-        reason = ' '.join(parts[2:]) if len(parts) > 2 else 'إصدار رصيد من المشرف الأعلى'
+        reason = ' '.join(parts[2:]) if len(parts) > 2 else 'تحويل رصيد من المشرف الأعلى'
         
         # Validate amount
         if amount <= 0:
             await update.message.reply_text(f"{EMOJIS['error']} المبلغ يجب أن يكون أكبر من صفر.")
             return
         
-        if amount > 10000:  # Security limit
-            await update.message.reply_text(f"{EMOJIS['error']} لا يمكن إصدار أكثر من 10,000 ريال في العملية الواحدة.")
+        if amount > user['balance']:
+            await update.message.reply_text(f"""
+{EMOJIS['error']} **رصيدك غير كافي!**
+
+💰 المبلغ المطلوب: **{amount:,.2f}** ريال
+💵 رصيدك الحالي: **{user['balance']:,.2f}** ريال
+❌ النقص: **{amount - user['balance']:,.2f}** ريال
+
+💡 استخدم زر "💰 إصدار رصيد" لإنشاء رصيد جديد أولاً.
+""", parse_mode='Markdown')
             return
         
         # Find target user
@@ -188,81 +263,117 @@ async def process_balance_issue(update: Update, context: CallbackContext):
             conn.close()
             return
         
-        # Create transaction
+        # Create transfer transactions
         transaction_id = str(uuid.uuid4())
+        
+        # Debit from admin
         cursor.execute('''
             INSERT INTO transactions 
-            (id, to_user, amount, type, description, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (transaction_id, target_user['id'], amount, 'admin_issue', reason, datetime.now()))
+            (id, from_user, to_user, amount, type, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (transaction_id, user['id'], target_user['id'], amount, 'admin_transfer', reason, datetime.now()))
         
-        # Update balance
-        new_balance = recalc_and_set_user_balance(target_user['id'])
-        
-        # Create wallet transaction
-        create_wallet_transaction(
-            target_user['id'],
-            'credit',
-            amount,
-            target_user['balance'],
-            new_balance,
-            f'إصدار رصيد من المشرف الأعلى: {reason}',
-            transaction_id,
-            {
-                'issued_by': user['full_name'],
-                'admin_id': user['id'],
-                'reason': reason
-            }
-        )
-        
-        # Log the action
-        log_system_action(user['id'], 'balance_issue', f'Issued {amount} to user {target_user["id"]} ({target_user["full_name"]}). Reason: {reason}')
-        log_activity(user['id'], 'admin_balance_issue', f'Issued {amount} YER to {target_user["full_name"]}', {
-            'target_user_id': target_user['id'],
-            'amount': amount,
-            'reason': reason,
-            'transaction_id': transaction_id
-        })
+        # Update balances
+        from bot_modules.utils import recalc_and_set_user_balance
+        admin_new_balance = recalc_and_set_user_balance(user['id'])
+        target_new_balance = recalc_and_set_user_balance(target_user['id'])
         
         conn.commit()
         conn.close()
         
-        # Send notification to target user
-        send_smart_notification(
-            target_user['id'],
-            'balance_issued',
-            '💰 تم إضافة رصيد لحسابك',
-            f'تم إضافة {amount:.2f} ريال لرصيدك من قبل الإدارة\nالسبب: {reason}',
-            'high'
-        )
+        # Clear user state
+        context.user_data.pop('awaiting_balance_issue', None)
         
+        # Send confirmation to admin
         success_text = f"""
-✅ **تم إصدار الرصيد بنجاح!**
+✅ **تم تحويل الرصيد بنجاح!**
 
-💰 المبلغ: **{amount:.2f}** ريال
+📤 **تفاصيل التحويل:**
 👤 المستلم: **{target_user['full_name']}**
-💳 رقم المحفظة: **{wallet_number}**
-💫 الرصيد الجديد: **{new_balance:.2f}** ريال
-📝 السبب: {reason}
-
-🔐 رقم المعاملة: `{transaction_id}`
-⏰ الوقت: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+💰 المبلغ المُحول: **{amount:,.2f}** ريال
+💵 رصيدك الجديد: **{admin_new_balance:,.2f}** ريال
+💳 رصيد المستلم: **{target_new_balance:,.2f}** ريال
+💬 السبب: {reason}
+🕐 وقت التحويل: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 """
         
-        keyboard = [
-            [InlineKeyboardButton(f'💰 إصدار رصيد آخر', callback_data='super_issue_balance')],
-            [InlineKeyboardButton(f'👑 لوحة المشرف الأعلى', callback_data='super_admin_panel')],
-            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
-        ]
+        await update.message.reply_text(success_text, parse_mode='Markdown')
         
-        await update.message.reply_text(success_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        # Send notification to receiver
+        try:
+            notification_text = f"""
+💰 **تم استلام رصيد من الإدارة!** 💰
+
+📥 **تفاصيل الاستلام:**
+👑 المرسل: المشرف الأعلى
+💰 المبلغ المستلم: **{amount:,.2f}** ريال
+💵 رصيدك الجديد: **{target_new_balance:,.2f}** ريال
+💬 السبب: {reason}
+🕐 وقت التحويل: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+───────────────────
+💡 استخدم /wallet لعرض محفظتك
+"""
+            
+            await context.bot.send_message(
+                chat_id=target_user['telegram_id'],
+                text=notification_text,
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send notification to receiver {target_user['telegram_id']}: {e}")
         
-        # Clear the state
-        context.user_data['awaiting_balance_issue'] = False
+        # Log the transfer
+        logger.info(f"Super admin {user['full_name']} transferred {amount} YER to {target_user['full_name']}")
         
     except Exception as e:
-        logger.error(f"Error processing balance issue: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في معالجة إصدار الرصيد.")
+        logger.error(f"Error in process balance issue: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في تحويل الرصيد.")
+
+# Add transfer to user button in admin panel
+async def admin_transfer_to_user_handler(update: Update, context: CallbackContext):
+    """Handle transfer from admin to user"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        text = f"""
+💸 **تحويل رصيد لمستخدم** 💸
+
+{EMOJIS['admin']} مرحباً **{user['full_name']}**
+💵 رصيدك الحالي: **{user['balance']:,.2f}** ريال
+
+📋 **تعليمات التحويل:**
+1️⃣ أدخل رقم المحفظة (9 أرقام تبدأ بـ 79)
+2️⃣ أدخل المبلغ المراد تحويله
+3️⃣ أدخل سبب التحويل (اختياري)
+
+💡 **مثال:**
+`791234567 500 مكافأة للعميل المتميز`
+
+⚠️ **ملاحظة:**
+سيتم خصم المبلغ من محفظتك وتحويله للمستخدم
+
+📝 أدخل البيانات بالتنسيق التالي:
+`رقم_المحفظة المبلغ السبب`
+
+أو اكتب /cancel للإلغاء
+"""
+        
+        await query.edit_message_text(text, parse_mode='Markdown')
+        context.user_data['awaiting_balance_issue'] = True
+        
+    except Exception as e:
+        logger.error(f"Error in admin transfer to user handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في بدء التحويل.")
+        
+
+
 
 async def activate_suppliers_handler(update: Update, context: CallbackContext):
     """Handle supplier activation for super admin"""
@@ -1770,6 +1881,8 @@ async def users_top_handler(update, context):
 
 # Update ADMIN_CALLBACKS with newly defined handlers
 ADMIN_CALLBACKS.update({
+    # New transfer handler
+    'super_transfer_to_user': admin_transfer_to_user_handler,
     # Backup handlers
     'backup_full': backup_full_handler,
     'backup_data_only': backup_data_only_handler,
