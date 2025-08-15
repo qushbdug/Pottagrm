@@ -559,39 +559,90 @@ async def handle_text_message(update: Update, context: CallbackContext):
 # Enhanced User Features
 
 async def wifi_search_handler(update: Update, context: CallbackContext):
-    """Handle WiFi network search by name or ID"""
+    """البحث عن الشبكات المتاحة"""
     try:
         user = get_user(update.effective_user.id)
         if not user:
-            await update.message.reply_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
+            if update.message:
+                await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
+            else:
+                await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
             return
         
+        # الحصول على الشبكات المتاحة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # احصل على عدد الشبكات النشطة
+        cursor.execute('SELECT COUNT(*) FROM networks WHERE is_active = 1')
+        active_networks_count = cursor.fetchone()[0]
+        
+        # احصل على عدد فئات الكروت المتاحة
+        cursor.execute('''
+            SELECT COUNT(*) FROM card_categories cc 
+            JOIN networks n ON cc.network_id = n.id 
+            WHERE n.is_active = 1 AND cc.is_available = 1
+        ''')
+        available_categories_count = cursor.fetchone()[0]
+        
+        # احصه على إجمالي المخزون
+        cursor.execute('''
+            SELECT SUM(cc.stock_count) FROM card_categories cc 
+            JOIN networks n ON cc.network_id = n.id 
+            WHERE n.is_active = 1 AND cc.is_available = 1
+        ''')
+        total_stock = cursor.fetchone()[0] or 0
+        
+        conn.close()
+        
         text = f"""
-🔍 **البحث عن شبكة واي فاي** 🔍
+📶 **البحث عن الشبكات** 📶
 
-{EMOJIS['user']} مرحباً **{user['full_name']}**
+👤 مرحباً **{user['full_name']}**
+💰 رصيدك: **{user['balance']:,.2f}** ريال
 
-📋 **طرق البحث:**
-1️⃣ البحث بالاسم: اكتب اسم الشبكة
-2️⃣ البحث بالرقم: اكتب رقم المعرف
-3️⃣ البحث بالمدينة: اكتب اسم المدينة
+📊 **إحصائيات الشبكات:**
+🌐 الشبكات النشطة: **{active_networks_count}** شبكة
+💳 فئات الكروت: **{available_categories_count}** فئة
+📦 إجمالي المخزون: **{total_stock:,}** كرت
 
-💡 **أمثلة:**
-• `يمن نت`
-• `NET123`
-• `صنعاء`
+🔍 **خيارات البحث:**
 
-📝 اكتب كلمة البحث:
+1️⃣ **عرض جميع الشبكات**
+   استعرض كافة الشبكات المتاحة
 
-أو اكتب /cancel للإلغاء
+2️⃣ **البحث بالاسم**
+   ابحث عن شبكة معينة
+
+3️⃣ **حسب نوع الخدمة**
+   إنترنت منزلي، محمول، واي فاي
+
+4️⃣ **حسب السعر**
+   اختر حسب ميزانيتك
 """
         
-        await update.message.reply_text(text, parse_mode='Markdown')
-        context.user_data['awaiting_wifi_search'] = True
+        keyboard = [
+            [InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks'),
+             InlineKeyboardButton('🔍 بحث بالاسم', callback_data='search_by_network_name')],
+            [InlineKeyboardButton('📱 شبكات المحمول', callback_data='mobile_networks'),
+             InlineKeyboardButton('🏠 إنترنت منزلي', callback_data='home_networks')],
+            [InlineKeyboardButton('💰 حسب السعر', callback_data='networks_by_price'),
+             InlineKeyboardButton('⭐ الأكثر طلباً', callback_data='popular_networks')],
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        if update.message:
+            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        else:
+            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
     except Exception as e:
-        logger.error(f"Error in WiFi search handler: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في بدء البحث.")
+        logger.error(f"Error in WiFi search: {e}")
+        error_msg = "❌ حدث خطأ في البحث"
+        if update.message:
+            await update.message.reply_text(error_msg)
+        else:
+            await update.callback_query.edit_message_text(error_msg)
 
 async def process_wifi_search(update: Update, context: CallbackContext):
     """Process WiFi search query"""
@@ -1687,6 +1738,377 @@ async def select_user_for_transfer(update: Update, context: CallbackContext, sel
         logger.error(f"Error in select user for transfer: {e}")
         await update.callback_query.edit_message_text("❌ حدث خطأ في اختيار المستخدم")
 
+async def show_all_networks(update: Update, context: CallbackContext):
+    """عرض جميع الشبكات المتاحة"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
+            return
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # الحصول على جميع الشبكات مع فئات الكروت
+        cursor.execute('''
+            SELECT 
+                n.id, n.name, n.provider, n.description,
+                COUNT(cc.id) as card_types,
+                SUM(cc.stock_count) as total_stock,
+                MIN(cc.price) as min_price,
+                MAX(cc.price) as max_price
+            FROM networks n
+            LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
+            WHERE n.is_active = 1
+            GROUP BY n.id, n.name, n.provider, n.description
+            ORDER BY n.name
+        ''')
+        
+        networks = cursor.fetchall()
+        conn.close()
+        
+        if not networks:
+            await update.callback_query.edit_message_text(
+                "❌ **لا توجد شبكات متاحة حالياً**\n\n"
+                "تحقق لاحقاً للحصول على التحديثات"
+            )
+            return
+
+        text = f"""
+🌐 **جميع الشبكات المتاحة** 🌐
+
+👤 **{user['full_name']}**
+💰 رصيدك: **{user['balance']:,.2f}** ريال
+
+📊 **عدد الشبكات:** {len(networks)} شبكة
+
+"""
+
+        keyboard = []
+        for network in networks:
+            network_id, name, provider, description, card_types, total_stock, min_price, max_price = network
+            
+            # تنسيق معلومات الشبكة
+            stock_status = "📦" if total_stock and total_stock > 0 else "❌"
+            price_range = ""
+            if min_price and max_price:
+                if min_price == max_price:
+                    price_range = f"{min_price:,.0f} ريال"
+                else:
+                    price_range = f"{min_price:,.0f} - {max_price:,.0f} ريال"
+            
+            text += f"""
+🏢 **{name}**
+📝 {description or 'شبكة إنترنت موثوقة'}
+💳 الفئات: {card_types or 0} فئة
+📦 المخزون: {total_stock or 0} كرت
+💰 الأسعار: {price_range or 'غير محدد'}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+
+"""
+            
+            # إضافة زر للشبكة
+            button_text = f"{stock_status} {name}"
+            if total_stock and total_stock > 0:
+                button_text += f" ({total_stock})"
+            
+            keyboard.append([InlineKeyboardButton(
+                button_text,
+                callback_data=f"network_{network_id}"
+            )])
+
+        # إضافة أزرار إضافية
+        keyboard.extend([
+            [InlineKeyboardButton('🔍 بحث متقدم', callback_data='search_networks'),
+             InlineKeyboardButton('💰 ترتيب بالسعر', callback_data='networks_by_price')],
+            [InlineKeyboardButton('🔙 عودة', callback_data='search_networks'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ])
+
+        await update.callback_query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+
+    except Exception as e:
+        logger.error(f"Error in show all networks: {e}")
+        await update.callback_query.edit_message_text("❌ حدث خطأ في عرض الشبكات")
+
+async def show_network_details(update: Update, context: CallbackContext, network_id: str):
+    """عرض تفاصيل شبكة معينة"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
+            return
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # الحصول على بيانات الشبكة
+        cursor.execute('SELECT * FROM networks WHERE id = ? AND is_active = 1', (network_id,))
+        network = cursor.fetchone()
+        
+        if not network:
+            await update.callback_query.edit_message_text("❌ الشبكة غير موجودة أو غير متاحة")
+            return
+        
+        # الحصول على فئات الكروت
+        cursor.execute('''
+            SELECT id, name, value, price, stock_count
+            FROM card_categories 
+            WHERE network_id = ? AND is_available = 1
+            ORDER BY price
+        ''', (network_id,))
+        
+        categories = cursor.fetchall()
+        conn.close()
+        
+        # تنسيق معلومات الشبكة
+        text = f"""
+🏢 **{network[1]}** - {network[2]}
+
+👤 **{user['full_name']}**
+💰 رصيدك: **{user['balance']:,.2f}** ريال
+
+📝 **الوصف:**
+{network[3] or 'شبكة إنترنت موثوقة وسريعة'}
+
+💳 **فئات الكروت المتاحة:**
+
+"""
+
+        keyboard = []
+        
+        if categories:
+            for category in categories:
+                cat_id, cat_name, cat_value, cat_price, cat_stock = category
+                
+                # تحديد حالة التوفر
+                availability = "✅ متوفر" if cat_stock > 0 else "❌ نفذ"
+                stock_info = f"({cat_stock} كرت)" if cat_stock > 0 else "(نفذ)"
+                
+                # تنسيق القيمة
+                if cat_value >= 1024:
+                    value_text = f"{cat_value/1024:.0f} جيجا" if cat_value >= 1024 else f"{cat_value} ميجا"
+                else:
+                    value_text = f"{cat_value} ريال" if cat_value >= 100 else f"{cat_value} ميجا"
+                
+                text += f"""
+💳 **{cat_name}**
+📊 القيمة: {value_text}
+💰 السعر: **{cat_price:,.0f}** ريال
+📦 {availability} {stock_info}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+
+"""
+                
+                # إضافة زر شراء إذا كان متوفراً
+                if cat_stock > 0 and user['balance'] >= cat_price:
+                    keyboard.append([InlineKeyboardButton(
+                        f"🛒 شراء {cat_name} - {cat_price:,.0f} ريال",
+                        callback_data=f"buy_card_{cat_id}"
+                    )])
+                elif cat_stock > 0:
+                    keyboard.append([InlineKeyboardButton(
+                        f"💰 رصيد غير كافي - {cat_price:,.0f} ريال",
+                        callback_data=f"insufficient_balance"
+                    )])
+        else:
+            text += "❌ لا توجد فئات متاحة حالياً\n"
+
+        # إضافة أزرار إضافية
+        keyboard.extend([
+            [InlineKeyboardButton('🔙 جميع الشبكات', callback_data='all_networks'),
+             InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet')],
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ])
+
+        await update.callback_query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+
+    except Exception as e:
+        logger.error(f"Error in show network details: {e}")
+        await update.callback_query.edit_message_text("❌ حدث خطأ في عرض تفاصيل الشبكة")
+
+async def show_mobile_networks(update: Update, context: CallbackContext):
+    """عرض شبكات المحمول"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
+            return
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # البحث عن شبكات المحمول
+        cursor.execute('''
+            SELECT 
+                n.id, n.name, n.provider, n.description,
+                COUNT(cc.id) as card_types,
+                SUM(cc.stock_count) as total_stock,
+                MIN(cc.price) as min_price,
+                MAX(cc.price) as max_price
+            FROM networks n
+            LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
+            WHERE n.is_active = 1 AND (
+                n.name LIKE '%سبأفون%' OR 
+                n.name LIKE '%إم تي إن%' OR 
+                n.name LIKE '%واي%' OR
+                n.name LIKE '%تيليمن%' OR
+                n.provider LIKE '%محمول%' OR
+                n.provider LIKE '%موبايل%'
+            )
+            GROUP BY n.id, n.name, n.provider, n.description
+            ORDER BY n.name
+        ''')
+        
+        networks = cursor.fetchall()
+        conn.close()
+        
+        text = f"""
+📱 **شبكات المحمول** 📱
+
+👤 **{user['full_name']}**
+💰 رصيدك: **{user['balance']:,.2f}** ريال
+
+📊 **تم العثور على:** {len(networks)} شبكة محمول
+
+"""
+
+        keyboard = []
+        
+        if networks:
+            for network in networks:
+                network_id, name, provider, description, card_types, total_stock, min_price, max_price = network
+                
+                stock_status = "📦" if total_stock and total_stock > 0 else "❌"
+                text += f"""
+📱 **{name}**
+📝 {description or 'شبكة محمول موثوقة'}
+💳 الفئات: {card_types or 0} فئة
+📦 المخزون: {total_stock or 0} كرت
+━━━━━━━━━━━━━━━━━━━━━━━━━
+
+"""
+                
+                keyboard.append([InlineKeyboardButton(
+                    f"{stock_status} {name}",
+                    callback_data=f"network_{network_id}"
+                )])
+        else:
+            text += "❌ لا توجد شبكات محمول متاحة حالياً\n"
+
+        # إضافة أزرار إضافية
+        keyboard.extend([
+            [InlineKeyboardButton('🏠 إنترنت منزلي', callback_data='home_networks'),
+             InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks')],
+            [InlineKeyboardButton('🔙 عودة', callback_data='search_networks'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ])
+
+        await update.callback_query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+
+    except Exception as e:
+        logger.error(f"Error in show mobile networks: {e}")
+        await update.callback_query.edit_message_text("❌ حدث خطأ في عرض شبكات المحمول")
+
+async def show_home_networks(update: Update, context: CallbackContext):
+    """عرض شبكات الإنترنت المنزلي"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
+            return
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # البحث عن شبكات الإنترنت المنزلي
+        cursor.execute('''
+            SELECT 
+                n.id, n.name, n.provider, n.description,
+                COUNT(cc.id) as card_types,
+                SUM(cc.stock_count) as total_stock,
+                MIN(cc.price) as min_price,
+                MAX(cc.price) as max_price
+            FROM networks n
+            LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
+            WHERE n.is_active = 1 AND (
+                n.name LIKE '%نت%' OR 
+                n.name LIKE '%ماكس%' OR 
+                n.name LIKE '%برودباند%' OR
+                n.provider LIKE '%إنترنت%' OR
+                n.description LIKE '%منزلي%' OR
+                n.description LIKE '%واي فاي%'
+            )
+            GROUP BY n.id, n.name, n.provider, n.description
+            ORDER BY n.name
+        ''')
+        
+        networks = cursor.fetchall()
+        conn.close()
+        
+        text = f"""
+🏠 **إنترنت منزلي** 🏠
+
+👤 **{user['full_name']}**
+💰 رصيدك: **{user['balance']:,.2f}** ريال
+
+📊 **تم العثور على:** {len(networks)} شبكة إنترنت منزلي
+
+"""
+
+        keyboard = []
+        
+        if networks:
+            for network in networks:
+                network_id, name, provider, description, card_types, total_stock, min_price, max_price = network
+                
+                stock_status = "📦" if total_stock and total_stock > 0 else "❌"
+                text += f"""
+🏠 **{name}**
+📝 {description or 'شبكة إنترنت منزلي موثوقة'}
+💳 الفئات: {card_types or 0} فئة
+📦 المخزون: {total_stock or 0} كرت
+━━━━━━━━━━━━━━━━━━━━━━━━━
+
+"""
+                
+                keyboard.append([InlineKeyboardButton(
+                    f"{stock_status} {name}",
+                    callback_data=f"network_{network_id}"
+                )])
+        else:
+            text += "❌ لا توجد شبكات إنترنت منزلي متاحة حالياً\n"
+
+        # إضافة أزرار إضافية
+        keyboard.extend([
+            [InlineKeyboardButton('📱 شبكات المحمول', callback_data='mobile_networks'),
+             InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks')],
+            [InlineKeyboardButton('🔙 عودة', callback_data='search_networks'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ])
+
+        await update.callback_query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+
+    except Exception as e:
+        logger.error(f"Error in show home networks: {e}")
+        await update.callback_query.edit_message_text("❌ حدث خطأ في عرض شبكات الإنترنت المنزلي")
+
 # Export main handlers for use in main bot file
 COMMAND_HANDLERS = {
     'start': start,
@@ -1724,6 +2146,13 @@ COMMAND_HANDLERS = {
     'search_by_name': lambda u, c: search_by_type_handler(u, c, "name"),
     'search_by_phone': lambda u, c: search_by_type_handler(u, c, "phone"),
     'search_by_username': lambda u, c: search_by_type_handler(u, c, "username"),
+    'all_networks': show_all_networks,
+    'mobile_networks': show_mobile_networks,
+    'home_networks': show_home_networks,
+    'search_by_network_name': lambda u, c: enhanced_placeholder_handler(u, c, "🔍 البحث بالاسم", "ابحث عن شبكة بالاسم"),
+    'networks_by_price': lambda u, c: enhanced_placeholder_handler(u, c, "💰 ترتيب بالسعر", "ترتيب الشبكات حسب السعر"),
+    'popular_networks': lambda u, c: enhanced_placeholder_handler(u, c, "⭐ الأكثر طلباً", "الشبكات الأكثر شعبية"),
+    'insufficient_balance': lambda u, c: enhanced_placeholder_handler(u, c, "💰 رصيد غير كافي", "تحتاج لشحن رصيدك أولاً"),
 }
 
 from telegram.ext import MessageHandler, CallbackQueryHandler, filters

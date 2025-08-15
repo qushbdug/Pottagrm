@@ -565,6 +565,106 @@ def init_db():
             )
         ''')
 
+        # Create settings table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key TEXT UNIQUE NOT NULL,
+                value TEXT,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create networks table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS networks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                description TEXT,
+                logo_url TEXT,
+                is_active BOOLEAN DEFAULT 1,
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (created_by) REFERENCES users (id)
+            )
+        ''')
+        
+        # Create card_categories table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS card_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                network_id INTEGER,
+                name TEXT NOT NULL,
+                value INTEGER NOT NULL,
+                price REAL NOT NULL,
+                currency TEXT DEFAULT 'YER',
+                is_available BOOLEAN DEFAULT 1,
+                stock_count INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (network_id) REFERENCES networks (id)
+            )
+        ''')
+        
+        # Create cards table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS cards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category_id INTEGER,
+                card_number TEXT NOT NULL,
+                serial_number TEXT,
+                expiry_date TEXT,
+                is_sold BOOLEAN DEFAULT 0,
+                sold_to INTEGER,
+                sold_at TIMESTAMP,
+                uploaded_by INTEGER,
+                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (category_id) REFERENCES card_categories (id),
+                FOREIGN KEY (sold_to) REFERENCES users (id),
+                FOREIGN KEY (uploaded_by) REFERENCES users (id)
+            )
+        ''')
+        
+        # Insert sample networks data
+        cursor.execute('''
+            INSERT OR IGNORE INTO networks (id, name, provider, description, is_active) VALUES
+            (1, 'يمن نت', 'يمن نت', 'شبكة يمن نت للإنترنت اللاسلكي', 1),
+            (2, 'واي ماكس', 'واي ماكس', 'شبكة واي ماكس للإنترنت عالي السرعة', 1),
+            (3, 'فولت نت', 'فولت نت', 'شبكة فولت نت للإنترنت المنزلي', 1),
+            (4, 'تيليمن', 'تيليمن', 'شركة تيليمن للاتصالات', 1),
+            (5, 'سبأفون', 'سبأفون', 'شركة سبأفون للمحمول', 1),
+            (6, 'إم تي إن', 'إم تي إن', 'شركة إم تي إن يمن', 1),
+            (7, 'واي', 'واي', 'شركة واي للاتصالات', 1),
+            (8, 'عدن نت', 'عدن نت', 'شبكة عدن نت للإنترنت', 1),
+            (9, 'نت سبيد', 'نت سبيد', 'شبكة نت سبيد للإنترنت السريع', 1),
+            (10, 'برودباند يمن', 'برودباند يمن', 'شبكة برودباند يمن للإنترنت', 1)
+        ''')
+        
+        # Insert sample card categories
+        cursor.execute('''
+            INSERT OR IGNORE INTO card_categories (network_id, name, value, price, stock_count) VALUES
+            (1, 'كرت 500 ميجا', 500, 1000, 50),
+            (1, 'كرت 1 جيجا', 1024, 1800, 30),
+            (1, 'كرت 2 جيجا', 2048, 3200, 25),
+            (1, 'كرت 5 جيجا', 5120, 7500, 20),
+            (2, 'كرت 1 جيجا', 1024, 2000, 40),
+            (2, 'كرت 3 جيجا', 3072, 5500, 25),
+            (2, 'كرت 5 جيجا', 5120, 8000, 15),
+            (3, 'كرت 2 جيجا', 2048, 3500, 35),
+            (3, 'كرت 4 جيجا', 4096, 6500, 20),
+            (4, 'كرت 1000 ريال', 1000, 1000, 100),
+            (4, 'كرت 2000 ريال', 2000, 2000, 75),
+            (4, 'كرت 5000 ريال', 5000, 5000, 50),
+            (5, 'كرت 1000 ريال', 1000, 1000, 80),
+            (5, 'كرت 3000 ريال', 3000, 3000, 60),
+            (6, 'كرت 1500 ريال', 1500, 1500, 70),
+            (6, 'كرت 4000 ريال', 4000, 4000, 40)
+        ''')
+
         conn.commit()
         logger.info("Database initialized successfully")
         
