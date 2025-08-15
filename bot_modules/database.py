@@ -489,6 +489,7 @@ def init_db():
                 network_id TEXT NOT NULL,
                 card_code TEXT NOT NULL,
                 card_value REAL NOT NULL,
+                card_category INTEGER DEFAULT 200, -- Card category/denomination
                 is_sold BOOLEAN DEFAULT 0,
                 sold_to INTEGER NULL,
                 sold_at TIMESTAMP NULL,
@@ -499,6 +500,32 @@ def init_db():
                 FOREIGN KEY (sold_to) REFERENCES users (id)
             )
         ''')
+        
+        # Create card categories reference table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS card_categories_ref (
+                category_value INTEGER PRIMARY KEY,
+                category_name TEXT NOT NULL,
+                display_order INTEGER DEFAULT 0,
+                is_active BOOLEAN DEFAULT 1
+            )
+        ''')
+        
+        # Insert default card categories if not exist
+        categories = [
+            (200, '200 ريال', 1),
+            (300, '300 ريال', 2),
+            (500, '500 ريال', 3),
+            (1000, '1000 ريال', 4),
+            (2000, '2000 ريال', 5),
+            (5000, '5000 ريال', 6),
+            (10000, '10000 ريال', 7)
+        ]
+        
+        cursor.executemany('''
+            INSERT OR IGNORE INTO card_categories_ref (category_value, category_name, display_order)
+            VALUES (?, ?, ?)
+        ''', categories)
         
         # Create upload batches table
         cursor.execute('''

@@ -464,8 +464,8 @@ def validate_card_code(card_code):
     
     return True, cleaned_code
 
-def process_uploaded_cards(file_content, supplier_id, network_id, batch_id):
-    """Process uploaded cards from text or Excel file"""
+def process_uploaded_cards(file_content, supplier_id, network_id, batch_id, selected_category=None):
+    """Process uploaded cards from text or Excel file with category support"""
     import io
     
     conn = get_db_connection()
@@ -484,7 +484,7 @@ def process_uploaded_cards(file_content, supplier_id, network_id, batch_id):
             if not line:
                 continue
                 
-            # Try to parse line format: "card_code,value" or just "card_code"
+            # Try to parse line format: "card_code,value,category" or "card_code,value" or just "card_code"
             parts = line.split(',')
             card_code = parts[0].strip()
             
@@ -497,6 +497,37 @@ def process_uploaded_cards(file_content, supplier_id, network_id, batch_id):
                     errors.append(f"السطر {line_num}: قيمة غير صحيحة '{parts[1]}', تم استخدام 0")
             else:
                 card_value = 0.0
+            
+            # Category handling
+            if len(parts) > 2:
+                try:
+                    card_category = int(parts[2].strip())
+                    # Validate category
+                    if card_category not in [200, 300, 500, 1000, 2000, 5000, 10000]:
+                        card_category = selected_category or 200
+                        errors.append(f"السطر {line_num}: فئة غير صحيحة '{parts[2]}', تم استخدام {card_category}")
+                except ValueError:
+                    card_category = selected_category or 200
+                    errors.append(f"السطر {line_num}: فئة غير صحيحة '{parts[2]}', تم استخدام {card_category}")
+            else:
+                card_category = selected_category or 200
+            
+            # Auto-detect category from value if not specified
+            if card_value > 0 and (selected_category is None and len(parts) <= 2):
+                if card_value <= 200:
+                    card_category = 200
+                elif card_value <= 300:
+                    card_category = 300
+                elif card_value <= 500:
+                    card_category = 500
+                elif card_value <= 1000:
+                    card_category = 1000
+                elif card_value <= 2000:
+                    card_category = 2000
+                elif card_value <= 5000:
+                    card_category = 5000
+                else:
+                    card_category = 10000
             
             # Validate card code
             is_valid, result = validate_card_code(card_code)
@@ -517,9 +548,9 @@ def process_uploaded_cards(file_content, supplier_id, network_id, batch_id):
             # Insert card
             card_id = str(uuid.uuid4())
             cursor.execute('''
-                INSERT INTO network_cards (id, supplier_id, network_id, card_code, card_value, upload_batch_id)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (card_id, supplier_id, network_id, card_code, card_value, batch_id))
+                INSERT INTO network_cards (id, supplier_id, network_id, card_code, card_value, card_category, upload_batch_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (card_id, supplier_id, network_id, card_code, card_value, card_category, batch_id))
             
             successful_cards += 1
         
@@ -549,3 +580,105 @@ def process_uploaded_cards(file_content, supplier_id, network_id, batch_id):
         conn.close()
     
     return successful_cards, failed_cards, errors
+
+def search_networks(search_term, user_id=None):
+    """Search networks by name or supplier code"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Search by network name or supplier code
+    if user_id:
+        # Search user's own networks
+        cursor.execute('''
+            SELECT n.*, sc.supplier_code, u.full_name as supplier_name
+            FROM networks n
+            LEFT JOIN supplier_codes sc ON n.supplier_id = sc.supplier_id
+            LEFT JOIN users u ON n.supplier_id = u.id
+            WHERE n.supplier_id = ? AND (
+                n.name LIKE ? OR 
+                sc.supplier_code LIKE ?
+            )
+            ORDER BY n.name
+        ''', (user_id, f'%{search_term}%', f'%{search_term}%'))
+    else:
+        # Search all networks (for admins)
+        cursor.execute('''
+            SELECT n.*, sc.supplier_code, u.full_name as supplier_name
+            FROM networks n
+            LEFT JOIN supplier_codes sc ON n.supplier_id = sc.supplier_id
+            LEFT JOIN users u ON n.supplier_id = u.id
+            WHERE n.name LIKE ? OR sc.supplier_code LIKE ?
+            ORDER BY n.name
+        ''', (f'%{search_term}%', f'%{search_term}%'))
+    
+    results = cursor.fetchall()
+    conn.close()
+    return results
+
+def search_cards_by_category(supplier_id, category=None, network_id=None):
+    """Search cards by category and network"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    query = '''
+        SELECT 
+            nc.*, 
+            n.name as network_name,
+            ccr.category_name
+        FROM network_cards nc
+        LEFT JOIN networks n ON nc.network_id = n.id
+        LEFT JOIN card_categories_ref ccr ON nc.card_category = ccr.category_value
+        WHERE nc.supplier_id = ?
+    '''
+    
+    params = [supplier_id]
+    
+    if category:
+        query += ' AND nc.card_category = ?'
+        params.append(category)
+    
+    if network_id:
+        query += ' AND nc.network_id = ?'
+        params.append(network_id)
+    
+    query += ' ORDER BY nc.card_category, nc.id'
+    
+    cursor.execute(query, params)
+    results = cursor.fetchall()
+    conn.close()
+    return results
+
+def get_card_categories():
+    """Get all available card categories"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT * FROM card_categories_ref WHERE is_active = 1 ORDER BY display_order')
+    categories = cursor.fetchall()
+    conn.close()
+    return categories
+
+def get_cards_stats_by_category(supplier_id):
+    """Get card statistics grouped by category"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT 
+            nc.card_category,
+            ccr.category_name,
+            COUNT(*) as total_cards,
+            SUM(CASE WHEN nc.is_sold = 0 THEN 1 ELSE 0 END) as available_cards,
+            SUM(CASE WHEN nc.is_sold = 1 THEN 1 ELSE 0 END) as sold_cards,
+            SUM(CASE WHEN nc.is_sold = 0 THEN nc.card_value ELSE 0 END) as available_value,
+            SUM(CASE WHEN nc.is_sold = 1 THEN nc.card_value ELSE 0 END) as sold_value
+        FROM network_cards nc
+        LEFT JOIN card_categories_ref ccr ON nc.card_category = ccr.category_value
+        WHERE nc.supplier_id = ?
+        GROUP BY nc.card_category, ccr.category_name
+        ORDER BY nc.card_category
+    ''', (supplier_id,))
+    
+    stats = cursor.fetchall()
+    conn.close()
+    return stats

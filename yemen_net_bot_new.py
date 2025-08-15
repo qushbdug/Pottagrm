@@ -165,6 +165,8 @@ async def button_click_handler(update: Update, context):
         # File upload processing
         elif callback_data.startswith('select_network_'):
             await process_network_selection(update, context)
+        elif callback_data.startswith('select_category_'):
+            await process_category_selection(update, context)
         elif callback_data == 'cancel_upload':
             await cancel_upload(update, context)
         elif callback_data == 'confirm_upload':
@@ -177,6 +179,10 @@ async def button_click_handler(update: Update, context):
             await network_details_handler(update, context)
         elif callback_data == 'privacy_settings':
             await privacy_settings_handler(update, context)
+        elif callback_data == 'search_networks':
+            await search_networks_handler(update, context)
+        elif callback_data == 'filter_by_category':
+            await filter_by_category_handler(update, context)
         
         # Refresh balance
         elif callback_data == 'refresh_balance':
@@ -650,6 +656,8 @@ async def supplier_panel_handler(update: Update, context):
             [InlineKeyboardButton(f'📶 إدارة الشبكات', callback_data='manage_networks'),
              InlineKeyboardButton(f'📤 رفع كروت', callback_data='upload_cards')],
             [InlineKeyboardButton(f'📊 تقارير الكروت', callback_data='cards_reports'),
+             InlineKeyboardButton(f'🎯 فلترة حسب الفئة', callback_data='filter_by_category')],
+            [InlineKeyboardButton(f'🔍 البحث في الشبكات', callback_data='search_networks'),
              InlineKeyboardButton(f'📈 إحصائيات المبيعات', callback_data='sales_stats')],
             [InlineKeyboardButton(f'📋 سجل الرفع', callback_data='upload_history'),
              InlineKeyboardButton(f'⚙️ إعدادات المزود', callback_data='supplier_settings')],
@@ -911,6 +919,9 @@ async def cards_reports_handler(update: Update, context):
         user = get_user(query.from_user.id)
         
         # Get cards statistics
+        from bot_modules.utils import get_cards_stats_by_category
+        stats_by_category = get_cards_stats_by_category(user['id'])
+        
         conn = get_db_connection()
         cursor = conn.cursor()
         
@@ -926,19 +937,10 @@ async def cards_reports_handler(update: Update, context):
         ''', (user['id'],))
         
         stats = cursor.fetchone()
-        
-        # Recent sales (last 7 days)
-        cursor.execute('''
-            SELECT COUNT(*) as recent_sales 
-            FROM network_cards 
-            WHERE supplier_id = ? AND is_sold = 1 AND sold_at > datetime("now", "-7 days")
-        ''', (user['id'],))
-        
-        recent_sales = cursor.fetchone()['recent_sales']
         conn.close()
         
         reports_text = f"""
-📊 **تقارير الكروت** 📊
+📊 **تقارير الكروت المفصلة** 📊
 
 👤 **{user['full_name']}**
 
@@ -950,11 +952,17 @@ async def cards_reports_handler(update: Update, context):
 🎯 **إحصائيات المبيعات:**
 ✅ كروت مباعة: **{stats['sold_cards'] or 0}**
 💵 قيمة مباعة: **{stats['sold_value'] or 0:.2f}** ريال
-🔥 مبيعات هذا الأسبوع: **{recent_sales}**
+📊 **معدل البيع:** {((stats['sold_cards'] or 0) / max(stats['total_cards'] or 1, 1) * 100):.1f}%
 
-📊 **معدل البيع:**
-{((stats['sold_cards'] or 0) / max(stats['total_cards'] or 1, 1) * 100):.1f}%
+💳 **تقسيم حسب الفئات:**
 """
+
+        if stats_by_category:
+            for stat in stats_by_category:
+                reports_text += f"""
+• **{stat['category_name']}**: {stat['available_cards']}/{stat['total_cards']} متاح"""
+        else:
+            reports_text += "\n⚠️ لا توجد كروت محملة"
         
         keyboard = [
             [InlineKeyboardButton('📈 تفاصيل أكثر', callback_data='detailed_reports')],
@@ -1214,7 +1222,7 @@ async def handle_document(update: Update, context: CallbackContext):
 📁 **اسم الملف:** {file_name}
 📊 **حجم الملف:** {file_size/1024:.1f} كيلوبايت
 
-اختر الشبكة المرتبطة بهذه الكروت:
+🎯 **خطوة 1: اختر الشبكة المرتبطة بهذه الكروت:**
 """, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
     except Exception as e:
@@ -1248,6 +1256,76 @@ async def process_network_selection(update: Update, context: CallbackContext):
         # Store network selection
         context.user_data['selected_network_id'] = network_id
         
+        # Show category selection
+        from bot_modules.utils import get_card_categories
+        categories = get_card_categories()
+        
+        category_text = f"""
+🎯 **خطوة 2: اختر فئة الكروت**
+
+📁 **الملف:** {upload_data['filename']}
+📶 **الشبكة:** {network['name']}
+📊 **حجم الملف:** {upload_data['size']/1024:.1f} كيلوبايت
+
+💳 **اختر الفئة المناسبة للكروت:**
+
+⚠️ **ملاحظة:** 
+• إذا كان الملف يحتوي على قيم مختلفة، سيتم تحديد الفئة تلقائياً
+• يمكنك اختيار "تلقائي" ليتم تحديد الفئة حسب القيمة
+"""
+        
+        keyboard = []
+        # Add automatic detection option
+        keyboard.append([InlineKeyboardButton("🤖 تحديد تلقائي حسب القيمة", callback_data="select_category_auto")])
+        
+        # Add category buttons in pairs
+        for i in range(0, len(categories), 2):
+            row = []
+            for j in range(2):
+                if i + j < len(categories):
+                    cat = categories[i + j]
+                    row.append(InlineKeyboardButton(f"💳 {cat['category_name']}", callback_data=f"select_category_{cat['category_value']}"))
+            keyboard.append(row)
+        
+        keyboard.append([InlineKeyboardButton("❌ إلغاء", callback_data="cancel_upload")])
+        
+        await query.edit_message_text(category_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error processing network selection: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في اختيار الشبكة.")
+
+async def process_category_selection(update: Update, context: CallbackContext):
+    """Process category selection for file upload"""
+    try:
+        query = update.callback_query
+        callback_data = query.data
+        
+        upload_data = context.user_data.get('upload_file')
+        network_id = context.user_data.get('selected_network_id')
+        
+        if not upload_data or not network_id:
+            await query.edit_message_text("❌ بيانات الرفع غير مكتملة. يرجى البدء من جديد.")
+            return
+        
+        # Extract category from callback
+        if callback_data == 'select_category_auto':
+            selected_category = None
+            category_name = "تحديد تلقائي"
+        else:
+            selected_category = int(callback_data.split('_')[-1])
+            category_name = f"{selected_category} ريال"
+        
+        # Store category selection
+        context.user_data['selected_category'] = selected_category
+        
+        # Get network info
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT name FROM networks WHERE id = ?', (network_id,))
+        network = cursor.fetchone()
+        conn.close()
+        
         # Preview file content (first few lines)
         content = upload_data['content']
         lines = content.split('\n')[:5]  # First 5 lines
@@ -1258,6 +1336,7 @@ async def process_network_selection(update: Update, context: CallbackContext):
 
 📁 **الملف:** {upload_data['filename']}
 📶 **الشبكة:** {network['name']}
+💳 **الفئة:** {category_name}
 📊 **حجم الملف:** {upload_data['size']/1024:.1f} كيلوبايت
 📝 **عدد الأسطر:** {len([l for l in lines if l.strip()])}
 
@@ -1273,14 +1352,15 @@ async def process_network_selection(update: Update, context: CallbackContext):
         
         keyboard = [
             [InlineKeyboardButton("✅ تأكيد الرفع", callback_data="confirm_upload")],
+            [InlineKeyboardButton("🔙 العودة لاختيار الفئة", callback_data=f"select_network_{network_id}")],
             [InlineKeyboardButton("❌ إلغاء", callback_data="cancel_upload")]
         ]
         
         await query.edit_message_text(confirmation_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
     except Exception as e:
-        logger.error(f"Error processing network selection: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في اختيار الشبكة.")
+        logger.error(f"Error processing category selection: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في اختيار الفئة.")
 
 async def cancel_upload(update: Update, context: CallbackContext):
     """Cancel file upload"""
@@ -1290,6 +1370,7 @@ async def cancel_upload(update: Update, context: CallbackContext):
         # Clear upload data
         context.user_data.pop('upload_file', None)
         context.user_data.pop('selected_network_id', None)
+        context.user_data.pop('selected_category', None)
         
         await query.edit_message_text("❌ تم إلغاء عملية رفع الكروت.")
         
@@ -1304,6 +1385,7 @@ async def confirm_upload(update: Update, context: CallbackContext):
         
         upload_data = context.user_data.get('upload_file')
         network_id = context.user_data.get('selected_network_id')
+        selected_category = context.user_data.get('selected_category')
         
         if not upload_data or not network_id:
             await query.edit_message_text("❌ بيانات الرفع غير مكتملة.")
@@ -1329,12 +1411,13 @@ async def confirm_upload(update: Update, context: CallbackContext):
         # Process cards
         from bot_modules.utils import process_uploaded_cards
         successful, failed, errors = process_uploaded_cards(
-            upload_data['content'], user['id'], network_id, batch_id
+            upload_data['content'], user['id'], network_id, batch_id, selected_category
         )
         
         # Clear upload data
         context.user_data.pop('upload_file', None)
         context.user_data.pop('selected_network_id', None)
+        context.user_data.pop('selected_category', None)
         
         # Send results
         result_text = f"""
@@ -1510,6 +1593,89 @@ async def privacy_settings_handler(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in privacy settings handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إعدادات الخصوصية.")
+
+async def search_networks_handler(update: Update, context: CallbackContext):
+    """Handle network search functionality"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        search_text = f"""
+🔍 **البحث في الشبكات** 🔍
+
+👤 **{user['full_name']}**
+
+📝 **يمكنك البحث عن:**
+• اسم الشبكة
+• معرف المزود (يبدأ بـ 80)
+• معرف الشبكة
+
+💡 **لبدء البحث:**
+أرسل كلمة البحث كرسالة نصية بعد هذه الرسالة
+
+🔍 **أمثلة:**
+• `سبافون`
+• `801234`
+• `صنعاء`
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📶 عرض جميع شبكاتي', callback_data='manage_networks')],
+            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
+        ]
+        
+        # Set context for search mode
+        context.user_data['search_mode'] = 'networks'
+        
+        await query.edit_message_text(search_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in search networks handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في البحث.")
+
+async def filter_by_category_handler(update: Update, context: CallbackContext):
+    """Handle filtering cards by category"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        from bot_modules.utils import get_cards_stats_by_category
+        stats = get_cards_stats_by_category(user['id'])
+        
+        filter_text = f"""
+🎯 **فلترة الكروت حسب الفئة** 🎯
+
+👤 **{user['full_name']}**
+
+📊 **إحصائيات الكروت حسب الفئة:**
+"""
+        
+        keyboard = []
+        
+        if stats:
+            for stat in stats:
+                filter_text += f"""
+💳 **{stat['category_name']}**
+📋 إجمالي: {stat['total_cards']} | متاح: {stat['available_cards']} | مباع: {stat['sold_cards']}
+💰 قيمة متاحة: {stat['available_value']:.2f} ريال
+---"""
+                
+                # Add filter button for each category
+                keyboard.append([InlineKeyboardButton(
+                    f"💳 عرض {stat['category_name']} ({stat['available_cards']} متاح)", 
+                    callback_data=f"view_category_{stat['card_category']}"
+                )])
+        else:
+            filter_text += "\n⚠️ لا توجد كروت محملة بعد"
+        
+        keyboard.append([InlineKeyboardButton('📊 تقارير الكروت', callback_data='cards_reports')])
+        keyboard.append([InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')])
+        
+        await query.edit_message_text(filter_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in filter by category handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في فلترة الكروت.")
 
 def main():
     """Main function to start the bot"""
