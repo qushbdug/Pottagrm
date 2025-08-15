@@ -335,33 +335,51 @@ def create_transaction(from_user: int, to_user: int, amount: float,
 
 def recalc_and_set_user_balance(user_id: int):
     """Recalculate and update user balance"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Calculate balance from transactions
-        cursor.execute('''
-            SELECT 
-                COALESCE(SUM(CASE WHEN to_user = ? THEN amount ELSE 0 END), 0) as credits,
-                COALESCE(SUM(CASE WHEN from_user = ? THEN amount ELSE 0 END), 0) as debits
-            FROM transactions 
-            WHERE (to_user = ? OR from_user = ?) AND status = 'completed'
-        ''', (user_id, user_id, user_id, user_id))
-        
-        result = cursor.fetchone()
-        credits = result['credits'] if result['credits'] else 0
-        debits = result['debits'] if result['debits'] else 0
-        new_balance = credits - debits
-        
-        # Update user balance
-        cursor.execute('UPDATE users SET balance = ? WHERE id = ?', (new_balance, user_id))
-        
-        conn.commit()
-        conn.close()
-        return new_balance
-    except Exception as e:
-        logger.error(f"Error recalculating balance: {e}")
-        return 0
+    import time
+    max_retries = 3
+    retry_delay = 0.1
+    
+    for attempt in range(max_retries):
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Calculate balance from transactions (no status check as it may not exist)
+            cursor.execute('''
+                SELECT 
+                    COALESCE(SUM(CASE WHEN to_user = ? THEN amount ELSE 0 END), 0) as credits,
+                    COALESCE(SUM(CASE WHEN from_user = ? THEN amount ELSE 0 END), 0) as debits
+                FROM transactions 
+                WHERE to_user = ? OR from_user = ?
+            ''', (user_id, user_id, user_id, user_id))
+            
+            result = cursor.fetchone()
+            credits = result['credits'] if result['credits'] else 0
+            debits = result['debits'] if result['debits'] else 0
+            new_balance = credits - debits
+            
+            # Update user balance
+            cursor.execute('UPDATE users SET balance = ? WHERE id = ?', (new_balance, user_id))
+            
+            conn.commit()
+            conn.close()
+            return new_balance
+            
+        except Exception as e:
+            if "database is locked" in str(e).lower() and attempt < max_retries - 1:
+                logger.warning(f"Database locked, retrying in {retry_delay}s (attempt {attempt + 1}/{max_retries})")
+                time.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+                continue
+            else:
+                logger.error(f"Error recalculating balance: {e}")
+                try:
+                    conn.close()
+                except:
+                    pass
+                return 0
+    
+    return 0
 
 def update_inventory_stock(network_id: str, category_id: int, change: int) -> bool:
     """Update inventory stock count"""

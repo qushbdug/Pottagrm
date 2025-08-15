@@ -425,6 +425,11 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
         summary = cursor.fetchone()
         conn.close()
         
+        # Handle None values safely
+        total_credits = summary['total_credits'] or 0.0
+        total_debits = summary['total_debits'] or 0.0
+        total_transactions = summary['total_transactions'] or 0
+        
         wallet_text = f"""
 💳 **محفظتي المطورة** 💳
 
@@ -433,9 +438,9 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
 🆔 **رقم المحفظة:** {user['wallet_number']}
 
 📊 **ملخص المعاملات:**
-📈 إجمالي الإيداعات: **{summary['total_credits']:.2f}** ريال
-📉 إجمالي المصروفات: **{summary['total_debits']:.2f}** ريال
-🔢 عدد المعاملات: **{summary['total_transactions']}**
+📈 إجمالي الإيداعات: **{total_credits:.2f}** ريال
+📉 إجمالي المصروفات: **{total_debits:.2f}** ريال
+🔢 عدد المعاملات: **{total_transactions}**
 
 📝 **آخر المعاملات:**
 """

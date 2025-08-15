@@ -50,6 +50,7 @@ EMOJIS = {
     'success': '✅',
     'error': '❌',
     'warning': '⚠️',
+    'info': 'ℹ️',
     'loading': '⏳',
     'money': '💰',
     'card': '🎫',
