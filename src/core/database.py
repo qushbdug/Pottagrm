@@ -67,108 +67,78 @@ class DatabaseManager:
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                self._create_tables(cursor)
+                self._create_missing_tables(cursor)
                 conn.commit()
                 logger.info("Database initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize database: {e}")
             raise
     
-    def _create_tables(self, cursor: sqlite3.Cursor) -> None:
-        """Create all required database tables."""
-        # Users table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                telegram_id INTEGER UNIQUE NOT NULL,
-                full_name TEXT NOT NULL,
-                phone TEXT UNIQUE NOT NULL,
-                role TEXT NOT NULL DEFAULT 'customer',
-                balance REAL DEFAULT 0.0,
-                invite_code TEXT UNIQUE,
-                is_active BOOLEAN DEFAULT 0,
-                bank_account TEXT,
-                total_referrals INTEGER DEFAULT 0,
-                total_purchases INTEGER DEFAULT 0,
-                total_spent REAL DEFAULT 0.0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                referred_by INTEGER,
-                wallet_number TEXT UNIQUE,
-                FOREIGN KEY(referred_by) REFERENCES users(id)
-            )
-        ''')
+    def _create_missing_tables(self, cursor: sqlite3.Cursor) -> None:
+        """Create only missing tables to avoid conflicts."""
+        # Check if transactions table has the new structure
+        cursor.execute("PRAGMA table_info(transactions)")
+        columns = [col[1] for col in cursor.fetchall()]
         
-        # Networks table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS networks (
-                id TEXT PRIMARY KEY,
-                supplier_id INTEGER NOT NULL,
-                name TEXT NOT NULL,
-                city TEXT NOT NULL,
-                network_code TEXT UNIQUE NOT NULL,
-                is_active BOOLEAN DEFAULT 0,
-                is_approved BOOLEAN DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                approved_at TIMESTAMP,
-                approved_by INTEGER,
-                FOREIGN KEY(supplier_id) REFERENCES users(id),
-                FOREIGN KEY(approved_by) REFERENCES users(id)
-            )
-        ''')
+        if 'user_id' not in columns:
+            # Create new transactions table with updated structure
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS transactions_new (
+                    id TEXT PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    transaction_type TEXT NOT NULL,
+                    amount REAL NOT NULL,
+                    balance_before REAL NOT NULL,
+                    balance_after REAL NOT NULL,
+                    description TEXT,
+                    reference_id TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+            ''')
+            
+            # Migrate existing data if possible
+            try:
+                cursor.execute('''
+                    INSERT INTO transactions_new (id, user_id, transaction_type, amount, 
+                    balance_before, balance_after, description, reference_id, created_at)
+                    SELECT id, from_user, type, amount, 0, 0, description, reference_id, created_at
+                    FROM transactions WHERE from_user IS NOT NULL
+                ''')
+                
+                cursor.execute('''
+                    INSERT INTO transactions_new (id, user_id, transaction_type, amount, 
+                    balance_before, balance_after, description, reference_id, created_at)
+                    SELECT id || '_to', to_user, 'received', amount, 0, 0, description, reference_id, created_at
+                    FROM transactions WHERE to_user IS NOT NULL
+                ''')
+                
+                # Drop old table and rename new one
+                cursor.execute('DROP TABLE transactions')
+                cursor.execute('ALTER TABLE transactions_new RENAME TO transactions')
+                
+                logger.info("Successfully migrated transactions table")
+                
+            except Exception as e:
+                logger.warning(f"Could not migrate transactions table: {e}")
+                # Keep the new table structure
+                pass
         
-        # Card categories table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS card_categories (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                network_id TEXT NOT NULL,
-                value REAL NOT NULL,
-                price REAL NOT NULL,
-                is_available BOOLEAN DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                category_name TEXT,
-                description TEXT,
-                FOREIGN KEY(network_id) REFERENCES networks(id)
-            )
-        ''')
+        # Create missing indexes if they don't exist
+        try:
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id)')
+        except Exception as e:
+            logger.warning(f"Could not create transactions index: {e}")
         
-        # Cards table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS cards (
-                id TEXT PRIMARY KEY,
-                category_id INTEGER NOT NULL,
-                code TEXT NOT NULL,
-                is_used BOOLEAN DEFAULT 0,
-                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                used_at TIMESTAMP,
-                used_by INTEGER,
-                FOREIGN KEY(category_id) REFERENCES card_categories(id),
-                FOREIGN KEY(used_by) REFERENCES users(id)
-            )
-        ''')
+        try:
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id)')
+        except Exception as e:
+            logger.warning(f"Could not create users index: {e}")
         
-        # Transactions table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS transactions (
-                id TEXT PRIMARY KEY,
-                user_id INTEGER NOT NULL,
-                transaction_type TEXT NOT NULL,
-                amount REAL NOT NULL,
-                balance_before REAL NOT NULL,
-                balance_after REAL NOT NULL,
-                description TEXT,
-                reference_id TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(user_id) REFERENCES users(id)
-            )
-        ''')
-        
-        # Create indexes for better performance
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_networks_supplier ON networks(supplier_id)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_cards_category ON cards(category_id)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id)')
+        try:
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone)')
+        except Exception as e:
+            logger.warning(f"Could not create phone index: {e}")
     
     @contextmanager
     def get_connection(self):
@@ -207,8 +177,11 @@ class DatabaseManager:
                 
                 cursor.execute('''
                     INSERT INTO users (
-                        telegram_id, full_name, phone, role, invite_code, wallet_number
-                    ) VALUES (?, ?, ?, ?, ?, ?)
+                        telegram_id, full_name, phone, role, invite_code, wallet_number,
+                        balance, is_active, total_referrals, total_purchases, total_spent,
+                        created_at, last_activity
+                    ) VALUES (?, ?, ?, ?, ?, ?, 0.0, 1, 0, 0, 0.0, 
+                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ''', (telegram_id, full_name, phone, role, invite_code, wallet_number))
                 
                 user_id = cursor.lastrowid
@@ -254,6 +227,22 @@ class DatabaseManager:
                 
         except Exception as e:
             logger.error(f"Failed to get user by ID {user_id}: {e}")
+            return None
+    
+    def get_user_by_phone(self, phone: str) -> Optional[User]:
+        """Get user by phone number."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT * FROM users WHERE phone = ?', (phone,))
+                row = cursor.fetchone()
+                
+                if row:
+                    return self._row_to_user(row)
+                return None
+                
+        except Exception as e:
+            logger.error(f"Failed to get user by phone {phone}: {e}")
             return None
     
     def update_user_balance(self, user_id: int, amount: float, transaction_type: str, description: str = "") -> bool:
@@ -302,6 +291,25 @@ class DatabaseManager:
             logger.error(f"Failed to update user activity: {e}")
             return False
     
+    def get_user_transactions(self, user_id: int, limit: int = 10) -> List[Dict]:
+        """Get user's recent transactions."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT * FROM transactions 
+                    WHERE user_id = ? 
+                    ORDER BY created_at DESC 
+                    LIMIT ?
+                ''', (user_id, limit))
+                
+                rows = cursor.fetchall()
+                return [dict(row) for row in rows]
+                
+        except Exception as e:
+            logger.error(f"Failed to get user transactions: {e}")
+            return []
+    
     def _generate_invite_code(self) -> str:
         """Generate unique invite code."""
         while True:
@@ -339,14 +347,14 @@ class DatabaseManager:
             balance=row['balance'],
             invite_code=row['invite_code'],
             is_active=bool(row['is_active']),
-            bank_account=row['bank_account'],
-            total_referrals=row['total_referrals'],
-            total_purchases=row['total_purchases'],
-            total_spent=row['total_spent'],
-            created_at=datetime.fromisoformat(row['created_at']),
-            last_activity=datetime.fromisoformat(row['last_activity']),
-            referred_by=row['referred_by'],
-            wallet_number=row['wallet_number']
+            bank_account=row.get('bank_account'),
+            total_referrals=row.get('total_referrals', 0),
+            total_purchases=row.get('total_purchases', 0),
+            total_spent=row.get('total_spent', 0.0),
+            created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else datetime.now(),
+            last_activity=datetime.fromisoformat(row['last_activity']) if row['last_activity'] else datetime.now(),
+            referred_by=row.get('referred_by'),
+            wallet_number=row.get('wallet_number')
         )
 
 

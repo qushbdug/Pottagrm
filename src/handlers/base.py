@@ -11,8 +11,13 @@ from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes, ConversationHandler
 from telegram.constants import ParseMode
 
-from ..core.utils import error_handler, rate_limiter, get_user
-from ..core.config import EMOJIS
+# Import from core modules
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from core.utils import error_handler, rate_limiter, get_user
+from core.config import EMOJIS
 
 logger = logging.getLogger(__name__)
 

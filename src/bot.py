@@ -301,8 +301,12 @@ class YemenNetBot:
             raise
         finally:
             if self.application:
-                await self.application.stop()
-                await self.application.shutdown()
+                try:
+                    await self.application.updater.stop()
+                    await self.application.stop()
+                    await self.application.shutdown()
+                except Exception as e:
+                    logger.error(f"Error during shutdown: {e}")
     
     async def stop(self) -> None:
         """Stop the bot gracefully."""

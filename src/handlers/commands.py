@@ -10,13 +10,18 @@ from telegram import Update, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 from telegram.constants import ParseMode
 
+# Import from base and core modules
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from .base import CommandHandler
-from ..core.utils import (
+from core.utils import (
     keyboard_builder, formatter, notification_manager, 
     validate_user_input, is_admin, has_permission
 )
-from ..core.config import EMOJIS, CONVERSATION_STATES, USER_ROLES
-from ..core.database import db
+from core.config import EMOJIS, CONVERSATION_STATES, USER_ROLES
+from core.database import db
 
 logger = logging.getLogger(__name__)
 
