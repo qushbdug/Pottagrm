@@ -63,6 +63,22 @@ def decrypt_data(encrypted_data: str) -> str:
         logger.error(f"Decryption error: {e}")
         return encrypted_data
 
+# Secure hashing for lookup/uniqueness
+try:
+    import hashlib
+    _HASH_AVAILABLE = True
+except Exception:
+    _HASH_AVAILABLE = False
+
+def hash_card_code(code: str) -> str:
+    """Return a hex sha256 hash for a card code"""
+    if not code:
+        return ''
+    if _HASH_AVAILABLE:
+        return hashlib.sha256(code.encode('utf-8')).hexdigest()
+    # Simple fallback (not cryptographically strong) if hashlib unavailable
+    return base64.b64encode(code.encode('utf-8')).decode('utf-8')
+
 # User management utilities
 def get_user(telegram_id: int):
     """Get user by telegram ID"""
@@ -482,95 +498,138 @@ def validate_card_code(card_code):
     
     return True, cleaned_code
 
+# Helpers for parsing various file formats safely
+
+def _parse_text_lines(file_text: str) -> List[str]:
+    return [line.strip() for line in file_text.strip().split('\n') if line.strip()]
+
+
+def _parse_csv_bytes(file_bytes: bytes) -> List[str]:
+    try:
+        import csv
+        import io
+        reader = csv.reader(io.StringIO(file_bytes.decode('utf-8', errors='ignore')))
+        rows = []
+        for row in reader:
+            if not row:
+                continue
+            rows.append(','.join([col.strip() for col in row if col is not None]))
+        return rows
+    except Exception as e:
+        logger.error(f"CSV parse error: {e}")
+        return []
+
+
+def _parse_xlsx_bytes(file_bytes: bytes) -> List[str]:
+    if not PANDAS_AVAILABLE:
+        return []
+    try:
+        import pandas as pd
+        import io
+        with pd.ExcelFile(io.BytesIO(file_bytes)) as xls:
+            # Use first sheet by default
+            df = xls.parse(xls.sheet_names[0], header=None)
+            rows = []
+            for _, row in df.iterrows():
+                values = [str(v).strip() for v in row.tolist() if pd.notna(v)]
+                if not values:
+                    continue
+                rows.append(','.join(values))
+            return rows
+    except Exception as e:
+        logger.error(f"XLSX parse error: {e}")
+        return []
+
+
 def process_uploaded_cards(file_content, supplier_id, network_id, batch_id, selected_category=None):
-    """Process uploaded cards from text or Excel file with category support"""
+    """Process uploaded cards from text/CSV/Excel content with category support
+    - Accepts str (text) or bytes (csv/xlsx)
+    - Stores encrypted code and hash for uniqueness
+    """
     import io
-    
     conn = get_db_connection()
     cursor = conn.cursor()
     
     successful_cards = 0
     failed_cards = 0
-    errors = []
+    errors: List[str] = []
     
     try:
-        # Try to parse as text first
-        lines = file_content.strip().split('\n')
+        # Normalize to list of logical lines: "code[,value[,category]]"
+        lines: List[str] = []
+        if isinstance(file_content, (bytes, bytearray)):
+            # Try XLSX first, then CSV
+            lines = _parse_xlsx_bytes(bytes(file_content)) or _parse_csv_bytes(bytes(file_content))
+        else:
+            # str content assumed
+            lines = _parse_text_lines(str(file_content))
         
         for line_num, line in enumerate(lines, 1):
-            line = line.strip()
-            if not line:
-                continue
-                
-            # Try to parse line format: "card_code,value,category" or "card_code,value" or just "card_code"
-            parts = line.split(',')
-            card_code = parts[0].strip()
-            
-            # Default value or from file
-            if len(parts) > 1:
-                try:
-                    card_value = float(parts[1].strip())
-                except ValueError:
+            try:
+                parts = [p.strip() for p in line.split(',')]
+                card_code = parts[0] if parts else ''
+                # Default value or from file
+                if len(parts) > 1:
+                    try:
+                        card_value = float(parts[1])
+                    except ValueError:
+                        card_value = 0.0
+                        errors.append(f"السطر {line_num}: قيمة غير صحيحة '{parts[1]}', تم استخدام 0")
+                else:
                     card_value = 0.0
-                    errors.append(f"السطر {line_num}: قيمة غير صحيحة '{parts[1]}', تم استخدام 0")
-            else:
-                card_value = 0.0
-            
-            # Category handling
-            if len(parts) > 2:
-                try:
-                    card_category = int(parts[2].strip())
-                    # Validate category
-                    if card_category not in [200, 300, 500, 1000, 2000, 5000, 10000]:
+                # Category handling
+                if len(parts) > 2:
+                    try:
+                        card_category = int(parts[2])
+                        if card_category not in [200, 300, 500, 1000, 2000, 5000, 10000]:
+                            card_category = selected_category or 200
+                            errors.append(f"السطر {line_num}: فئة غير صحيحة '{parts[2]}', تم استخدام {card_category}")
+                    except ValueError:
                         card_category = selected_category or 200
                         errors.append(f"السطر {line_num}: فئة غير صحيحة '{parts[2]}', تم استخدام {card_category}")
-                except ValueError:
-                    card_category = selected_category or 200
-                    errors.append(f"السطر {line_num}: فئة غير صحيحة '{parts[2]}', تم استخدام {card_category}")
-            else:
-                card_category = selected_category or 200
-            
-            # Auto-detect category from value if not specified
-            if card_value > 0 and (selected_category is None and len(parts) <= 2):
-                if card_value <= 200:
-                    card_category = 200
-                elif card_value <= 300:
-                    card_category = 300
-                elif card_value <= 500:
-                    card_category = 500
-                elif card_value <= 1000:
-                    card_category = 1000
-                elif card_value <= 2000:
-                    card_category = 2000
-                elif card_value <= 5000:
-                    card_category = 5000
                 else:
-                    card_category = 10000
-            
-            # Validate card code
-            is_valid, result = validate_card_code(card_code)
-            if not is_valid:
+                    card_category = selected_category or 200
+                # Auto-detect category from value if not specified
+                if card_value > 0 and (selected_category is None and len(parts) <= 2):
+                    if card_value <= 200:
+                        card_category = 200
+                    elif card_value <= 300:
+                        card_category = 300
+                    elif card_value <= 500:
+                        card_category = 500
+                    elif card_value <= 1000:
+                        card_category = 1000
+                    elif card_value <= 2000:
+                        card_category = 2000
+                    elif card_value <= 5000:
+                        card_category = 5000
+                    else:
+                        card_category = 10000
+                # Validate card code
+                is_valid, normalized_code = validate_card_code(card_code)
+                if not is_valid:
+                    failed_cards += 1
+                    errors.append(f"السطر {line_num}: {normalized_code} - '{card_code}'")
+                    continue
+                # Hash and encrypt
+                code_hash = hash_card_code(normalized_code)
+                code_enc = encrypt_data(normalized_code)
+                # Uniqueness check by hash
+                cursor.execute('SELECT 1 FROM network_cards WHERE card_code_hash = ?', (code_hash,))
+                if cursor.fetchone():
+                    failed_cards += 1
+                    errors.append(f"السطر {line_num}: الكارت موجود مسبقاً")
+                    continue
+                # Insert card (store enc + hash; keep plaintext column for backward compatibility if needed)
+                card_id = str(uuid.uuid4())
+                cursor.execute('''
+                    INSERT INTO network_cards (id, supplier_id, network_id, card_code, card_value, card_category, upload_batch_id, card_code_enc, card_code_hash)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (card_id, supplier_id, network_id, normalized_code, card_value, card_category, batch_id, code_enc, code_hash))
+                successful_cards += 1
+            except Exception as line_error:
                 failed_cards += 1
-                errors.append(f"السطر {line_num}: {result} - '{card_code}'")
-                continue
-            
-            card_code = result
-            
-            # Check if card already exists
-            cursor.execute('SELECT 1 FROM network_cards WHERE card_code = ?', (card_code,))
-            if cursor.fetchone():
-                failed_cards += 1
-                errors.append(f"السطر {line_num}: الكارت موجود مسبقاً - '{card_code}'")
-                continue
-            
-            # Insert card
-            card_id = str(uuid.uuid4())
-            cursor.execute('''
-                INSERT INTO network_cards (id, supplier_id, network_id, card_code, card_value, card_category, upload_batch_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (card_id, supplier_id, network_id, card_code, card_value, card_category, batch_id))
-            
-            successful_cards += 1
+                errors.append(f"السطر {line_num}: خطأ غير متوقع - {line_error}")
         
         # Update batch statistics
         cursor.execute('''
@@ -585,13 +644,16 @@ def process_uploaded_cards(file_content, supplier_id, network_id, batch_id, sele
         conn.commit()
         
     except Exception as e:
-        logger.error(f"Error processing uploaded cards: {e}")
-        cursor.execute('''
-            UPDATE card_upload_batches 
-            SET upload_status = 'failed', error_details = ?
-            WHERE id = ?
-        ''', (str(e), batch_id))
-        conn.commit()
+        logger.exception(f"Error processing uploaded cards: {e}")
+        try:
+            cursor.execute('''
+                UPDATE card_upload_batches 
+                SET upload_status = 'failed', error_details = ?
+                WHERE id = ?
+            ''', (str(e), batch_id))
+            conn.commit()
+        except Exception:
+            pass
         raise
     
     finally:

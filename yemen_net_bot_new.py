@@ -13,6 +13,7 @@ import asyncio
 import sys
 import os
 from datetime import datetime
+from typing import Any
 
 # Add bot_modules to Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'bot_modules'))
@@ -218,135 +219,21 @@ async def button_click_handler(update: Update, context):
         # Supplier activation (specific handling)
         elif callback_data.startswith('activate_supplier_'):
             if user['role'] == 'super_admin':
-                supplier_id = callback_data.split('_')[2]
+                supplier_id = callback_data.split('_')[-1]
                 return await activate_single_supplier(update, context, supplier_id)
             else:
-                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لتفعيل المزودين.")
                 return
         
-        # Role selection during registration
-        elif callback_data.startswith('role_'):
-            from handlers import choose_role
-            return await choose_role(update, context)
-        
-        # Core features
-        elif callback_data == 'buy_cards':
-            await buy_cards_handler(update, context)
-        elif callback_data == 'transfer_to_friend':
-            await transfer_handler(update, context)
-        
-        # Personal features
-        elif callback_data == 'personal_reports':
-            await personal_reports_handler(update, context)
-        elif callback_data == 'my_ratings':
-            await my_ratings_handler(update, context)
-        elif callback_data == 'my_notifications':
-            await my_notifications_handler(update, context)
-        elif callback_data == 'promotions':
-            await promotions_handler(update, context)
-        elif callback_data == 'account_settings':
-            await account_settings_handler(update, context)
-        
-        # Role-specific features
-        elif callback_data == 'agent_panel':
-            await agent_panel_handler(update, context)
-        elif callback_data == 'my_commissions':
-            await my_commissions_handler(update, context)
-        elif callback_data == 'supplier_panel':
-            await supplier_panel_handler(update, context)
-        
-        # Additional features
-        elif callback_data == 'view_networks':
-            await view_networks_handler(update, context)
-        elif callback_data == 'search_user':
-            await search_user_handler(update, context)
-        elif callback_data == 'my_sent_ratings':
-            await my_sent_ratings_handler(update, context)
-        elif callback_data == 'transaction_details':
-            await transaction_details_handler(update, context)
-        elif callback_data == 'wallet_stats':
-            await wallet_stats_handler(update, context)
-        
-        # Enhanced supplier features
-        elif callback_data == 'upload_cards':
-            await upload_cards_handler(update, context)
-        elif callback_data == 'manage_networks':
-            await manage_networks_handler(update, context)
-        elif callback_data == 'cards_reports':
-            await cards_reports_handler(update, context)
-        elif callback_data == 'sales_stats':
-            await sales_stats_handler(update, context)
-        elif callback_data == 'upload_history':
-            await upload_history_handler(update, context)
-        elif callback_data == 'supplier_settings':
-            await supplier_settings_handler(update, context)
-        
-        # File upload processing
-        elif callback_data.startswith('select_network_'):
-            await process_network_selection(update, context)
-        elif callback_data.startswith('select_category_'):
-            await process_category_selection(update, context)
-        elif callback_data == 'cancel_upload':
-            await cancel_upload(update, context)
-        elif callback_data == 'confirm_upload':
-            await confirm_upload(update, context)
-        elif callback_data == 'notification_settings':
-            await notification_settings_handler(update, context)
-        elif callback_data == 'choose_upload_method':
-            await choose_upload_method_handler(update, context)
-        elif callback_data == 'network_details':
-            await network_details_handler(update, context)
-        elif callback_data == 'privacy_settings':
-            await privacy_settings_handler(update, context)
-        elif callback_data == 'search_networks':
-            await search_networks_handler(update, context)
-        elif callback_data == 'filter_by_category':
-            await filter_by_category_handler(update, context)
-        elif callback_data == 'sales_reports':
-            await sales_reports_handler(update, context)
-        elif callback_data == 'add_network':
-            await add_network_handler(update, context)
-        elif callback_data == 'promotion_details':
-            await promotion_details_handler(update, context)
-        elif callback_data == 'mark_all_read':
-            await mark_all_read_handler(update, context)
-        elif callback_data == 'recharge_balance':
-            await recharge_balance_handler(update, context)
-        
-        # Refresh balance
-        elif callback_data == 'refresh_balance':
-            new_balance = recalc_and_set_user_balance(user['id'])
-            await query.edit_message_text(
-                f"🔄 **تم تحديث الرصيد**\n\n💰 رصيدك الحالي: **{new_balance:.2f}** ريال",
-                parse_mode='Markdown'
-            )
-        
-        # Help
-        elif callback_data == 'help':
-            await help_handler(update, context)
-        
-        # Default fallback for unrecognized callbacks
+        # Unknown callback
         else:
-            logger.warning(f"Unhandled callback: {callback_data}")
-            await query.edit_message_text(
-                f"{EMOJIS['warning']} هذه الميزة قيد التطوير.\n\n"
-                f"سيتم إضافتها في التحديث القادم إن شاء الله.",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
-                ])
-            )
-    
+            await query.edit_message_text(f"{EMOJIS['warning']} خيار غير معروف.")
+            return
     except Exception as e:
         logger.error(f"Error in button click handler: {e}")
         try:
-            if update.callback_query:
-                await update.callback_query.edit_message_text(
-                    f"{EMOJIS['error']} حدث خطأ. يرجى المحاولة مرة أخرى.",
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
-                    ])
-                )
-        except:
+            await update.callback_query.edit_message_text(f"{EMOJIS['error']} حدث خطأ.")
+        except Exception:
             pass
 
 # Placeholder handlers for features being implemented
@@ -1115,21 +1002,25 @@ async def handle_document(update: Update, context: CallbackContext):
             await update.message.reply_text("❌ نوع الملف غير مدعوم. يرجى رفع ملف .txt أو .csv أو .xlsx")
             return
         
-        # Download file
+        # Download file as bytes for flexible parsing
         file = await context.bot.get_file(document.file_id)
-        file_content = await file.download_as_bytearray()
+        file_bytes = await file.download_as_bytearray()
         
-        # Store file temporarily in context
-        try:
-            content = file_content.decode('utf-8') if file_name.endswith('.txt') else file_content
-        except UnicodeDecodeError:
+        # Store file temporarily in context (bytes for csv/xlsx, str for txt)
+        stored_content: Any
+        if file_name.lower().endswith('.txt'):
             try:
-                content = file_content.decode('utf-8-sig')  # Try with BOM
+                stored_content = file_bytes.decode('utf-8')
             except UnicodeDecodeError:
-                content = file_content.decode('latin-1')  # Fallback encoding
+                try:
+                    stored_content = file_bytes.decode('utf-8-sig')
+                except UnicodeDecodeError:
+                    stored_content = file_bytes.decode('latin-1', errors='ignore')
+        else:
+            stored_content = bytes(file_bytes)
         
         context.user_data['upload_file'] = {
-            'content': content,
+            'content': stored_content,
             'filename': file_name,
             'size': file_size
         }
@@ -1167,7 +1058,7 @@ async def handle_document(update: Update, context: CallbackContext):
 """, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
     except Exception as e:
-        logger.error(f"Error handling document: {e}")
+        logger.exception(f"Error handling document: {e}")
         await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في معالجة الملف.")
 
 async def process_network_selection(update: Update, context: CallbackContext):
@@ -1349,9 +1240,10 @@ async def confirm_upload(update: Update, context: CallbackContext):
         conn.commit()
         conn.close()
         
-        # Process cards
+        # Process cards in a thread to avoid blocking the event loop
         from bot_modules.utils import process_uploaded_cards
-        successful, failed, errors = process_uploaded_cards(
+        successful, failed, errors = await asyncio.to_thread(
+            process_uploaded_cards,
             upload_data['content'], user['id'], network_id, batch_id, selected_category
         )
         
@@ -1387,7 +1279,7 @@ async def confirm_upload(update: Update, context: CallbackContext):
         await query.edit_message_text(result_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
     except Exception as e:
-        logger.error(f"Error confirming upload: {e}")
+        logger.exception(f"Error confirming upload: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في معالجة الرفع.")
 
 async def notification_settings_handler(update: Update, context: CallbackContext):
