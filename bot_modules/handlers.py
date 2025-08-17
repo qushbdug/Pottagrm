@@ -439,7 +439,7 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
 💳 **محفظتي المطورة** 💳
 
 👤 **{user['full_name']}**
-🏷️ نوع الحساب: **{USER_ROLES.get(user.get('role', 'customer'), 'عميل')}**
+🏷️ نوع الحساب: **{USER_ROLES.get(user['role'] if 'role' in user.keys() else 'customer', 'عميل')}**
 ⚡ حالة الحساب: **{"✅ مفعل" if user['is_active'] else "⏳ في انتظار التفعيل"}**
 
 💰 **الرصيد والإحصائيات:**
@@ -1082,7 +1082,7 @@ async def process_transfer_step1(update: Update, context: CallbackContext):
         # Save target user info and move to step 2
         context.user_data['target_user_id'] = target_user['id']
         context.user_data['target_user_name'] = target_user['full_name']
-        context.user_data['target_wallet'] = target_user.get('wallet_number', 'غير محدد')
+        context.user_data['target_wallet'] = target_user['wallet_number'] if 'wallet_number' in target_user.keys() else 'غير محدد'
         context.user_data.pop('awaiting_transfer_step1', None)
         context.user_data['awaiting_transfer_step2'] = True
         
@@ -1090,7 +1090,7 @@ async def process_transfer_step1(update: Update, context: CallbackContext):
 ✅ **تم العثور على المستخدم!**
 
 👤 **المستلم:** {target_user['full_name']}
-🆔 **رقم المحفظة:** {target_user.get('wallet_number', 'غير محدد')}
+🆔 **رقم المحفظة:** {target_user['wallet_number'] if 'wallet_number' in target_user.keys() else 'غير محدد'}
 📱 **رقم الهاتف:** {target_user['phone']}
 
 💰 **رصيدك الحالي:** {user['balance']:,.2f} ريال
