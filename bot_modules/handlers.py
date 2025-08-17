@@ -6,6 +6,7 @@ Contains all main bot handlers and command processors
 
 import logging
 import random
+import sqlite3
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext, ConversationHandler
 from bot_modules.config import *
@@ -1621,7 +1622,7 @@ async def process_user_search(update: Update, context: CallbackContext, search_t
             # البحث بالاسم
             name = search_text[5:].strip()
             cursor.execute("""
-                SELECT id, full_name, wallet_number, phone, telegram_username, balance, is_active, role
+                SELECT id, full_name, wallet_number, phone, telegram_id, balance, is_active, role
                 FROM users 
                 WHERE full_name LIKE ? AND id != ?
                 ORDER BY full_name
@@ -1632,7 +1633,7 @@ async def process_user_search(update: Update, context: CallbackContext, search_t
             # البحث برقم المحفظة
             wallet = search_text[8:].strip()
             cursor.execute("""
-                SELECT id, full_name, wallet_number, phone, telegram_username, balance, is_active, role
+                SELECT id, full_name, wallet_number, phone, telegram_id, balance, is_active, role
                 FROM users 
                 WHERE wallet_number = ? AND id != ?
             """, (wallet, user['id']))
@@ -1641,7 +1642,7 @@ async def process_user_search(update: Update, context: CallbackContext, search_t
             # البحث برقم الهاتف
             phone = search_text[7:].strip()
             cursor.execute("""
-                SELECT id, full_name, wallet_number, phone, telegram_username, balance, is_active, role
+                SELECT id, full_name, wallet_number, phone, telegram_id, balance, is_active, role
                 FROM users 
                 WHERE phone LIKE ? AND id != ?
                 ORDER BY full_name
@@ -1652,18 +1653,18 @@ async def process_user_search(update: Update, context: CallbackContext, search_t
             # البحث بمعرف التلغرام
             username = search_text[7:].strip().replace('@', '')
             cursor.execute("""
-                SELECT id, full_name, wallet_number, phone, telegram_username, balance, is_active, role
+                SELECT id, full_name, wallet_number, phone, telegram_id, balance, is_active, role
                 FROM users 
-                WHERE telegram_username LIKE ? AND id != ?
+                WHERE CAST(telegram_id AS TEXT) LIKE ? AND id != ?
                 ORDER BY full_name
                 LIMIT 10
             """, (f"%{username}%", user['id']))
         else:
             # بحث عام في جميع الحقول
             cursor.execute("""
-                SELECT id, full_name, wallet_number, phone, telegram_username, balance, is_active, role
+                SELECT id, full_name, wallet_number, phone, telegram_id, balance, is_active, role
                 FROM users 
-                WHERE (full_name LIKE ? OR wallet_number LIKE ? OR phone LIKE ? OR telegram_username LIKE ?) 
+                WHERE (full_name LIKE ? OR wallet_number LIKE ? OR phone LIKE ? OR CAST(telegram_id AS TEXT) LIKE ?) 
                 AND id != ?
                 ORDER BY full_name
                 LIMIT 10
@@ -1696,7 +1697,7 @@ async def process_user_search(update: Update, context: CallbackContext, search_t
 
         keyboard = []
         for i, result in enumerate(search_results, 1):
-            user_id, full_name, wallet_number, phone, telegram_username, balance, is_active, role = result
+            user_id, full_name, wallet_number, phone, telegram_id, balance, is_active, role = result
             status_emoji = "✅" if is_active else "⏳"
             role_emoji = "👑" if role == 'admin' else "🏪" if role == 'supplier' else "💼" if role == 'agent' else "👤"
             
@@ -1731,9 +1732,22 @@ async def process_user_search(update: Update, context: CallbackContext, search_t
         context.user_data['search_results'] = {str(result[0]): result for result in search_results}
         context.user_data.pop('awaiting_user_search', None)
 
+    except sqlite3.OperationalError as db_error:
+        logger.error(f"Database error in user search: {db_error}")
+        await update.message.reply_text(
+            "❌ **خطأ في قاعدة البيانات** ❌\n\n"
+            "🔄 يرجى المحاولة مرة أخرى بعد قليل",
+            parse_mode='Markdown'
+        )
+        context.user_data.pop('awaiting_user_search', None)
     except Exception as e:
         logger.error(f"Error in process user search: {e}")
-        await update.message.reply_text("❌ حدث خطأ في البحث")
+        await update.message.reply_text(
+            "❌ **حدث خطأ في البحث** ❌\n\n"
+            f"🔍 **التفاصيل:** {str(e)[:100]}...\n\n"
+            "🔄 **يرجى المحاولة مرة أخرى**",
+            parse_mode='Markdown'
+        )
         context.user_data.pop('awaiting_user_search', None)
 
 async def select_user_for_transfer(update: Update, context: CallbackContext, selected_user_id: str):
@@ -3416,3 +3430,98 @@ async def cancel_coupon_handler(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in cancel coupon handler: {e}")
         await query.edit_message_text("❌ حدث خطأ في الإلغاء.")
+
+# معالجات الميزات الجديدة
+async def agent_locations_handler(update: Update, context: CallbackContext):
+    """عرض مواقع الوكلاء"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        text = """
+🏪 **مواقع الوكلاء المعتمدين** 🏪
+
+📍 **الوكلاء المتاحون:**
+
+🏢 **صنعاء:**
+   • وكيل الحديدة - شارع الزبيري
+   • وكيل التحرير - ميدان التحرير
+   • وكيل الستين - شارع الستين
+
+🏢 **عدن:**
+   • وكيل كريتر - منطقة كريتر
+   • وكيل المعلا - منطقة المعلا
+
+🏢 **تعز:**
+   • وكيل وسط المدينة - شارع جمال
+
+📞 **للاستفسار:**
+   تواصل مع الدعم للحصول على معلومات محدثة
+
+💡 **كيفية الشحن:**
+   1️⃣ اذهب لأقرب وكيل
+   2️⃣ أعطه رقم محفظتك
+   3️⃣ ادفع المبلغ المطلوب
+   4️⃣ سيتم شحن حسابك فوراً
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📞 التواصل مع الدعم', callback_data='contact_support'),
+             InlineKeyboardButton('🎟️ شحن بكوبون', callback_data='redeem_coupon')],
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in agent locations handler: {e}")
+        await query.edit_message_text("❌ حدث خطأ في عرض مواقع الوكلاء.")
+
+async def contact_support_handler(update: Update, context: CallbackContext):
+    """التواصل مع الدعم"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        text = """
+📞 **التواصل مع الدعم** 📞
+
+🎯 **طرق التواصل:**
+
+📱 **واتساب:**
+   رقم الدعم: +967-77-777-7777
+   متاح: 24/7
+
+📧 **البريد الإلكتروني:**
+   support@yemennet.com
+   يتم الرد خلال 24 ساعة
+
+💬 **التلغرام:**
+   @YemenNetSupport
+   دعم فوري
+
+🕐 **أوقات العمل:**
+   السبت - الخميس: 8 صباحاً - 10 مساءً
+   الجمعة: 2 ظهراً - 10 مساءً
+
+❓ **الأسئلة الشائعة:**
+   • كيفية شحن الرصيد
+   • استخدام الكوبونات
+   • مشاكل الشراء
+   • استرداد الأموال
+
+💡 **للاستفسارات السريعة استخدم الواتساب**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📱 واتساب', url='https://wa.me/967777777777'),
+             InlineKeyboardButton('💬 تلغرام', url='https://t.me/YemenNetSupport')],
+            [InlineKeyboardButton('❓ الأسئلة الشائعة', callback_data='faq'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in contact support handler: {e}")
+        await query.edit_message_text("❌ حدث خطأ في عرض معلومات الدعم.")

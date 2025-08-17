@@ -303,7 +303,30 @@ async def button_click_handler(update: Update, context):
         elif callback_data == 'help':
             await help_handler(update, context)
         
-        # Default fallback for unrecognized callbacks
+
+        # Support and agent callbacks
+        elif callback_data == 'agent_locations':
+            from bot_modules.handlers import agent_locations_handler
+            return await agent_locations_handler(update, context)
+        elif callback_data == 'contact_support':
+            from bot_modules.handlers import contact_support_handler
+            return await contact_support_handler(update, context)
+        elif callback_data == 'recharge_help':
+            await query.edit_message_text(
+                "💡 **مساعدة الشحن** 💡\n\n"
+                "🎟️ **أسرع طريقة:** استخدم الكوبونات\n"
+                "🏪 **الوكلاء:** متاحون في جميع المحافظات\n"
+                "📞 **الدعم:** متاح 24/7\n\n"
+                "💡 اختر الطريقة المناسبة لك:",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton('🎟️ شحن بكوبون', callback_data='redeem_coupon')],
+                    [InlineKeyboardButton('🏪 مواقع الوكلاء', callback_data='agent_locations')],
+                    [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+                ]),
+                parse_mode='Markdown'
+            )
+
+                # Default fallback for unrecognized callbacks
         else:
             logger.warning(f"Unhandled callback: {callback_data}")
             await query.edit_message_text(
