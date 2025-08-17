@@ -1,6 +1,6 @@
 {
   "start_time": "2025-08-17T01:47:22.878756",
-  "total_restarts": 1,
+  "total_restarts": 2,
   "total_errors": 0,
   "uptime_periods": [],
   "performance_data": [
@@ -48,6 +48,15 @@
       "error_count": 15,
       "system_cpu": 14.0,
       "system_memory_available": 14.354026794433594
+    },
+    {
+      "timestamp": "2025-08-17T01:53:04.657670",
+      "cpu_percent": 0.0,
+      "memory_mb": 125.3515625,
+      "is_running": true,
+      "error_count": 15,
+      "system_cpu": 1.3,
+      "system_memory_available": 14.273025512695312
     }
   ],
   "error_log": []
