@@ -606,28 +606,67 @@ async def buy_cards_handler(update: Update, context):
         query = update.callback_query
         user = get_user(query.from_user.id)
         
+        # الحصول على الشبكات المتاحة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT n.id, n.name, n.provider, n.location, COUNT(cc.id) as categories_count,
+                   MIN(cc.price) as min_price, MAX(cc.price) as max_price
+            FROM networks n
+            LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
+            WHERE n.is_active = 1 AND n.is_approved = 1
+            GROUP BY n.id, n.name, n.provider, n.location
+            HAVING categories_count > 0
+            ORDER BY n.name
+        ''')
+        networks = cursor.fetchall()
+        conn.close()
+        
         buy_text = f"""
 🛒 **شراء كروت الإنترنت** 🛒
 
 👤 **{user['full_name']}**
-💰 رصيدك: **{user['balance']:.2f}** ريال
+💰 رصيدك: **{user['balance']:,.2f}** ريال
 
-📶 **الشبكات المتاحة:**
+📶 **الشبكات المتاحة ({len(networks)} شبكة):**
 
-هذه الميزة قيد التطوير حالياً وسيتم إضافة:
-• عرض الشبكات المتاحة
-• اختيار فئات الكروت
-• معاينة الأسعار
-• تأكيد الشراء
-
-⚠️ سيتم إضافة هذه الميزة في التحديث القادم.
 """
         
-        keyboard = [
-            [InlineKeyboardButton(f'📊 عرض الشبكات', callback_data='view_networks')],
-            [InlineKeyboardButton(f'💰 شحن الرصيد', callback_data='recharge_balance')],
+        if networks:
+            for network in networks:
+                net_id, name, provider, location, cat_count, min_price, max_price = network
+                location_text = f"📍 {location}" if location else ""
+                price_range = f"{min_price:,.0f} - {max_price:,.0f}" if min_price != max_price else f"{min_price:,.0f}"
+                
+                buy_text += f"""
+🌐 **{name}**
+👤 {provider} {location_text}
+💳 {cat_count} فئة متاحة
+💰 {price_range} ريال
+━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+        else:
+            buy_text += "❌ لا توجد شبكات متاحة حالياً"
+        
+        keyboard = []
+        
+        # إضافة أزرار الشبكات للشراء
+        if networks:
+            for network in networks[:6]:  # أول 6 شبكات
+                net_id = network[0]
+                name = network[1]
+                keyboard.append([
+                    InlineKeyboardButton(f'🛒 شراء من {name}', callback_data=f'buy_from_network_{net_id}')
+                ])
+        
+        keyboard.extend([
+            [InlineKeyboardButton(f'📊 جميع الشبكات', callback_data='view_all_networks'),
+             InlineKeyboardButton(f'🔍 البحث في الشبكات', callback_data='search_networks')],
+            [InlineKeyboardButton(f'💰 شحن الرصيد', callback_data='recharge_balance'),
+             InlineKeyboardButton(f'📈 إحصائياتي', callback_data='my_purchase_stats')],
             [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
-        ]
+        ])
         
         await query.edit_message_text(buy_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
