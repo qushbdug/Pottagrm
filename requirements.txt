@@ -1,13 +1,11 @@
-python-telegram-bot==20.7
+# Yemen Net Bot - Working Version Requirements
+# متطلبات بوت شبكات اليمن - النسخة العاملة
+
+# Core dependencies - المتطلبات الأساسية
 requests>=2.31.0
-deep-translator>=1.11.4
-beautifulsoup4>=4.12.2
-httpx>=0.25.0
 python-dotenv>=1.0.0
-cryptography>=41.0.0
-aiofiles>=23.2.1
-pandas>=2.1.0
-matplotlib>=3.7.0
-seaborn>=0.12.0
-Pillow>=10.0.0
-qrcode>=7.4.2
+
+# Optional dependencies for future enhancements - متطلبات اختيارية للتطوير المستقبلي
+# cryptography>=41.0.0  # For encryption features
+# qrcode>=7.4.2        # For QR code generation
+# Pillow>=10.0.0       # For image processing
