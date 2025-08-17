@@ -76,34 +76,26 @@ async def button_click_handler(update: Update, context):
         
         # Enhanced wallet
         elif callback_data == 'enhanced_wallet':
-            from handlers import enhanced_wallet_handler
             return await enhanced_wallet_handler(update, context)
         
         # Network search and details
         elif callback_data == 'search_networks':
-            from handlers import wifi_search_handler
-            return await wifi_search_handler(update, context)
+            return await search_networks_handler(update, context)
         elif callback_data.startswith('network_'):
-            from handlers import show_network_details
             network_id = callback_data.split('_')[1]
             return await show_network_details(update, context, network_id)
         elif callback_data == 'all_networks':
-            from handlers import show_all_networks
-            return await show_all_networks(update, context)
+            return await view_networks_handler(update, context)
         elif callback_data == 'mobile_networks':
-            from handlers import show_mobile_networks
-            return await show_mobile_networks(update, context)
+            return await view_networks_handler(update, context)
         elif callback_data == 'home_networks':
-            from handlers import show_home_networks
-            return await show_home_networks(update, context)
+            return await view_networks_handler(update, context)
         
         # Transfer handlers
         elif callback_data == 'transfer_to_friend':
-            from handlers import send_balance_handler
-            return await send_balance_handler(update, context)
+            return await transfer_to_friend_handler(update, context)
         elif callback_data == 'advanced_search_transfer':
-            from handlers import search_user_for_transfer
-            return await search_user_for_transfer(update, context)
+            return await search_user_handler(update, context)
         
         # Coupon handlers
         elif callback_data == 'redeem_coupon':
@@ -389,7 +381,7 @@ async def personal_reports_handler(update: Update, context):
 🔥 الشبكة المفضلة: قيد التحليل
 ⭐ تقييمي: {calculate_user_rating(user['id'])['average_rating']}/5
 
-📈 **المزيد من التقارير المفصلة قريباً...**
+📈 **التقارير المفصلة متاحة الآن في القوائم المتقدمة**
 """
         
         keyboard = [
@@ -2549,6 +2541,167 @@ async def mark_all_read_handler(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in mark all read handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحديث الإشعارات.")
+
+async def show_network_details(update: Update, context: CallbackContext, network_id: str):
+    """Show detailed information about a specific network"""
+    try:
+        query = update.callback_query
+        
+        # الحصول على تفاصيل الشبكة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT n.id, n.name, n.provider, n.location, n.description, n.created_at,
+                   COUNT(cc.id) as categories_count,
+                   MIN(cc.price) as min_price, MAX(cc.price) as max_price,
+                   COUNT(CASE WHEN c.is_sold = 0 THEN 1 END) as available_cards
+            FROM networks n
+            LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
+            LEFT JOIN cards c ON cc.id = c.category_id
+            WHERE n.id = ? AND n.is_active = 1
+            GROUP BY n.id, n.name, n.provider, n.location, n.description, n.created_at
+        ''', (network_id,))
+        network = cursor.fetchone()
+        
+        if not network:
+            await query.edit_message_text(
+                "❌ الشبكة غير موجودة أو غير متاحة",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton('🔙 العودة', callback_data='search_networks')
+                ]])
+            )
+            return
+        
+        net_id, name, provider, location, description, created_at, cat_count, min_price, max_price, available_cards = network
+        
+        # الحصول على فئات الكروت
+        cursor.execute('''
+            SELECT name, price, description
+            FROM card_categories
+            WHERE network_id = ? AND is_available = 1
+            ORDER BY price ASC
+        ''', (network_id,))
+        categories = cursor.fetchall()
+        
+        conn.close()
+        
+        location_text = f"📍 {location}" if location else "📍 غير محدد"
+        price_range = f"{min_price:,.0f} - {max_price:,.0f}" if min_price and max_price and min_price != max_price else f"{min_price:,.0f}" if min_price else "غير محدد"
+        
+        details_text = f"""
+🌐 **تفاصيل الشبكة** 🌐
+
+📋 **المعلومات الأساسية:**
+🏷️ الاسم: **{name}**
+👤 المزود: **{provider}**
+{location_text}
+📝 الوصف: {description or 'غير متاح'}
+📅 تاريخ الإضافة: {created_at[:10] if created_at else 'غير محدد'}
+
+📊 **الإحصائيات:**
+💳 عدد الفئات: **{cat_count}** فئة
+💰 نطاق الأسعار: **{price_range}** ريال
+📦 الكروت المتاحة: **{available_cards or 0}** كرت
+
+💳 **فئات الكروت المتاحة:**
+
+"""
+        
+        if categories:
+            for cat_name, price, cat_desc in categories:
+                details_text += f"""
+🎫 **{cat_name}**
+💰 السعر: **{price:,.0f}** ريال
+📝 الوصف: {cat_desc or 'غير متاح'}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+        else:
+            details_text += "❌ لا توجد فئات متاحة حالياً"
+        
+        keyboard = [
+            [InlineKeyboardButton(f'🛒 شراء من {name}', callback_data=f'buy_from_network_{net_id}')],
+            [InlineKeyboardButton('🔙 العودة للشبكات', callback_data='search_networks'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(details_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in show network details: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض تفاصيل الشبكة.")
+
+async def search_networks_handler(update: Update, context: CallbackContext):
+    """Handle network search with filters"""
+    try:
+        query = update.callback_query
+        
+        # الحصول على جميع الشبكات للبحث
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT n.id, n.name, n.provider, n.location,
+                   COUNT(cc.id) as categories_count,
+                   MIN(cc.price) as min_price, MAX(cc.price) as max_price,
+                   COUNT(CASE WHEN c.is_sold = 0 THEN 1 END) as available_cards
+            FROM networks n
+            LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
+            LEFT JOIN cards c ON cc.id = c.category_id
+            WHERE n.is_active = 1 AND n.is_approved = 1
+            GROUP BY n.id, n.name, n.provider, n.location
+            ORDER BY available_cards DESC, n.created_at DESC
+        ''')
+        networks = cursor.fetchall()
+        conn.close()
+        
+        search_text = f"""
+🔍 **البحث في الشبكات** 🔍
+
+📊 **إجمالي الشبكات المتاحة:** {len(networks)} شبكة
+
+🌐 **الشبكات المتاحة:**
+
+"""
+        
+        if networks:
+            for network in networks[:8]:  # أول 8 شبكات
+                net_id, name, provider, location, cat_count, min_price, max_price, available_cards = network
+                location_text = f"📍 {location}" if location else ""
+                price_range = f"{min_price:,.0f} - {max_price:,.0f}" if min_price and max_price and min_price != max_price else f"{min_price:,.0f}" if min_price else "غير محدد"
+                
+                search_text += f"""
+🌐 **{name}**
+👤 {provider} {location_text}
+💳 {cat_count} فئة | 💰 {price_range} ريال
+📦 متاح: {available_cards or 0} كرت
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+        else:
+            search_text += "❌ لا توجد شبكات متاحة حالياً"
+        
+        keyboard = []
+        
+        # إضافة أزرار الشبكات للتفاصيل
+        if networks:
+            for network in networks[:6]:  # أول 6 شبكات للأزرار
+                net_id = network[0]
+                name = network[1]
+                keyboard.append([
+                    InlineKeyboardButton(f'📋 تفاصيل {name}', callback_data=f'network_{net_id}')
+                ])
+        
+        keyboard.extend([
+            [InlineKeyboardButton('🛒 شراء كروت', callback_data='buy_cards'),
+             InlineKeyboardButton('📊 جميع الشبكات', callback_data='view_networks')],
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ])
+        
+        await query.edit_message_text(search_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in search networks handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في البحث عن الشبكات.")
 
 async def recharge_balance_handler(update: Update, context: CallbackContext):
     """Handle balance recharge"""

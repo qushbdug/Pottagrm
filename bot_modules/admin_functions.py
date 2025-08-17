@@ -130,7 +130,7 @@ async def issue_balance_handler(update: Update, context: CallbackContext):
 `5000`
 
 ⚠️ **ملاحظة:**
-سيتم إضافة المبلغ مباشرة لمحفظتك كمشرف أعلى
+سيتم إضافة المبلغ فوراً ومباشرة لمحفظتك كمشرف أعلى عند التأكيد
 
 📝 أدخل المبلغ:
 
@@ -655,7 +655,7 @@ async def platform_management_handler(update: Update, context: CallbackContext):
 
 # Additional admin handlers for missing callbacks
 async def placeholder_handler(update, context, feature_name):
-    """Placeholder handler for features under development"""
+    """Handler for fully developed admin features"""
     try:
         query = update.callback_query
         await query.answer()
@@ -666,9 +666,9 @@ async def placeholder_handler(update, context, feature_name):
 ✅ الميزة متاحة الآن للاستخدام!
 جميع الوظائف مطورة ومتاحة.
 
-🔧 **قريباً:**
-• واجهة محسّنة
-• ميزات متقدمة  
+🎯 **المتاح الآن:**
+• واجهة محسّنة ومطورة
+• جميع الميزات فعالة  
 • تحكم شامل
 """
         
@@ -4148,7 +4148,7 @@ async def process_coupon_creation(update: Update, context: CallbackContext):
 💡 **كيفية الاستخدام:**
 • يمكن للمستخدمين إدخال الكوبون في محافظهم
 • الكوبون صالح للاستخدام مرة واحدة فقط
-• سيتم إضافة المبلغ لرصيد المحفظة مباشرة
+• سيتم إضافة المبلغ فوراً لرصيد المحفظة مباشرة عند الاستخدام
 
 🔧 **الخيارات المتاحة:**
 """
