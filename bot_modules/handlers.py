@@ -343,11 +343,18 @@ def create_main_keyboard(role: str):
              InlineKeyboardButton('💸 تحويل رصيد', callback_data='transfer_to_friend')],
             [InlineKeyboardButton('🎟️ شحن بكوبون', callback_data='redeem_coupon'),
              InlineKeyboardButton('🔍 البحث عن شبكات', callback_data='search_networks')],
-            [InlineKeyboardButton('📊 تقاريري الشخصية', callback_data='personal_reports'),
-             InlineKeyboardButton('🎁 العروض والخصومات', callback_data='promotions')],
-            [InlineKeyboardButton('🔔 إشعاراتي', callback_data='my_notifications'),
-             InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings')],
-            [InlineKeyboardButton('⭐ تقييماتي', callback_data='my_ratings')]
+            [InlineKeyboardButton('🎯 نقاط الولاء', callback_data='loyalty_points'),
+             InlineKeyboardButton('🔔 إشعارات ذكية', callback_data='smart_notifications')],
+            [InlineKeyboardButton('⭐ تقييم الشبكات', callback_data='network_reviews'),
+             InlineKeyboardButton('💬 الرسائل الداخلية', callback_data='internal_messaging')],
+            [InlineKeyboardButton('🎮 الألعاب والمسابقات', callback_data='games_contests'),
+             InlineKeyboardButton('🎓 المحتوى التعليمي', callback_data='educational_content')],
+            [InlineKeyboardButton('📊 تقارير مخصصة', callback_data='custom_reports'),
+             InlineKeyboardButton('🔐 أمان متقدم', callback_data='advanced_wallet_security')],
+            [InlineKeyboardButton('📱 خطط الاشتراك', callback_data='subscription_plans'),
+             InlineKeyboardButton('💡 توصيات ذكية', callback_data='ai_recommendations')],
+            [InlineKeyboardButton('🎪 الأحداث', callback_data='events_calendar'),
+             InlineKeyboardButton('🎫 الدعم المتقدم', callback_data='advanced_support_system')]
         ]
         
         # Role-specific features
