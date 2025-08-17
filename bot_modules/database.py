@@ -142,6 +142,26 @@ def init_db():
             )
         ''')
 
+        # Recharge cards table for super admin issued cards
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS recharge_cards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT UNIQUE NOT NULL,
+                serial_number TEXT UNIQUE NOT NULL,
+                value REAL NOT NULL,
+                price REAL NOT NULL,
+                network_name TEXT NOT NULL,
+                status TEXT DEFAULT 'available',
+                created_by INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                purchased_by INTEGER,
+                purchased_at TIMESTAMP,
+                used_at TIMESTAMP,
+                FOREIGN KEY(created_by) REFERENCES users(id),
+                FOREIGN KEY(purchased_by) REFERENCES users(id)
+            )
+        ''')
+
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS product_inventory (
                 id TEXT PRIMARY KEY,
@@ -544,6 +564,90 @@ def init_db():
                 FOREIGN KEY (network_id) REFERENCES networks (id)
             )
         ''')
+
+        # Create settings table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key TEXT UNIQUE NOT NULL,
+                value TEXT,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create networks table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS networks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                description TEXT,
+                logo_url TEXT,
+                is_active BOOLEAN DEFAULT 1,
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (created_by) REFERENCES users (id)
+            )
+        ''')
+        
+        # Create card_categories table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS card_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                network_id INTEGER,
+                name TEXT NOT NULL,
+                value INTEGER NOT NULL,
+                price REAL NOT NULL,
+                currency TEXT DEFAULT 'YER',
+                is_available BOOLEAN DEFAULT 1,
+                stock_count INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (network_id) REFERENCES networks (id)
+            )
+        ''')
+        
+        # Create cards table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS cards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category_id INTEGER,
+                card_number TEXT NOT NULL,
+                serial_number TEXT,
+                expiry_date TEXT,
+                is_sold BOOLEAN DEFAULT 0,
+                sold_to INTEGER,
+                sold_at TIMESTAMP,
+                uploaded_by INTEGER,
+                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (category_id) REFERENCES card_categories (id),
+                FOREIGN KEY (sold_to) REFERENCES users (id),
+                FOREIGN KEY (uploaded_by) REFERENCES users (id)
+            )
+        ''')
+        
+        # Create coupons table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS coupons (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                coupon_code TEXT NOT NULL UNIQUE,
+                amount REAL NOT NULL,
+                is_used BOOLEAN DEFAULT 0,
+                used_by INTEGER,
+                created_by INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                used_at TIMESTAMP,
+                expiry_date TIMESTAMP,
+                description TEXT,
+                FOREIGN KEY (used_by) REFERENCES users (id),
+                FOREIGN KEY (created_by) REFERENCES users (id)
+            )
+        ''')
+        
+        # Data insertion is handled separately to avoid conflicts
 
         conn.commit()
         logger.info("Database initialized successfully")

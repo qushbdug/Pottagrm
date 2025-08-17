@@ -79,6 +79,97 @@ async def button_click_handler(update: Update, context):
             from handlers import enhanced_wallet_handler
             return await enhanced_wallet_handler(update, context)
         
+        # Network search and details
+        elif callback_data == 'search_networks':
+            from handlers import wifi_search_handler
+            return await wifi_search_handler(update, context)
+        elif callback_data.startswith('network_'):
+            from handlers import show_network_details
+            network_id = callback_data.split('_')[1]
+            return await show_network_details(update, context, network_id)
+        elif callback_data == 'all_networks':
+            from handlers import show_all_networks
+            return await show_all_networks(update, context)
+        elif callback_data == 'mobile_networks':
+            from handlers import show_mobile_networks
+            return await show_mobile_networks(update, context)
+        elif callback_data == 'home_networks':
+            from handlers import show_home_networks
+            return await show_home_networks(update, context)
+        
+        # Transfer handlers
+        elif callback_data == 'transfer_to_friend':
+            from handlers import send_balance_handler
+            return await send_balance_handler(update, context)
+        elif callback_data == 'advanced_search_transfer':
+            from handlers import search_user_for_transfer
+            return await search_user_for_transfer(update, context)
+        
+        # Coupon handlers
+        elif callback_data == 'redeem_coupon':
+            from bot_modules.handlers import redeem_coupon_handler
+            return await redeem_coupon_handler(update, context)
+        elif callback_data == 'cancel_coupon':
+            from bot_modules.handlers import cancel_coupon_handler
+            return await cancel_coupon_handler(update, context)
+        elif callback_data == 'quick_transfer':
+            from handlers import quick_transfer_handler
+            return await quick_transfer_handler(update, context)
+        elif callback_data.startswith('select_user_'):
+            from handlers import select_user_for_transfer
+            user_id = callback_data.split('_')[2]
+            return await select_user_for_transfer(update, context, user_id)
+        elif callback_data.startswith('amount_'):
+            from handlers import process_amount_selection
+            parts = callback_data.split('_')
+            amount = parts[1]
+            user_id = parts[2]
+            return await process_amount_selection(update, context, amount, user_id)
+        
+        # Purchase handlers
+        elif callback_data.startswith('buy_card_'):
+            from handlers import process_card_purchase
+            category_id = callback_data.split('_')[2]
+            return await process_card_purchase(update, context, category_id)
+        elif callback_data.startswith('confirm_purchase_'):
+            category_id = callback_data.split('_')[2]
+            return await confirm_card_purchase(update, context, category_id)
+        elif callback_data.startswith('confirm_transfer_'):
+            parts = callback_data.split('_')
+            user_id = parts[2]
+            amount = parts[3]
+            return await confirm_user_transfer(update, context, user_id, amount)
+        elif callback_data.startswith('skip_location_'):
+            from handlers import skip_network_location
+            network_id = callback_data.split('_')[2]
+            return await skip_network_location(update, context, network_id)
+        elif callback_data.startswith('edit_comm_'):
+            from bot_modules.admin_functions import edit_specific_commission
+            commission_id = callback_data.split('_')[2]
+            return await edit_specific_commission(update, context, commission_id)
+        elif callback_data.startswith('admin_add_category_'):
+            from bot_modules.admin_functions import admin_add_category_handler
+            network_id = callback_data.split('_')[3]
+            return await admin_add_category_handler(update, context, network_id)
+        elif callback_data.startswith('admin_upload_to_network_'):
+            from bot_modules.admin_functions import admin_network_upload_handler
+            network_id = callback_data.split('_')[4]
+            return await admin_network_upload_handler(update, context, network_id)
+        elif callback_data.startswith('admin_upload_category_'):
+            from bot_modules.admin_functions import admin_upload_category_handler
+            category_id = callback_data.split('_')[3]
+            return await admin_upload_category_handler(update, context, category_id)
+        elif callback_data.startswith('admin_upload_single_'):
+            from bot_modules.admin_functions import admin_upload_single_card_handler
+            category_id = callback_data.split('_')[3]
+            return await admin_upload_single_card_handler(update, context, category_id)
+        
+        # Search by type handlers
+        elif callback_data.startswith('search_by_'):
+            from handlers import search_by_type_handler
+            search_type = callback_data.split('_')[2]
+            return await search_by_type_handler(update, context, search_type)
+        
         # Admin panel routing
         elif callback_data == 'admin_panel':
             if user['role'] in ['admin', 'super_admin']:
@@ -87,6 +178,12 @@ async def button_click_handler(update: Update, context):
             else:
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية للوصول لهذه اللوحة.")
                 return
+        
+        # Transfer confirmation handlers
+        elif callback_data == 'confirm_transfer_yes':
+            return await confirm_transfer_handler(update, context, True)
+        elif callback_data == 'confirm_transfer_no':
+            return await confirm_transfer_handler(update, context, False)
         
         # Super admin functions
         elif callback_data in ADMIN_CALLBACKS:
@@ -206,7 +303,30 @@ async def button_click_handler(update: Update, context):
         elif callback_data == 'help':
             await help_handler(update, context)
         
-        # Default fallback for unrecognized callbacks
+
+        # Support and agent callbacks
+        elif callback_data == 'agent_locations':
+            from bot_modules.handlers import agent_locations_handler
+            return await agent_locations_handler(update, context)
+        elif callback_data == 'contact_support':
+            from bot_modules.handlers import contact_support_handler
+            return await contact_support_handler(update, context)
+        elif callback_data == 'recharge_help':
+            await query.edit_message_text(
+                "💡 **مساعدة الشحن** 💡\n\n"
+                "🎟️ **أسرع طريقة:** استخدم الكوبونات\n"
+                "🏪 **الوكلاء:** متاحون في جميع المحافظات\n"
+                "📞 **الدعم:** متاح 24/7\n\n"
+                "💡 اختر الطريقة المناسبة لك:",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton('🎟️ شحن بكوبون', callback_data='redeem_coupon')],
+                    [InlineKeyboardButton('🏪 مواقع الوكلاء', callback_data='agent_locations')],
+                    [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+                ]),
+                parse_mode='Markdown'
+            )
+
+                # Default fallback for unrecognized callbacks
         else:
             logger.warning(f"Unhandled callback: {callback_data}")
             await query.edit_message_text(
@@ -1787,20 +1907,40 @@ async def recharge_balance_handler(update: Update, context: CallbackContext):
     try:
         query = update.callback_query
         
+        user = get_user(query.from_user.id)
+        
         recharge_text = f"""
 💰 **شحن الرصيد** 💰
 
-⚠️ هذه الميزة قيد التطوير
+👤 مرحباً **{user['full_name']}**
+💳 رقم محفظتك: **{user['wallet_number']}**
+💰 رصيدك الحالي: **{user['balance']:,.2f}** ريال
 
-🔧 **سيتم إضافة:**
-• شحن الرصيد عبر البطاقات
-• شحن عبر التحويل البنكي
-• شحن عبر المحافظ الإلكترونية
-• تأكيد الشحن التلقائي
+📝 **طرق الشحن المتاحة:**
+
+🎟️ **1. شحن بكوبون (فوري):**
+   • اشتر كوبون من أقرب نقطة بيع
+   • استخدم ميزة "🎟️ شحن بكوبون" في البوت
+   • يتم إضافة الرصيد فوراً
+
+🏪 **2. شحن عبر الوكلاء:**
+   • اذهب لأقرب وكيل معتمد
+   • أعطه رقم محفظتك: **{user['wallet_number']}**
+   • سيقوم بشحن حسابك مباشرة
+
+📞 **3. التواصل مع الدعم:**
+   • للمساعدة في عملية الشحن
+   • للاستفسار عن نقاط البيع
+   • لحل أي مشاكل في الشحن
+
+💡 **أسرع طريقة: استخدم الكوبونات!**
 """
         
         keyboard = [
-            [InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet')],
+            [InlineKeyboardButton('🎟️ شحن بكوبون', callback_data='redeem_coupon'),
+             InlineKeyboardButton('🏪 مواقع الوكلاء', callback_data='agent_locations')],
+            [InlineKeyboardButton('📞 التواصل مع الدعم', callback_data='contact_support'),
+             InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet')],
             [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
         ]
         
@@ -1809,6 +1949,143 @@ async def recharge_balance_handler(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in recharge balance handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في شحن الرصيد.")
+
+async def confirm_transfer_handler(update: Update, context: CallbackContext, confirmed: bool):
+    """Handle transfer confirmation"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user:
+            await query.edit_message_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
+            return
+        
+        if not confirmed:
+            # User cancelled the transfer
+            context.user_data.clear()
+            await query.edit_message_text(f"""
+❌ **تم إلغاء التحويل**
+
+العملية ألغيت بنجاح. لم يتم خصم أي مبلغ من رصيدك.
+
+💰 رصيدك الحالي: **{user['balance']:,.2f}** ريال
+
+💡 يمكنك استخدام /send_balance لبدء تحويل جديد
+""", parse_mode='Markdown')
+            return
+        
+        # User confirmed the transfer - execute it
+        if not context.user_data.get('awaiting_transfer_confirmation'):
+            await query.edit_message_text(f"{EMOJIS['error']} انتهت صلاحية العملية. يرجى البدء من جديد.")
+            return
+        
+        # Get transfer details
+        target_user_id = context.user_data.get('target_user_id')
+        target_user_name = context.user_data.get('target_user_name')
+        amount = context.user_data.get('transfer_amount')
+        transfer_fee = context.user_data.get('transfer_fee')
+        
+        if not all([target_user_id, amount, transfer_fee]):
+            await query.edit_message_text(f"{EMOJIS['error']} معلومات التحويل مفقودة. يرجى البدء من جديد.")
+            return
+        
+        # Execute the transfer
+        from bot_modules.database import get_db_connection
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get target user details
+        cursor.execute('SELECT * FROM users WHERE id = ?', (target_user_id,))
+        target_user = cursor.fetchone()
+        
+        if not target_user:
+            await query.edit_message_text(f"{EMOJIS['error']} المستخدم المستهدف غير موجود.")
+            conn.close()
+            return
+        
+        # Create transfer transactions
+        import uuid
+        from datetime import datetime
+        
+        # Transfer transaction
+        transfer_id = str(uuid.uuid4())
+        cursor.execute('''
+            INSERT INTO transactions 
+            (id, from_user, to_user, amount, type, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (transfer_id, user['id'], target_user['id'], amount, 'transfer', 'تحويل رصيد من صديق', datetime.now()))
+        
+        # Fee transaction
+        fee_id = str(uuid.uuid4())
+        cursor.execute('''
+            INSERT INTO transactions 
+            (id, from_user, amount, type, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (fee_id, user['id'], transfer_fee, 'transfer_fee', f'رسوم تحويل رصيد إلى {target_user["full_name"]}', datetime.now()))
+        
+        # Update balances
+        from bot_modules.utils import recalc_and_set_user_balance
+        sender_new_balance = recalc_and_set_user_balance(user['id'])
+        receiver_new_balance = recalc_and_set_user_balance(target_user['id'])
+        
+        conn.commit()
+        conn.close()
+        
+        # Clear user state
+        context.user_data.clear()
+        
+        # Send confirmation to sender
+        success_text = f"""
+✅ **تم إرسال الرصيد بنجاح!**
+
+📤 **تفاصيل التحويل:**
+👤 المستلم: **{target_user['full_name']}**
+💰 المبلغ المرسل: **{amount:.2f}** ريال
+💳 رسوم التحويل: **{transfer_fee:.2f}** ريال
+📊 إجمالي الخصم: **{amount + transfer_fee:.2f}** ريال
+
+💵 **الأرصدة:**
+🔻 رصيدك الجديد: **{sender_new_balance:.2f}** ريال
+🔺 رصيد المستلم: **{receiver_new_balance:.2f}** ريال
+
+🕐 **وقت التحويل:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+📱 سيتم إشعار المستلم فوراً
+"""
+        
+        await query.edit_message_text(success_text, parse_mode='Markdown')
+        
+        # Send notification to receiver
+        try:
+            notification_text = f"""
+💰 **تم استلام رصيد جديد!** 💰
+
+📥 **تفاصيل الاستلام:**
+👤 المرسل: **{user['full_name']}**
+💰 المبلغ المستلم: **{amount:.2f}** ريال
+💵 رصيدك الجديد: **{receiver_new_balance:.2f}** ريال
+
+🕐 **وقت التحويل:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+───────────────────
+💡 استخدم /wallet لعرض محفظتك
+"""
+            
+            await context.bot.send_message(
+                chat_id=target_user['telegram_id'],
+                text=notification_text,
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send notification to receiver {target_user['telegram_id']}: {e}")
+        
+        # Log the transfer
+        logger.info(f"User {user['full_name']} sent {amount} YER to {target_user['full_name']} (fee: {transfer_fee})")
+        
+    except Exception as e:
+        logger.error(f"Error in confirm transfer handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تنفيذ التحويل.")
 
 def main():
     """Main function to start the bot"""
