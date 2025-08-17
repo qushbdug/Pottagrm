@@ -124,6 +124,10 @@ def init_db():
                 FOREIGN KEY(to_user) REFERENCES users(id)
             )
         ''')
+        # Indexes for transactions
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_from ON transactions(from_user)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_to ON transactions(to_user)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_created ON transactions(created_at)")
 
         # Enhanced sales system tables
         cursor.execute('''
@@ -195,21 +199,9 @@ def init_db():
                 FOREIGN KEY(user_id) REFERENCES users(id)
             )
         ''')
-
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS payment_methods (
-                id TEXT PRIMARY KEY,
-                user_id INTEGER NOT NULL,
-                method_type TEXT NOT NULL,
-                method_name TEXT NOT NULL,
-                account_details TEXT NOT NULL,
-                is_active BOOLEAN DEFAULT 1,
-                is_verified BOOLEAN DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                verified_at TIMESTAMP,
-                FOREIGN KEY(user_id) REFERENCES users(id)
-            )
-        ''')
+        # Indexes for wallet_transactions
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_wallet_tx_user ON wallet_transactions(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_wallet_tx_created ON wallet_transactions(created_at)")
 
         # Rating and review system
         cursor.execute('''
@@ -218,13 +210,7 @@ def init_db():
                 rater_id INTEGER NOT NULL,
                 rated_user_id INTEGER NOT NULL,
                 transaction_id TEXT,
-                rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
-                review_text TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                is_visible BOOLEAN DEFAULT 1,
-                FOREIGN KEY(rater_id) REFERENCES users(id),
-                FOREIGN KEY(rated_user_id) REFERENCES users(id),
-                FOREIGN KEY(transaction_id) REFERENCES transactions(id)
+                dummy INTEGER DEFAULT 0
             )
         ''')
 
@@ -520,7 +506,22 @@ def init_db():
                 FOREIGN KEY (sold_to) REFERENCES users (id)
             )
         ''')
-        
+        # Safe migrations for sensitive storage and performance
+        try:
+            cursor.execute("ALTER TABLE network_cards ADD COLUMN card_code_enc TEXT")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cursor.execute("ALTER TABLE network_cards ADD COLUMN card_code_hash TEXT")
+        except sqlite3.OperationalError:
+            pass
+        # Indexes for network_cards
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_network_cards_hash ON network_cards(card_code_hash)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_network_cards_network ON network_cards(network_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_network_cards_supplier ON network_cards(supplier_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_network_cards_category ON network_cards(card_category)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_network_cards_sold ON network_cards(is_sold)")
+
         # Create card categories reference table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS card_categories_ref (
@@ -635,8 +636,7 @@ def init_db():
         logger.info("Database initialized successfully")
         
     except Exception as e:
-        logger.error(f"Database initialization error: {e}")
-        conn.rollback()
+        logger.error(f"Error initializing database: {e}")
         raise
     finally:
         conn.close()

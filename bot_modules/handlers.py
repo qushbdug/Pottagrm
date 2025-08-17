@@ -545,6 +545,10 @@ async def handle_text_message(update: Update, context: CallbackContext):
         if context.user_data.get('awaiting_network_description'):
             return await process_network_description(update, context, update.message.text)
         
+        # NEW: Check if waiting for network city/area
+        if context.user_data.get('awaiting_network_city'):
+            return await process_network_city(update, context, update.message.text)
+        
         # Check if waiting for balance send (old method - keep for compatibility)
         if context.user_data.get('awaiting_balance_send'):
             return await process_balance_send(update, context)
@@ -2605,7 +2609,7 @@ async def add_new_network_handler(update: Update, context: CallbackContext):
 
 👤 المزود: **{user['full_name']}**
 
-📝 **أدخل اسم الشبكة:**
+1️⃣ 📝 **أدخل اسم الشبكة:**
 
 💡 **أمثلة على أسماء الشبكات:**
 • `واي فاي الرحمن`
@@ -2619,7 +2623,9 @@ async def add_new_network_handler(update: Update, context: CallbackContext):
 • يفضل أن يعكس الاسم منطقتك أو خدمتك
 • لا تستخدم رموز غريبة
 
-📝 **اكتب اسم الشبكة:**
+بعد إدخال الاسم بنجاح، سيُطلب منك إدخال المدينة/المنطقة.
+
+📝 **اكتب اسم الشبكة الآن:**
 """
         
         keyboard = [
@@ -2670,7 +2676,7 @@ async def process_network_creation(update: Update, context: CallbackContext, net
             await update.message.reply_text("❌ اسم الشبكة موجود بالفعل. اختر اسماً آخر")
             return
         
-        # إضافة الشبكة الجديدة
+        # إضافة الشبكة الجديدة (سنكمل بقية المعلومات لاحقاً)
         cursor.execute('''
             INSERT INTO networks (name, provider, description, created_by, is_active)
             VALUES (?, ?, ?, ?, ?)
@@ -2681,7 +2687,7 @@ async def process_network_creation(update: Update, context: CallbackContext, net
         conn.commit()
         conn.close()
         
-        # طلب وصف الشبكة
+        # طلب المدينة/المنطقة أولاً
         text = f"""
 ✅ **تم إنشاء الشبكة بنجاح!** ✅
 
@@ -2689,25 +2695,15 @@ async def process_network_creation(update: Update, context: CallbackContext, net
 👤 **المزود:** {user['full_name']}
 📅 **تاريخ الإنشاء:** اليوم
 
-📝 **الآن أدخل وصفاً للشبكة:**
+2️⃣ 🏙️ **أدخل المدينة/المنطقة التي تغطيها الشبكة:**
 
-💡 **أمثلة على الوصف:**
-• `شبكة واي فاي منزلية عالية السرعة في منطقة الصافية`
-• `إنترنت منزلي مستقر للألعاب والدراسة`
-• `واي فاي منزلي سريع ومناسب للعائلات`
+💡 أمثلة: `صنعاء - شملان`، `تعز - الحوبان`
 
-⚠️ **نصائح للوصف:**
-• اذكر المنطقة إذا أمكن
-• أشر إلى جودة الخدمة
-• اذكر الاستخدامات المناسبة
-• لا تتجاوز 100 حرف
-
-📝 **اكتب وصف الشبكة:**
+📝 **اكتب المدينة/المنطقة الآن:**
 """
         
         keyboard = [
-            [InlineKeyboardButton('⏭️ تخطي الوصف', callback_data=f'skip_description_{network_id}'),
-             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
+            [InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
         ]
         
         await update.message.reply_text(
@@ -2716,8 +2712,9 @@ async def process_network_creation(update: Update, context: CallbackContext, net
             parse_mode='Markdown'
         )
         
-        context.user_data['awaiting_network_description'] = True
+        context.user_data['awaiting_network_city'] = True
         context.user_data['new_network_id'] = network_id
+        context.user_data['new_network_name'] = network_name
         context.user_data.pop('awaiting_network_name', None)
         
     except Exception as e:
@@ -2801,3 +2798,66 @@ async def process_network_description(update: Update, context: CallbackContext, 
     except Exception as e:
         logger.error(f"Error in process network description: {e}")
         await update.message.reply_text("❌ حدث خطأ في معالجة وصف الشبكة")
+
+async def process_network_city(update: Update, context: CallbackContext, city: str):
+    """معالجة إدخال المدينة/المنطقة للشبكة"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
+            return
+        
+        if user['role'] != 'supplier':
+            await update.message.reply_text("❌ هذه الميزة متاحة للمزودين فقط")
+            return
+        
+        network_id = context.user_data.get('new_network_id')
+        network_name = context.user_data.get('new_network_name', '')
+        if not network_id:
+            await update.message.reply_text("❌ لم يتم العثور على معرف الشبكة")
+            return
+        
+        city = city.strip()
+        if len(city) < 2:
+            await update.message.reply_text("❌ أدخل اسم مدينة/منطقة صالح")
+            return
+        if len(city) > 60:
+            await update.message.reply_text("❌ اسم المدينة/المنطقة طويل جداً (الحد 60 حرف)")
+            return
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        # Attempt to set city; add column if missing for legacy schemas
+        try:
+            cursor.execute('UPDATE networks SET city = ? WHERE id = ? AND created_by = ?', (city, network_id, user['id']))
+        except Exception:
+            try:
+                cursor.execute('ALTER TABLE networks ADD COLUMN city TEXT')
+                cursor.execute('UPDATE networks SET city = ? WHERE id = ? AND created_by = ?', (city, network_id, user['id']))
+            except Exception as e:
+                logger.error(f"Failed to set city for network {network_id}: {e}")
+        conn.commit()
+        conn.close()
+        
+        # Ask for description next (existing flow)
+        text = f"""
+✅ **تم حفظ المدينة/المنطقة!** ✅
+
+🌐 **اسم الشبكة:** {network_name}
+🏙️ **المدينة/المنطقة:** {city}
+
+3️⃣ 📝 **الآن أدخل وصفاً للشبكة (اختياري - حتى 100 حرف):**
+"""
+        keyboard = [
+            [InlineKeyboardButton('⏭️ تخطي الوصف', callback_data=f'skip_description_{network_id}'),
+             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
+        ]
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+        context.user_data.pop('awaiting_network_city', None)
+        context.user_data['awaiting_network_description'] = True
+        context.user_data['new_network_id'] = network_id
+        
+    except Exception as e:
+        logger.error(f"Error in process network city: {e}")
+        await update.message.reply_text("❌ حدث خطأ في حفظ المدينة/المنطقة")
