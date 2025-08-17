@@ -1,6 +1,6 @@
 {
   "start_time": "2025-08-17T01:47:22.878756",
-  "total_restarts": 2,
+  "total_restarts": 4,
   "total_errors": 0,
   "uptime_periods": [],
   "performance_data": [
@@ -57,6 +57,42 @@
       "error_count": 15,
       "system_cpu": 1.3,
       "system_memory_available": 14.273025512695312
+    },
+    {
+      "timestamp": "2025-08-17T01:54:20.617850",
+      "cpu_percent": 0.0,
+      "memory_mb": 125.98828125,
+      "is_running": true,
+      "error_count": 15,
+      "system_cpu": 6.5,
+      "system_memory_available": 14.288761138916016
+    },
+    {
+      "timestamp": "2025-08-17T01:55:32.922827",
+      "cpu_percent": 0.0,
+      "memory_mb": 126.6796875,
+      "is_running": true,
+      "error_count": 15,
+      "system_cpu": 4.2,
+      "system_memory_available": 14.369373321533203
+    },
+    {
+      "timestamp": "2025-08-17T01:56:45.196860",
+      "cpu_percent": 0,
+      "memory_mb": 0,
+      "is_running": false,
+      "error_count": 0,
+      "system_cpu": 0.0,
+      "system_memory_available": 14.459613800048828
+    },
+    {
+      "timestamp": "2025-08-17T01:57:54.211606",
+      "cpu_percent": 1.0,
+      "memory_mb": 126.09375,
+      "is_running": true,
+      "error_count": 15,
+      "system_cpu": 0.5,
+      "system_memory_available": 14.306617736816406
     }
   ],
   "error_log": []

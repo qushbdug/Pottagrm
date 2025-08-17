@@ -3042,6 +3042,13 @@ async def admin_add_network_handler(update: Update, context: CallbackContext):
             await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
             return
         
+        # تنظيف أي حالات سابقة لتجنب التداخل
+        context.user_data.clear()
+        
+        # إعداد حالة إنشاء الشبكة فقط
+        context.user_data['admin_adding_network'] = True
+        context.user_data['network_step'] = 'name'
+        
         text = f"""
 🌐 **إضافة شبكة جديدة** 🌐
 
@@ -3188,9 +3195,18 @@ async def admin_process_network_creation(update: Update, context: CallbackContex
         if not context.user_data.get('admin_adding_network'):
             return
         
+        # التأكد من عدم وجود حالات أخرى متداخلة
+        if context.user_data.get('admin_creating_coupon'):
+            # إذا كان هناك تداخل، نظف الحالة وأعد تعيين حالة الشبكة
+            context.user_data.clear()
+            context.user_data['admin_adding_network'] = True
+            context.user_data['network_step'] = 'name'
+        
         user = get_user(update.effective_user.id)
         if not user or user['role'] != 'super_admin':
             await update.message.reply_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            # تنظيف الحالة عند عدم وجود صلاحية
+            context.user_data.clear()
             return
         
         message_text = update.message.text.strip()
@@ -3897,6 +3913,12 @@ async def create_coupons_handler(update: Update, context: CallbackContext):
             await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
             return
         
+        # تنظيف أي حالات سابقة لتجنب التداخل
+        context.user_data.clear()
+        
+        # إعداد حالة إنشاء الكوبون فقط
+        context.user_data['admin_creating_coupon'] = True
+        
         text = f"""
 🎟️ **إنشاء كوبونات جديدة** 🎟️
 
@@ -3955,9 +3977,17 @@ async def process_coupon_creation(update: Update, context: CallbackContext):
         if not context.user_data.get('admin_creating_coupon'):
             return
         
+        # التأكد من عدم وجود حالات أخرى متداخلة
+        if context.user_data.get('admin_adding_network') or context.user_data.get('network_step'):
+            # إذا كان هناك تداخل، نظف الحالة وأعد تعيين حالة الكوبون
+            context.user_data.clear()
+            context.user_data['admin_creating_coupon'] = True
+        
         user = get_user(update.effective_user.id)
         if not user or user['role'] != 'super_admin':
             await update.message.reply_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            # تنظيف الحالة عند عدم وجود صلاحية
+            context.user_data.clear()
             return
         
         # Parse amount
