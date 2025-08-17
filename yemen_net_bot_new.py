@@ -1884,20 +1884,40 @@ async def recharge_balance_handler(update: Update, context: CallbackContext):
     try:
         query = update.callback_query
         
+        user = get_user(query.from_user.id)
+        
         recharge_text = f"""
 💰 **شحن الرصيد** 💰
 
-⚠️ هذه الميزة قيد التطوير
+👤 مرحباً **{user['full_name']}**
+💳 رقم محفظتك: **{user['wallet_number']}**
+💰 رصيدك الحالي: **{user['balance']:,.2f}** ريال
 
-🔧 **سيتم إضافة:**
-• شحن الرصيد عبر البطاقات
-• شحن عبر التحويل البنكي
-• شحن عبر المحافظ الإلكترونية
-• تأكيد الشحن التلقائي
+📝 **طرق الشحن المتاحة:**
+
+🎟️ **1. شحن بكوبون (فوري):**
+   • اشتر كوبون من أقرب نقطة بيع
+   • استخدم ميزة "🎟️ شحن بكوبون" في البوت
+   • يتم إضافة الرصيد فوراً
+
+🏪 **2. شحن عبر الوكلاء:**
+   • اذهب لأقرب وكيل معتمد
+   • أعطه رقم محفظتك: **{user['wallet_number']}**
+   • سيقوم بشحن حسابك مباشرة
+
+📞 **3. التواصل مع الدعم:**
+   • للمساعدة في عملية الشحن
+   • للاستفسار عن نقاط البيع
+   • لحل أي مشاكل في الشحن
+
+💡 **أسرع طريقة: استخدم الكوبونات!**
 """
         
         keyboard = [
-            [InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet')],
+            [InlineKeyboardButton('🎟️ شحن بكوبون', callback_data='redeem_coupon'),
+             InlineKeyboardButton('🏪 مواقع الوكلاء', callback_data='agent_locations')],
+            [InlineKeyboardButton('📞 التواصل مع الدعم', callback_data='contact_support'),
+             InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet')],
             [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
         ]
         

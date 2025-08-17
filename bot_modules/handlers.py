@@ -573,6 +573,10 @@ async def handle_text_message(update: Update, context: CallbackContext):
         if context.user_data.get('redeeming_coupon'):
             return await process_coupon_redemption(update, context)
         
+        # Check if waiting for user search
+        if context.user_data.get('awaiting_user_search'):
+            return await process_user_search(update, context, update.message.text)
+        
         # Check if waiting for balance send (old method - keep for compatibility)
         if context.user_data.get('awaiting_balance_send'):
             return await process_balance_send(update, context)

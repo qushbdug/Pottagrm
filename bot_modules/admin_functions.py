@@ -85,8 +85,9 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
              InlineKeyboardButton(f'🏛️ إدارة المنصة', callback_data='super_platform_management')],
             [InlineKeyboardButton(f'🌐 إضافة شبكة جديدة', callback_data='admin_add_network'),
              InlineKeyboardButton(f'💳 رفع كروت', callback_data='admin_upload_cards')],
-            [InlineKeyboardButton(f'✅ تفعيل مزودين', callback_data='super_activate_suppliers'),
-             InlineKeyboardButton(f'🔧 إعدادات النظام', callback_data='super_system_settings')],
+            [InlineKeyboardButton(f'🎁 إضافة عروض', callback_data='admin_add_offers'),
+             InlineKeyboardButton(f'✅ تفعيل مزودين', callback_data='super_activate_suppliers')],
+            [InlineKeyboardButton(f'🔧 إعدادات النظام', callback_data='super_system_settings')],
             [InlineKeyboardButton(f'💾 النسخ الاحتياطي', callback_data='super_backup'),
              InlineKeyboardButton(f'🚨 مراقبة الأمان', callback_data='super_security_monitoring')],
             [InlineKeyboardButton(f'🎟️ إنشاء كوبونات', callback_data='super_create_coupons'),
@@ -2971,6 +2972,7 @@ ADMIN_CALLBACKS.update({
     # Admin network and card management  
     'admin_add_network': lambda u, c: admin_add_network_handler(u, c),
     'admin_upload_cards': lambda u, c: admin_upload_cards_handler(u, c),
+    'admin_add_offers': lambda u, c: admin_add_offers_handler(u, c),
     
     # Coupon management
     'super_create_coupons': lambda u, c: create_coupons_handler(u, c),
@@ -3375,11 +3377,7 @@ async def admin_process_network_creation(update: Update, context: CallbackContex
                 conn.commit()
                 conn.close()
                 
-                # رسالة تأكيد النجاح
-                await update.message.reply_text(
-                    "✅ **تم حفظ البيانات بنجاح** ✅\n🔄 جاري إنشاء الشبكة...",
-                    parse_mode='Markdown'
-                )
+                # تم حفظ البيانات - سيتم عرض رسالة النجاح لاحقاً
                 
             except Exception as db_error:
                 logger.error(f"Database error in network creation: {db_error}")
@@ -4298,3 +4296,62 @@ async def list_coupons_handler(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in list coupons handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض القائمة.")
+
+async def admin_add_offers_handler(update: Update, context: CallbackContext):
+    """معالج إضافة العروض للمشرف الأعلى"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        text = f"""
+🎁 **إدارة العروض والخصومات** 🎁
+
+{EMOJIS['admin']} مرحباً **{user['full_name']}**
+
+📋 **الخيارات المتاحة:**
+
+🆕 **إضافة عرض جديد:**
+   • عروض خصم على الكروت
+   • عروض شحن مجاني
+   • عروض كوبونات إضافية
+
+📊 **إدارة العروض الحالية:**
+   • عرض قائمة العروض
+   • تعديل العروض الموجودة
+   • إيقاف/تفعيل العروض
+
+📈 **إحصائيات العروض:**
+   • عدد مرات الاستخدام
+   • العروض الأكثر شعبية
+   • تقارير فعالية العروض
+
+⚙️ **إعدادات العروض:**
+   • مدة صلاحية العروض
+   • شروط الاستخدام
+   • حدود الاستخدام
+
+💡 **اختر العملية المطلوبة:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🆕 إضافة عرض جديد', callback_data='create_new_offer'),
+             InlineKeyboardButton('📊 العروض الحالية', callback_data='manage_current_offers')],
+            [InlineKeyboardButton('📈 إحصائيات العروض', callback_data='offers_statistics'),
+             InlineKeyboardButton('⚙️ إعدادات العروض', callback_data='offers_settings')],
+            [InlineKeyboardButton('🏠 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in admin add offers handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إدارة العروض.")
