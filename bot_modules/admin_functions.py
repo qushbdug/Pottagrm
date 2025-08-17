@@ -3198,8 +3198,20 @@ async def admin_process_network_creation(update: Update, context: CallbackContex
         
         if step == 'name':
             if len(message_text) < 3:
-                await update.message.reply_text("❌ اسم الشبكة قصير جداً. يجب أن يكون 3 أحرف على الأقل.")
+                await update.message.reply_text(
+                    "❌ **اسم الشبكة قصير جداً** ❌\n\n"
+                    "📏 **الحد الأدنى:** 3 أحرف\n"
+                    "📝 **يرجى إدخال اسم أطول**",
+                    parse_mode='Markdown'
+                )
                 return
+            
+            # رسالة تأكيد حفظ الاسم
+            await update.message.reply_text(
+                f"✅ **تم حفظ اسم الشبكة بنجاح** ✅\n\n"
+                f"🌐 **الاسم المحفوظ:** {message_text}",
+                parse_mode='Markdown'
+            )
             
             context.user_data['new_network_name'] = message_text
             context.user_data['network_step'] = 'provider'
@@ -3228,8 +3240,20 @@ async def admin_process_network_creation(update: Update, context: CallbackContex
             
         elif step == 'provider':
             if len(message_text) < 3:
-                await update.message.reply_text("❌ اسم المزود قصير جداً. يجب أن يكون 3 أحرف على الأقل.")
+                await update.message.reply_text(
+                    "❌ **اسم المزود قصير جداً** ❌\n\n"
+                    "📏 **الحد الأدنى:** 3 أحرف\n"
+                    "📝 **يرجى إدخال اسم أطول**",
+                    parse_mode='Markdown'
+                )
                 return
+            
+            # رسالة تأكيد حفظ المزود
+            await update.message.reply_text(
+                f"✅ **تم حفظ اسم المزود بنجاح** ✅\n\n"
+                f"👤 **المزود المحفوظ:** {message_text}",
+                parse_mode='Markdown'
+            )
             
             context.user_data['new_network_provider'] = message_text
             context.user_data['network_step'] = 'description'
@@ -3258,8 +3282,20 @@ async def admin_process_network_creation(update: Update, context: CallbackContex
             
         elif step == 'description':
             if len(message_text) < 10:
-                await update.message.reply_text("❌ وصف الشبكة قصير جداً. يجب أن يكون 10 أحرف على الأقل.")
+                await update.message.reply_text(
+                    "❌ **وصف الشبكة قصير جداً** ❌\n\n"
+                    "📏 **الحد الأدنى:** 10 أحرف\n"
+                    "📝 **يرجى إدخال وصف أطول وأوضح**",
+                    parse_mode='Markdown'
+                )
                 return
+            
+            # رسالة تأكيد حفظ الوصف
+            await update.message.reply_text(
+                f"✅ **تم حفظ وصف الشبكة بنجاح** ✅\n\n"
+                f"📝 **الوصف المحفوظ:** {message_text}",
+                parse_mode='Markdown'
+            )
             
             context.user_data['new_network_description'] = message_text
             context.user_data['network_step'] = 'location'
@@ -3291,22 +3327,59 @@ async def admin_process_network_creation(update: Update, context: CallbackContex
         elif step == 'location':
             location = None if message_text.lower() in ['تخطي', 'skip'] else message_text
             
+            # رسالة تأكيد حفظ الموقع
+            if location:
+                await update.message.reply_text(
+                    f"✅ **تم حفظ موقع الشبكة بنجاح** ✅\n\n"
+                    f"📍 **الموقع المحفوظ:** {location}",
+                    parse_mode='Markdown'
+                )
+            else:
+                await update.message.reply_text(
+                    "✅ **تم تخطي الموقع بنجاح** ✅\n\n"
+                    "📍 **الموقع:** لم يتم تحديد موقع",
+                    parse_mode='Markdown'
+                )
+            
             # إنشاء الشبكة في قاعدة البيانات
             network_name = context.user_data['new_network_name']
             provider = context.user_data['new_network_provider']
             description = context.user_data['new_network_description']
             
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                INSERT INTO networks (name, provider, description, location, created_by, is_active)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (network_name, provider, description, location, user['id'], 1))
-            
-            network_id = cursor.lastrowid
-            conn.commit()
-            conn.close()
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                
+                cursor.execute('''
+                    INSERT INTO networks (name, provider, description, location, created_by, is_active)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (network_name, provider, description, location, user['id'], 1))
+                
+                network_id = cursor.lastrowid
+                conn.commit()
+                conn.close()
+                
+                # رسالة تأكيد النجاح
+                await update.message.reply_text(
+                    "✅ **تم حفظ البيانات بنجاح** ✅\n🔄 جاري إنشاء الشبكة...",
+                    parse_mode='Markdown'
+                )
+                
+            except Exception as db_error:
+                logger.error(f"Database error in network creation: {db_error}")
+                await update.message.reply_text(
+                    f"❌ **خطأ في قاعدة البيانات** ❌\n\n"
+                    f"🔍 **تفاصيل الخطأ:** {str(db_error)}\n\n"
+                    f"🔄 **يرجى المحاولة مرة أخرى**",
+                    parse_mode='Markdown'
+                )
+                # تنظيف البيانات المؤقتة
+                context.user_data.pop('admin_adding_network', None)
+                context.user_data.pop('network_step', None)
+                context.user_data.pop('new_network_name', None)
+                context.user_data.pop('new_network_provider', None)
+                context.user_data.pop('new_network_description', None)
+                return
             
             # رسالة التأكيد
             location_text = location if location else "لا يوجد"
@@ -3891,51 +3964,95 @@ async def process_coupon_creation(update: Update, context: CallbackContext):
         try:
             amount = float(update.message.text.strip())
         except ValueError:
-            await update.message.reply_text(f"{EMOJIS['error']} يجب إدخال رقم صحيح لقيمة الكوبون.")
+            await update.message.reply_text(
+                "❌ **قيمة غير صحيحة** ❌\n\n"
+                "🔢 **يجب إدخال رقم صحيح فقط**\n"
+                "💡 **مثال:** 100 أو 500 أو 1000",
+                parse_mode='Markdown'
+            )
             return
         
         # Validate amount
         if amount <= 0:
-            await update.message.reply_text(f"{EMOJIS['error']} قيمة الكوبون يجب أن تكون أكبر من صفر.")
+            await update.message.reply_text(
+                "❌ **قيمة غير مقبولة** ❌\n\n"
+                "📊 **القيمة يجب أن تكون أكبر من صفر**\n"
+                "💡 **مثال:** 50 أو 100 أو 500",
+                parse_mode='Markdown'
+            )
             return
         
         if amount > 100000:
-            await update.message.reply_text(f"{EMOJIS['error']} قيمة الكوبون كبيرة جداً. الحد الأقصى 100,000 ريال.")
+            await update.message.reply_text(
+                "❌ **قيمة كبيرة جداً** ❌\n\n"
+                "💰 **الحد الأقصى:** 100,000 ريال\n"
+                "📝 **يرجى إدخال قيمة أقل**",
+                parse_mode='Markdown'
+            )
             return
         
-        # Generate unique coupon code
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        # رسالة تأكيد بدء العملية
+        await update.message.reply_text(
+            "✅ **تم التحقق من البيانات بنجاح** ✅\n🔄 جاري إنشاء الكوبون...",
+            parse_mode='Markdown'
+        )
         
-        max_attempts = 10
-        coupon_code = None
-        
-        for _ in range(max_attempts):
-            potential_code = generate_coupon_code()
+        try:
+            # Generate unique coupon code
+            conn = get_db_connection()
+            cursor = conn.cursor()
             
-            # Check if code already exists
-            cursor.execute('SELECT id FROM coupons WHERE coupon_code = ?', (potential_code,))
-            if not cursor.fetchone():
-                coupon_code = potential_code
-                break
-        
-        if not coupon_code:
-            await update.message.reply_text(f"{EMOJIS['error']} فشل في إنشاء رقم كوبون فريد. حاول مرة أخرى.")
+            max_attempts = 10
+            coupon_code = None
+            
+            for _ in range(max_attempts):
+                potential_code = generate_coupon_code()
+                
+                # Check if code already exists
+                cursor.execute('SELECT id FROM coupons WHERE coupon_code = ?', (potential_code,))
+                if not cursor.fetchone():
+                    coupon_code = potential_code
+                    break
+            
+            if not coupon_code:
+                await update.message.reply_text(
+                    "❌ **فشل في إنشاء رقم كوبون فريد** ❌\n\n"
+                    "🔄 **يرجى المحاولة مرة أخرى**",
+                    parse_mode='Markdown'
+                )
+                conn.close()
+                context.user_data.pop('admin_creating_coupon', None)
+                return
+            
+            # Create coupon
+            from datetime import datetime, timedelta
+            expiry_date = datetime.now() + timedelta(days=365)  # صالح لمدة سنة
+            
+            cursor.execute('''
+                INSERT INTO coupons (coupon_code, amount, created_by, expiry_date, description)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (coupon_code, amount, user['id'], expiry_date, f'كوبون بقيمة {amount:,.0f} ريال'))
+            
+            coupon_id = cursor.lastrowid
+            conn.commit()
             conn.close()
+            
+            # رسالة تأكيد النجاح
+            await update.message.reply_text(
+                "✅ **تم إنشاء الكوبون بنجاح** ✅\n📦 جاري تحضير التفاصيل...",
+                parse_mode='Markdown'
+            )
+            
+        except Exception as db_error:
+            logger.error(f"Database error in coupon creation: {db_error}")
+            await update.message.reply_text(
+                f"❌ **خطأ في قاعدة البيانات** ❌\n\n"
+                f"🔍 **تفاصيل الخطأ:** {str(db_error)}\n\n"
+                f"🔄 **يرجى المحاولة مرة أخرى**",
+                parse_mode='Markdown'
+            )
+            context.user_data.pop('admin_creating_coupon', None)
             return
-        
-        # Create coupon
-        from datetime import datetime, timedelta
-        expiry_date = datetime.now() + timedelta(days=365)  # صالح لمدة سنة
-        
-        cursor.execute('''
-            INSERT INTO coupons (coupon_code, amount, created_by, expiry_date, description)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (coupon_code, amount, user['id'], expiry_date, f'كوبون بقيمة {amount:,.0f} ريال'))
-        
-        coupon_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
         
         # Success message
         success_text = f"""
