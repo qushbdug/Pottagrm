@@ -545,6 +545,14 @@ async def handle_text_message(update: Update, context: CallbackContext):
         if context.user_data.get('awaiting_network_description'):
             return await process_network_description(update, context, update.message.text)
         
+        # Check if waiting for network location
+        if context.user_data.get('awaiting_network_location'):
+            return await process_network_location(update, context, update.message.text)
+        
+        # Check if waiting for network search
+        if context.user_data.get('awaiting_network_search'):
+            return await process_network_search(update, context, update.message.text)
+        
         # Check if waiting for balance send (old method - keep for compatibility)
         if context.user_data.get('awaiting_balance_send'):
             return await process_balance_send(update, context)
@@ -1794,7 +1802,7 @@ async def show_all_networks(update: Update, context: CallbackContext):
         # الحصول على جميع الشبكات مع فئات الكروت
         cursor.execute('''
             SELECT 
-                n.id, n.name, n.provider, n.description,
+                n.id, n.name, n.provider, n.description, n.location,
                 COUNT(cc.id) as card_types,
                 SUM(cc.stock_count) as total_stock,
                 MIN(cc.price) as min_price,
@@ -1802,7 +1810,7 @@ async def show_all_networks(update: Update, context: CallbackContext):
             FROM networks n
             LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
             WHERE n.is_active = 1
-            GROUP BY n.id, n.name, n.provider, n.description
+            GROUP BY n.id, n.name, n.provider, n.description, n.location
             ORDER BY n.name
         ''')
         
@@ -1828,7 +1836,7 @@ async def show_all_networks(update: Update, context: CallbackContext):
 
         keyboard = []
         for network in networks:
-            network_id, name, provider, description, card_types, total_stock, min_price, max_price = network
+            network_id, name, provider, description, location, card_types, total_stock, min_price, max_price = network
             
             # تنسيق معلومات الشبكة
             stock_status = "📦" if total_stock and total_stock > 0 else "❌"
@@ -1841,7 +1849,9 @@ async def show_all_networks(update: Update, context: CallbackContext):
             
             text += f"""
 🏢 **{name}**
-📝 {description or 'شبكة إنترنت موثوقة'}
+📝 {description or 'شبكة واي فاي منزلية'}
+📍 الموقع: {location or 'غير محدد'}
+👤 المزود: {provider}
 💳 الفئات: {card_types or 0} فئة
 📦 المخزون: {total_stock or 0} كرت
 💰 الأسعار: {price_range or 'غير محدد'}
@@ -2452,7 +2462,7 @@ COMMAND_HANDLERS = {
     'all_networks': show_all_networks,
     'mobile_networks': show_mobile_networks,
     'home_networks': show_home_networks,
-    'search_by_network_name': lambda u, c: enhanced_placeholder_handler(u, c, "🔍 البحث بالاسم", "ابحث عن شبكة بالاسم"),
+    'search_by_network_name': lambda u, c: search_networks_by_name(u, c),
     'networks_by_price': lambda u, c: enhanced_placeholder_handler(u, c, "💰 ترتيب بالسعر", "ترتيب الشبكات حسب السعر"),
     'popular_networks': lambda u, c: enhanced_placeholder_handler(u, c, "⭐ الأكثر طلباً", "الشبكات الأكثر شعبية"),
     'insufficient_balance': lambda u, c: enhanced_placeholder_handler(u, c, "💰 رصيد غير كافي", "تحتاج لشحن رصيدك أولاً"),
@@ -2488,7 +2498,7 @@ async def supplier_manage_networks(update: Update, context: CallbackContext):
         
         # الحصول على شبكات المزود
         cursor.execute('''
-            SELECT id, name, description, is_active, created_at
+            SELECT id, name, description, location, is_active, created_at
             FROM networks 
             WHERE created_by = ?
             ORDER BY created_at DESC
@@ -2529,12 +2539,13 @@ async def supplier_manage_networks(update: Update, context: CallbackContext):
         
         if my_networks:
             for network in my_networks:
-                network_id, name, description, is_active, created_at = network
+                network_id, name, description, location, is_active, created_at = network
                 status_emoji = "✅" if is_active else "⏳"
                 
                 text += f"""
 {status_emoji} **{name}**
 📝 {description or 'شبكة واي فاي منزلية'}
+📍 الموقع: {location or 'غير محدد'}
 📅 أضيفت: {created_at[:10]}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -2752,11 +2763,103 @@ async def process_network_description(update: Update, context: CallbackContext, 
         conn.commit()
         conn.close()
         
-        # عرض خيارات إضافة فئات الكروت
+        # طلب الموقع
         text = f"""
 ✅ **تم تحديث وصف الشبكة بنجاح!** ✅
 
 📝 **الوصف المضاف:** {description}
+
+📍 **الآن أدخل موقع الشبكة:**
+
+💡 **أمثلة على المواقع:**
+• `منطقة الصافية - صنعاء`
+• `حي الزراعة - عدن`
+• `شارع هائل - تعز`
+• `مدينة الحديدة - المدينة`
+• `إب - جبلة`
+
+⚠️ **نصائح لكتابة الموقع:**
+• اذكر الحي أو المنطقة بوضوح
+• أضف المحافظة إذا أمكن
+• استخدم أسماء معروفة محلياً
+• لا تتجاوز 50 حرف
+• يمكن تخطي هذه الخطوة
+
+📍 **اكتب موقع الشبكة:**
+
+🎯 **خطوات إضافة فئة كرت:**
+1️⃣ اختر نوع الكرت (جيجا أو رصيد)
+2️⃣ حدد القيمة (مثل: 1 جيجا أو 1000 ريال)
+3️⃣ حدد السعر للكرت الواحد
+4️⃣ حدد عدد الكروت المتوفرة
+
+💡 **أمثلة على فئات الكروت:**
+• كرت 500 ميجا - 1000 ريال (50 كرت متوفر)
+• كرت 1 جيجا - 1800 ريال (30 كرت متوفر)
+• كرت 2 جيجا - 3200 ريال (20 كرت متوفر)
+
+🚀 **بدء إضافة الفئات:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('⏭️ تخطي الموقع', callback_data=f'skip_location_{network_id}'),
+             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
+        ]
+        
+        await update.message.reply_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+        context.user_data['awaiting_network_location'] = True
+        context.user_data.pop('awaiting_network_description', None)
+        
+    except Exception as e:
+        logger.error(f"Error in process network description: {e}")
+        await update.message.reply_text("❌ حدث خطأ في معالجة وصف الشبكة")
+
+async def process_network_location(update: Update, context: CallbackContext, location: str):
+    """معالجة موقع الشبكة"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
+            return
+        
+        if user['role'] != 'supplier':
+            await update.message.reply_text("❌ هذه الميزة متاحة للمزودين فقط")
+            return
+        
+        network_id = context.user_data.get('new_network_id')
+        if not network_id:
+            await update.message.reply_text("❌ لم يتم العثور على معرف الشبكة")
+            return
+        
+        location = location.strip()
+        
+        if len(location) > 50:
+            await update.message.reply_text("❌ الموقع طويل جداً. الحد الأقصى 50 حرف")
+            return
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # تحديث موقع الشبكة
+        cursor.execute('''
+            UPDATE networks 
+            SET location = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND created_by = ?
+        ''', (location, network_id, user['id']))
+        
+        conn.commit()
+        conn.close()
+        
+        # عرض خيارات إضافة فئات الكروت
+        text = f"""
+✅ **تم تحديث موقع الشبكة بنجاح!** ✅
+
+📍 **الموقع المضاف:** {location}
 
 💳 **الآن أضف فئات الكروت:**
 
@@ -2787,9 +2890,242 @@ async def process_network_description(update: Update, context: CallbackContext, 
             parse_mode='Markdown'
         )
         
-        context.user_data.pop('awaiting_network_description', None)
+        context.user_data.pop('awaiting_network_location', None)
         context.user_data.pop('new_network_id', None)
         
     except Exception as e:
-        logger.error(f"Error in process network description: {e}")
-        await update.message.reply_text("❌ حدث خطأ في معالجة وصف الشبكة")
+        logger.error(f"Error in process network location: {e}")
+        await update.message.reply_text("❌ حدث خطأ في معالجة موقع الشبكة")
+
+async def skip_network_location(update: Update, context: CallbackContext, network_id: str):
+    """تخطي إضافة الموقع"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
+            return
+        
+        if user['role'] != 'supplier':
+            await update.callback_query.edit_message_text("❌ هذه الميزة متاحة للمزودين فقط")
+            return
+        
+        # عرض خيارات إضافة فئات الكروت
+        text = f"""
+⏭️ **تم تخطي إضافة الموقع** ⏭️
+
+💳 **الآن أضف فئات الكروت:**
+
+🎯 **خطوات إضافة فئة كرت:**
+1️⃣ اختر نوع الكرت (جيجا أو رصيد)
+2️⃣ حدد القيمة (مثل: 1 جيجا أو 1000 ريال)
+3️⃣ حدد السعر للكرت الواحد
+4️⃣ حدد عدد الكروت المتوفرة
+
+💡 **أمثلة على فئات الكروت:**
+• كرت 500 ميجا - 1000 ريال (50 كرت متوفر)
+• كرت 1 جيجا - 1800 ريال (30 كرت متوفر)
+• كرت 2 جيجا - 3200 ريال (20 كرت متوفر)
+
+🚀 **بدء إضافة الفئات:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('💳 إضافة فئة كرت جديدة', callback_data=f'add_card_category_{network_id}'),
+             InlineKeyboardButton('⏭️ إنهاء لاحقاً', callback_data='manage_networks')],
+            [InlineKeyboardButton('🔙 إدارة شبكاتي', callback_data='manage_networks'),
+             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
+        ]
+        
+        await update.callback_query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+        context.user_data.pop('awaiting_network_location', None)
+        context.user_data.pop('new_network_id', None)
+        
+    except Exception as e:
+        logger.error(f"Error in skip network location: {e}")
+        await update.callback_query.edit_message_text("❌ حدث خطأ في تخطي الموقع")
+
+async def search_networks_by_name(update: Update, context: CallbackContext):
+    """البحث عن الشبكات بالاسم أو الموقع"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
+            return
+        
+        text = f"""
+🔍 **البحث عن شبكة واي فاي** 🔍
+
+👤 مرحباً **{user['full_name']}**
+💰 رصيدك: **{user['balance']:,.2f}** ريال
+
+📝 **اكتب للبحث:**
+
+💡 **يمكنك البحث بـ:**
+• اسم الشبكة (مثل: واي فاي الرحمن)
+• الموقع (مثل: الصافية، صنعاء)
+• المزود (مثل: أحمد محمد)
+
+🔍 **أمثلة للبحث:**
+• `الرحمن`
+• `الصافية`
+• `صنعاء`
+• `واي فاي`
+
+📝 **اكتب كلمة البحث:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🌐 عرض جميع الشبكات', callback_data='all_networks'),
+             InlineKeyboardButton('📍 بحث بالموقع', callback_data='search_by_location')],
+            [InlineKeyboardButton('🔙 عودة', callback_data='search_networks'),
+             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
+        ]
+        
+        await update.callback_query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+        context.user_data['awaiting_network_search'] = True
+        
+    except Exception as e:
+        logger.error(f"Error in search networks by name: {e}")
+        await update.callback_query.edit_message_text("❌ حدث خطأ في البحث")
+
+async def process_network_search(update: Update, context: CallbackContext, search_term: str):
+    """معالجة البحث عن الشبكات"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
+            return
+        
+        search_term = search_term.strip()
+        
+        if len(search_term) < 2:
+            await update.message.reply_text("❌ كلمة البحث قصيرة جداً. أدخل على الأقل حرفين")
+            return
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # البحث في الشبكات
+        cursor.execute('''
+            SELECT 
+                n.id, n.name, n.provider, n.description, n.location,
+                COUNT(cc.id) as card_types,
+                SUM(cc.stock_count) as total_stock,
+                MIN(cc.price) as min_price,
+                MAX(cc.price) as max_price
+            FROM networks n
+            LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
+            WHERE n.is_active = 1 AND (
+                n.name LIKE ? OR 
+                n.location LIKE ? OR 
+                n.provider LIKE ? OR 
+                n.description LIKE ?
+            )
+            GROUP BY n.id, n.name, n.provider, n.description, n.location
+            ORDER BY n.name
+            LIMIT 10
+        ''', (f"%{search_term}%", f"%{search_term}%", f"%{search_term}%", f"%{search_term}%"))
+        
+        search_results = cursor.fetchall()
+        conn.close()
+        
+        if not search_results:
+            text = f"""
+❌ **لم يتم العثور على نتائج** ❌
+
+🔍 تم البحث عن: `{search_term}`
+
+💡 **نصائح للبحث:**
+• تأكد من صحة كتابة كلمة البحث
+• جرب البحث بكلمات أقل
+• ابحث بالموقع بدلاً من الاسم
+• تأكد من وجود شبكات متاحة
+
+🔄 **جرب البحث مرة أخرى:**
+"""
+            
+            keyboard = [
+                [InlineKeyboardButton('🔍 بحث جديد', callback_data='search_by_network_name'),
+                 InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks')],
+                [InlineKeyboardButton('🔙 عودة', callback_data='search_networks')]
+            ]
+            
+            await update.message.reply_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            return
+        
+        # عرض نتائج البحث
+        text = f"""
+🔍 **نتائج البحث** 🔍
+
+👤 **{user['full_name']}**
+💰 رصيدك: **{user['balance']:,.2f}** ريال
+
+📊 **تم العثور على {len(search_results)} شبكة:**
+
+"""
+
+        keyboard = []
+        for i, network in enumerate(search_results, 1):
+            network_id, name, provider, description, location, card_types, total_stock, min_price, max_price = network
+            
+            stock_status = "📦" if total_stock and total_stock > 0 else "❌"
+            price_range = ""
+            if min_price and max_price:
+                if min_price == max_price:
+                    price_range = f"{min_price:,.0f} ريال"
+                else:
+                    price_range = f"{min_price:,.0f} - {max_price:,.0f} ريال"
+            
+            text += f"""
+{i}️⃣ **{name}** {stock_status}
+📍 {location or 'غير محدد'}
+👤 المزود: {provider}
+💳 {card_types or 0} فئة • 📦 {total_stock or 0} كرت
+💰 {price_range or 'غير محدد'}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+
+"""
+            
+            button_text = f"{i}️⃣ {name[:15]}..."
+            if total_stock and total_stock > 0:
+                button_text += f" ({total_stock})"
+            
+            keyboard.append([InlineKeyboardButton(
+                button_text,
+                callback_data=f"network_{network_id}"
+            )])
+
+        # إضافة أزرار إضافية
+        keyboard.extend([
+            [InlineKeyboardButton('🔍 بحث جديد', callback_data='search_by_network_name'),
+             InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks')],
+            [InlineKeyboardButton('🔙 عودة', callback_data='search_networks'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ])
+
+        await update.message.reply_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+        context.user_data.pop('awaiting_network_search', None)
+
+    except Exception as e:
+        logger.error(f"Error in process network search: {e}")
+        await update.message.reply_text("❌ حدث خطأ في البحث")
+        context.user_data.pop('awaiting_network_search', None)

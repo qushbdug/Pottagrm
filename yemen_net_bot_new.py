@@ -131,6 +131,10 @@ async def button_click_handler(update: Update, context):
             user_id = parts[2]
             amount = parts[3]
             return await confirm_user_transfer(update, context, user_id, amount)
+        elif callback_data.startswith('skip_location_'):
+            from handlers import skip_network_location
+            network_id = callback_data.split('_')[2]
+            return await skip_network_location(update, context, network_id)
         
         # Search by type handlers
         elif callback_data.startswith('search_by_'):
