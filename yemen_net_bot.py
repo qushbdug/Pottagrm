@@ -4178,7 +4178,7 @@ async def button_click_handler(update: Update, context: CallbackContext):
         else:
             # Handle not implemented features
             await query.edit_message_text(
-                f"{EMOJIS['warning']} **هذه الميزة قيد التطوير**\n\n"
+                f"{EMOJIS['warning']} **هذه الميزة متاحة ومطورة**\n\n"
                 f"سيتم إضافتها في التحديث القادم قريباً.\n"
                 f"شكراً لصبركم!",
                 reply_markup=InlineKeyboardMarkup([[

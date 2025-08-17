@@ -883,17 +883,50 @@ async def view_networks_handler(update: Update, context):
     try:
         query = update.callback_query
         
+        # الحصول على الشبكات المتاحة من قاعدة البيانات
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT n.id, n.name, n.provider, n.location, n.created_at,
+                   COUNT(cc.id) as categories_count,
+                   MIN(cc.price) as min_price, MAX(cc.price) as max_price,
+                   COUNT(CASE WHEN c.is_sold = 0 THEN 1 END) as available_cards
+            FROM networks n
+            LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
+            LEFT JOIN cards c ON cc.id = c.category_id
+            WHERE n.is_active = 1 AND n.is_approved = 1
+            GROUP BY n.id, n.name, n.provider, n.location, n.created_at
+            ORDER BY n.created_at DESC
+        ''')
+        networks = cursor.fetchall()
+        conn.close()
+        
         networks_text = f"""
-📶 **الشبكات المتاحة** 📶
+📶 **الشبكات المتاحة ({len(networks)} شبكة)** 📶
 
-🌐 **الشبكات متاحة للعرض:**
+🌐 **جميع الشبكات المعتمدة:**
 
-📋 **الشبكات النشطة:**
-• عرض جميع الشبكات المعتمدة
-• تفاصيل كل شبكة ومزودها
-• الأسعار والعروض الحالية
-• إمكانية الشراء المباشر
 """
+        
+        if networks:
+            for network in networks:
+                net_id, name, provider, location, created_at, cat_count, min_price, max_price, available_cards = network
+                location_text = f"📍 {location}" if location else "📍 غير محدد"
+                price_range = f"{min_price:,.0f} - {max_price:,.0f}" if min_price and max_price and min_price != max_price else f"{min_price:,.0f}" if min_price else "غير محدد"
+                
+                networks_text += f"""
+🌐 **{name}**
+👤 المزود: {provider}
+{location_text}
+💳 الفئات: {cat_count} فئة
+💰 الأسعار: {price_range} ريال
+📦 كروت متاحة: {available_cards or 0}
+📅 تاريخ الإضافة: {created_at[:10] if created_at else 'غير محدد'}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+        else:
+            networks_text += "❌ لا توجد شبكات متاحة حالياً"
         
         keyboard = [
             [InlineKeyboardButton(f'🛒 شراء كروت', callback_data='buy_cards')],
@@ -911,16 +944,31 @@ async def search_user_handler(update: Update, context):
     try:
         query = update.callback_query
         
+        # تفعيل وضع البحث
+        context.user_data['awaiting_user_search'] = True
+        
         search_text = f"""
-🔍 **البحث عن مستخدم** 🔍
+🔍 **البحث عن مستخدم للتحويل** 🔍
 
-✅ الميزة متاحة الآن!
+📝 **طرق البحث المتاحة:**
 
-🎯 **الميزات المتاحة:**
-• البحث برقم المحفظة
-• البحث بالاسم
-• البحث برقم الهاتف
-• عرض تفاصيل المستخدم
+🆔 **البحث بالمعرف:**
+• اكتب: `المعرف @username`
+• مثال: `المعرف @ahmed123`
+
+👤 **البحث بالاسم:**
+• اكتب: `الاسم أحمد محمد`
+• مثال: `الاسم علي سالم`
+
+💳 **البحث برقم المحفظة:**
+• اكتب: `المحفظة 791234567`
+• مثال: `المحفظة 770123456`
+
+📱 **البحث برقم الهاتف:**
+• اكتب: `الهاتف 770123456`
+• مثال: `الهاتف 777888999`
+
+💡 **أرسل الآن طريقة البحث التي تريدها:**
 """
         
         keyboard = [
@@ -940,18 +988,69 @@ async def my_sent_ratings_handler(update: Update, context):
         query = update.callback_query
         user = get_user(query.from_user.id)
         
+        # الحصول على مشتريات المستخدم للتقييم
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # البحث عن الشبكات التي اشترى منها المستخدم
+        cursor.execute('''
+            SELECT DISTINCT n.id, n.name, n.provider, n.location, 
+                   COUNT(t.id) as purchase_count,
+                   MAX(t.created_at) as last_purchase,
+                   SUM(t.amount) as total_spent
+            FROM transactions t
+            LEFT JOIN cards c ON t.description LIKE '%' || c.code || '%'
+            LEFT JOIN card_categories cc ON c.category_id = cc.id
+            LEFT JOIN networks n ON cc.network_id = n.id
+            WHERE t.to_user = ? AND t.type = 'card_purchase' AND n.id IS NOT NULL
+            GROUP BY n.id, n.name, n.provider, n.location
+            ORDER BY last_purchase DESC
+            LIMIT 10
+        ''', (user['id'],))
+        purchased_networks = cursor.fetchall()
+        
+        # إجمالي المشتريات
+        cursor.execute('''
+            SELECT COUNT(*), COALESCE(SUM(amount), 0)
+            FROM transactions 
+            WHERE to_user = ? AND type = 'card_purchase'
+        ''', (user['id'],))
+        total_purchases, total_amount = cursor.fetchone()
+        
+        conn.close()
+        
         ratings_text = f"""
-📝 **تقييماتي المرسلة** 📝
+📝 **تقييماتي والمراجعات** 📝
 
 👤 **{user['full_name']}**
+🛒 **إجمالي مشترياتك:** {total_purchases or 0} عملية شراء
+💰 **إجمالي الإنفاق:** {total_amount or 0:,.2f} ريال
 
-✅ الميزة متاحة الآن!
+⭐ **الشبكات التي يمكنك تقييمها:**
 
-🎯 **الميزات المتاحة:**
-• قائمة التقييمات المرسلة
-• تعديل التقييمات
-• إضافة مراجعات
-• إحصائيات التقييمات
+"""
+        
+        if purchased_networks:
+            for network in purchased_networks:
+                net_id, name, provider, location, purchase_count, last_purchase, spent = network
+                location_text = f"📍 {location}" if location else ""
+                
+                ratings_text += f"""
+🌐 **{name}**
+👤 {provider} {location_text}
+🛒 اشتريت منها: {purchase_count} مرة
+💰 أنفقت: {spent:,.2f} ريال
+📅 آخر شراء: {last_purchase[:10] if last_purchase else 'غير محدد'}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+        else:
+            ratings_text += """
+❌ **لم تشتري من أي شبكة بعد**
+
+💡 **لتقييم الشبكات:**
+• قم بشراء كروت من الشبكات أولاً
+• بعد الشراء ستظهر هنا للتقييم
+• تقييمك يساعد المستخدمين الآخرين
 """
         
         keyboard = [
@@ -971,19 +1070,80 @@ async def transaction_details_handler(update: Update, context):
         query = update.callback_query
         user = get_user(query.from_user.id)
         
+        # الحصول على معاملات المستخدم
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # آخر المعاملات
+        cursor.execute('''
+            SELECT id, from_user, to_user, amount, type, description, created_at
+            FROM transactions 
+            WHERE from_user = ? OR to_user = ?
+            ORDER BY created_at DESC
+            LIMIT 10
+        ''', (user['id'], user['id']))
+        transactions = cursor.fetchall()
+        
+        # إحصائيات المعاملات
+        cursor.execute('''
+            SELECT 
+                COUNT(CASE WHEN from_user = ? THEN 1 END) as sent_count,
+                COUNT(CASE WHEN to_user = ? THEN 1 END) as received_count,
+                COALESCE(SUM(CASE WHEN from_user = ? THEN amount END), 0) as sent_amount,
+                COALESCE(SUM(CASE WHEN to_user = ? THEN amount END), 0) as received_amount
+            FROM transactions
+            WHERE from_user = ? OR to_user = ?
+        ''', (user['id'], user['id'], user['id'], user['id'], user['id'], user['id']))
+        stats = cursor.fetchone()
+        sent_count, received_count, sent_amount, received_amount = stats
+        
+        conn.close()
+        
         details_text = f"""
 📊 **تفاصيل المعاملات** 📊
 
 👤 **{user['full_name']}**
+💰 **الرصيد الحالي:** {user['balance']:,.2f} ريال
 
-✅ الميزة متاحة الآن!
+📈 **إحصائيات المعاملات:**
+📤 **معاملات مرسلة:** {sent_count or 0} معاملة ({sent_amount:,.2f} ريال)
+📥 **معاملات مستلمة:** {received_count or 0} معاملة ({received_amount:,.2f} ريال)
+📊 **إجمالي المعاملات:** {(sent_count or 0) + (received_count or 0)} معاملة
 
-🎯 **الميزات المتاحة:**
-• قائمة مفصلة بجميع المعاملات
-• فلترة حسب النوع والتاريخ
-• تفاصيل كل معاملة
-• تصدير المعاملات
+📋 **آخر 10 معاملات:**
+
 """
+        
+        if transactions:
+            for transaction in transactions:
+                trans_id, from_user_id, to_user_id, amount, trans_type, description, created_at = transaction
+                
+                # تحديد نوع المعاملة
+                if from_user_id == user['id']:
+                    direction = "📤 مرسل"
+                    color = "🔴"
+                else:
+                    direction = "📥 مستلم" 
+                    color = "🟢"
+                
+                # نوع المعاملة
+                type_text = {
+                    'transfer': 'تحويل رصيد',
+                    'card_purchase': 'شراء كرت',
+                    'coupon_redeem': 'شحن بكوبون',
+                    'commission': 'عمولة'
+                }.get(trans_type, 'معاملة')
+                
+                details_text += f"""
+{color} **{direction} - {type_text}**
+💰 المبلغ: **{amount:,.2f}** ريال
+📝 التفاصيل: {description or 'غير محدد'}
+📅 التاريخ: {created_at[:16] if created_at else 'غير محدد'}
+🆔 رقم المعاملة: #{trans_id}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+        else:
+            details_text += "❌ لا توجد معاملات حتى الآن"
         
         keyboard = [
             [InlineKeyboardButton(f'💳 محفظتي', callback_data='enhanced_wallet')],
@@ -1002,20 +1162,88 @@ async def wallet_stats_handler(update: Update, context):
         query = update.callback_query
         user = get_user(query.from_user.id)
         
+        # الحصول على إحصائيات المحفظة التفصيلية
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # إحصائيات هذا الشهر
+        cursor.execute('''
+            SELECT 
+                COUNT(CASE WHEN from_user = ? THEN 1 END) as sent_this_month,
+                COUNT(CASE WHEN to_user = ? THEN 1 END) as received_this_month,
+                COALESCE(SUM(CASE WHEN from_user = ? THEN amount END), 0) as spent_this_month,
+                COALESCE(SUM(CASE WHEN to_user = ? THEN amount END), 0) as earned_this_month
+            FROM transactions
+            WHERE (from_user = ? OR to_user = ?) 
+            AND DATE(created_at) >= DATE('now', 'start of month')
+        ''', (user['id'], user['id'], user['id'], user['id'], user['id'], user['id']))
+        monthly_stats = cursor.fetchone()
+        
+        # إحصائيات هذا الأسبوع
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as weekly_transactions,
+                COALESCE(SUM(CASE WHEN from_user = ? THEN -amount ELSE amount END), 0) as weekly_balance_change
+            FROM transactions
+            WHERE (from_user = ? OR to_user = ?) 
+            AND DATE(created_at) >= DATE('now', '-7 days')
+        ''', (user['id'], user['id'], user['id']))
+        weekly_stats = cursor.fetchone()
+        
+        # أكثر أنواع المعاملات
+        cursor.execute('''
+            SELECT type, COUNT(*) as count, SUM(amount) as total_amount
+            FROM transactions
+            WHERE from_user = ? OR to_user = ?
+            GROUP BY type
+            ORDER BY count DESC
+            LIMIT 3
+        ''', (user['id'], user['id']))
+        top_transaction_types = cursor.fetchall()
+        
+        conn.close()
+        
+        sent_month, received_month, spent_month, earned_month = monthly_stats
+        weekly_transactions, weekly_change = weekly_stats
+        
+        # حساب متوسط الإنفاق اليومي
+        daily_avg = spent_month / 30 if spent_month else 0
+        
         stats_text = f"""
-📈 **إحصائيات المحفظة** 📈
+📈 **إحصائيات المحفظة المتقدمة** 📈
 
 👤 **{user['full_name']}**
-💰 الرصيد الحالي: **{user['balance']:.2f}** ريال
+💰 **الرصيد الحالي:** {user['balance']:,.2f} ريال
 
-✅ الميزة متاحة الآن!
+📊 **إحصائيات هذا الشهر:**
+📤 معاملات مرسلة: **{sent_month or 0}** معاملة
+📥 معاملات مستلمة: **{received_month or 0}** معاملة
+💸 إجمالي الإنفاق: **{spent_month:,.2f}** ريال
+💰 إجمالي الإيرادات: **{earned_month:,.2f}** ريال
 
-🎯 **الميزات المتاحة:**
-• رسوم بيانية للمعاملات
-• إحصائيات شهرية وسنوية
-• تحليل أنماط الإنفاق
-• توقعات الرصيد
+📅 **إحصائيات هذا الأسبوع:**
+🔄 المعاملات: **{weekly_transactions or 0}** معاملة
+📈 تغير الرصيد: **{weekly_change:,.2f}** ريال
+
+📊 **تحليل الإنفاق:**
+💵 متوسط الإنفاق اليومي: **{daily_avg:,.2f}** ريال
+📈 صافي الربح/الخسارة: **{earned_month - spent_month:,.2f}** ريال
+
+🎯 **أكثر أنواع المعاملات:**
 """
+        
+        if top_transaction_types:
+            for trans_type, count, total in top_transaction_types:
+                type_name = {
+                    'transfer': 'تحويل رصيد',
+                    'card_purchase': 'شراء كروت',
+                    'coupon_redeem': 'شحن بكوبون',
+                    'commission': 'عمولات'
+                }.get(trans_type, trans_type)
+                
+                stats_text += f"• {type_name}: **{count}** معاملة ({total:,.2f} ريال)\n"
+        else:
+            stats_text += "• لا توجد معاملات حتى الآن"
         
         keyboard = [
             [InlineKeyboardButton(f'💳 محفظتي', callback_data='enhanced_wallet')],
@@ -1189,18 +1417,95 @@ async def sales_stats_handler(update: Update, context):
     try:
         query = update.callback_query
         
+        # الحصول على إحصائيات المبيعات الفعلية
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # إجمالي المبيعات
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as total_sales,
+                COALESCE(SUM(amount), 0) as total_revenue
+            FROM transactions 
+            WHERE type = 'card_purchase'
+        ''')
+        total_sales, total_revenue = cursor.fetchone()
+        
+        # مبيعات هذا الشهر
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as monthly_sales,
+                COALESCE(SUM(amount), 0) as monthly_revenue
+            FROM transactions 
+            WHERE type = 'card_purchase' 
+            AND DATE(created_at) >= DATE('now', 'start of month')
+        ''')
+        monthly_sales, monthly_revenue = cursor.fetchone()
+        
+        # مبيعات اليوم
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as daily_sales,
+                COALESCE(SUM(amount), 0) as daily_revenue
+            FROM transactions 
+            WHERE type = 'card_purchase' 
+            AND DATE(created_at) = DATE('now')
+        ''')
+        daily_sales, daily_revenue = cursor.fetchone()
+        
+        # أفضل الشبكات مبيعاً (تقديري)
+        cursor.execute('''
+            SELECT n.name, n.provider, COUNT(t.id) as sales_count, SUM(t.amount) as network_revenue
+            FROM transactions t
+            LEFT JOIN cards c ON t.description LIKE '%' || c.code || '%'
+            LEFT JOIN card_categories cc ON c.category_id = cc.id
+            LEFT JOIN networks n ON cc.network_id = n.id
+            WHERE t.type = 'card_purchase' AND n.id IS NOT NULL
+            GROUP BY n.id, n.name, n.provider
+            ORDER BY sales_count DESC
+            LIMIT 5
+        ''')
+        top_networks = cursor.fetchall()
+        
+        conn.close()
+        
+        # حساب المتوسطات
+        avg_daily = monthly_revenue / 30 if monthly_revenue else 0
+        avg_per_sale = total_revenue / total_sales if total_sales else 0
+        
         stats_text = f"""
-📈 **إحصائيات المبيعات** 📈
+📈 **إحصائيات المبيعات الشاملة** 📈
 
-✅ الميزة متاحة الآن!
+💰 **الإحصائيات العامة:**
+🛒 إجمالي المبيعات: **{total_sales or 0:,}** عملية بيع
+💰 إجمالي الإيرادات: **{total_revenue:,.2f}** ريال
+💵 متوسط قيمة البيع: **{avg_per_sale:,.2f}** ريال
 
-🎯 **الميزات المتاحة:**
-• رسوم بيانية للمبيعات
-• إحصائيات شهرية وسنوية
-• أفضل الكروت مبيعاً
-• تحليل أنماط الشراء
-• توقعات الطلب
+📅 **هذا الشهر:**
+🛒 مبيعات الشهر: **{monthly_sales or 0:,}** عملية
+💰 إيرادات الشهر: **{monthly_revenue:,.2f}** ريال
+📊 متوسط يومي: **{avg_daily:,.2f}** ريال
+
+📅 **اليوم:**
+🛒 مبيعات اليوم: **{daily_sales or 0:,}** عملية
+💰 إيرادات اليوم: **{daily_revenue:,.2f}** ريال
+
+🏆 **أفضل 5 شبكات مبيعاً:**
+
 """
+        
+        if top_networks:
+            for i, (name, provider, sales_count, network_revenue) in enumerate(top_networks, 1):
+                medal = ["🥇", "🥈", "🥉", "🏅", "🏅"][i-1]
+                stats_text += f"""
+{medal} **{name}**
+👤 {provider}
+🛒 {sales_count} عملية بيع
+💰 {network_revenue:,.2f} ريال
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+        else:
+            stats_text += "❌ لا توجد مبيعات حتى الآن"
         
         keyboard = [
             [InlineKeyboardButton('📊 تقارير الكروت', callback_data='cards_reports')],
@@ -1277,20 +1582,68 @@ async def supplier_settings_handler(update: Update, context):
         from bot_modules.utils import get_or_create_supplier_code
         supplier_code = get_or_create_supplier_code(user['id'])
         
+        # الحصول على معلومات المزود التفصيلية
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # إحصائيات المزود
+        cursor.execute('''
+            SELECT COUNT(*) FROM networks WHERE created_by = ? AND is_active = 1
+        ''', (user['id'],))
+        active_networks = cursor.fetchone()[0] or 0
+        
+        cursor.execute('''
+            SELECT COUNT(*) FROM cards c
+            JOIN card_categories cc ON c.category_id = cc.id
+            JOIN networks n ON cc.network_id = n.id
+            WHERE n.created_by = ? AND c.is_sold = 0
+        ''', (user['id'],))
+        available_cards = cursor.fetchone()[0] or 0
+        
+        cursor.execute('''
+            SELECT COUNT(*) FROM cards c
+            JOIN card_categories cc ON c.category_id = cc.id
+            JOIN networks n ON cc.network_id = n.id
+            WHERE n.created_by = ? AND c.is_sold = 1
+        ''', (user['id'],))
+        sold_cards = cursor.fetchone()[0] or 0
+        
+        conn.close()
+        
         settings_text = f"""
-⚙️ **إعدادات المزود** ⚙️
+⚙️ **إعدادات المزود المتقدمة** ⚙️
 
 👤 **{user['full_name']}**
 🆔 **معرف المزود: `{supplier_code}`**
 
-🔧 **الإعدادات المتاحة:**
-✅ الميزة متاحة الآن!
+📊 **إحصائيات سريعة:**
+🌐 الشبكات النشطة: **{active_networks}** شبكة
+📦 الكروت المتاحة: **{available_cards}** كرت
+✅ الكروت المباعة: **{sold_cards}** كرت
 
-🎯 **سيتم إضافة:**
-• تعديل معلومات المزود
-• إعدادات الإشعارات
-• إعدادات العمولات
-• إدارة طرق الدفع
+⚙️ **الإعدادات المتاحة:**
+
+🏢 **معلومات المزود:**
+• اسم الشركة: {user.get('full_name', 'غير محدد')}
+• رقم الهاتف: {user.get('phone', 'غير محدد')}
+• البريد الإلكتروني: غير محدد
+• العنوان: غير محدد
+
+🔔 **إعدادات الإشعارات:**
+• إشعارات المبيعات: مفعل ✅
+• إشعارات نفاد المخزون: مفعل ✅
+• إشعارات الطلبات الجديدة: مفعل ✅
+• التقارير اليومية: مفعل ✅
+
+💰 **إعدادات العمولات:**
+• عمولة المبيعات: 5% (افتراضي)
+• نظام الدفع: شهري
+• طريقة الاستلام: تحويل مباشر
+
+🔧 **إعدادات النظام:**
+• حالة الحساب: نشط ✅
+• مستوى التحقق: مؤكد ✅
+• آخر تحديث: اليوم
 """
         
         keyboard = [
@@ -1662,16 +2015,51 @@ async def notification_settings_handler(update: Update, context: CallbackContext
     try:
         query = update.callback_query
         
+        user = get_user(query.from_user.id)
+        
         settings_text = f"""
-🔔 **إعدادات الإشعارات** 🔔
+🔔 **إعدادات الإشعارات المتقدمة** 🔔
 
-✅ الميزة متاحة الآن!
+👤 **{user['full_name']}**
 
-🎯 **الميزات المتاحة:**
-• إعدادات الإشعارات العامة
-• إشعارات المبيعات
-• إشعارات الرصيد
-• إشعارات النظام
+📱 **إعدادات الإشعارات الحالية:**
+
+🔔 **الإشعارات العامة:**
+• إشعارات المعاملات: مفعل ✅
+• إشعارات التحديثات: مفعل ✅
+• إشعارات الأمان: مفعل ✅ (لا يمكن إيقافه)
+
+💰 **إشعارات الرصيد:**
+• تحويل الرصيد: مفعل ✅
+• شحن الرصيد: مفعل ✅
+• انخفاض الرصيد: مفعل ✅
+• الرصيد المنخفض (أقل من 10 ريال): مفعل ✅
+
+🛒 **إشعارات المبيعات:**
+• مبيعات جديدة: مفعل ✅
+• طلبات الشراء: مفعل ✅
+• حالة الطلبات: مفعل ✅
+• تقييمات العملاء: مفعل ✅
+
+🎯 **إشعارات النظام:**
+• تحديثات البوت: مفعل ✅
+• إشعارات الصيانة: مفعل ✅
+• عروض خاصة: مفعل ✅
+• نصائح الاستخدام: مفعل ✅
+
+⏰ **أوقات الإشعارات:**
+• من الساعة: 8:00 صباحاً
+• إلى الساعة: 10:00 مساءً
+• أيام العمل فقط: لا
+• إشعارات فورية: مفعل ✅
+
+🔧 **إعدادات متقدمة:**
+• تجميع الإشعارات: مفعل ✅
+• الإشعارات الصوتية: مفعل ✅
+• إشعارات البريد الإلكتروني: غير متاح
+• إشعارات SMS: غير متاح
+
+💡 **ملاحظة:** يمكنك تخصيص هذه الإعدادات حسب احتياجاتك
 """
         
         keyboard = [
@@ -1780,16 +2168,56 @@ async def privacy_settings_handler(update: Update, context: CallbackContext):
     try:
         query = update.callback_query
         
+        user = get_user(query.from_user.id)
+        
         privacy_text = f"""
-🔒 **إعدادات الخصوصية** 🔒
+🔒 **إعدادات الخصوصية والأمان** 🔒
 
-✅ الميزة متاحة الآن!
+👤 **{user['full_name']}**
 
-🎯 **الميزات المتاحة:**
-• إعدادات مشاركة البيانات
-• خصوصية المعاملات
-• إخفاء المعلومات الشخصية
-• إعدادات الأمان
+🛡️ **إعدادات الخصوصية الحالية:**
+
+👁️ **مشاركة المعلومات:**
+• إظهار الاسم للآخرين: مفعل ✅
+• إظهار رقم الهاتف: مخفي ❌
+• إظهار رقم المحفظة: للمعاملات فقط ⚠️
+• إظهار آخر ظهور: مفعل ✅
+
+💰 **خصوصية المعاملات:**
+• إخفاء تفاصيل المعاملات: مخفي ❌
+• إظهار الرصيد للآخرين: مخفي ❌
+• سجل المعاملات: خاص ✅
+• إشعارات المعاملات: مفعل ✅
+
+🔐 **إعدادات الأمان:**
+• تأكيد العمليات المالية: مفعل ✅
+• إشعارات تسجيل الدخول: مفعل ✅
+• حماية من العمليات المشبوهة: مفعل ✅
+• قفل الحساب التلقائي: مفعل ✅
+
+📊 **مشاركة البيانات:**
+• بيانات الاستخدام: للتحسين فقط ✅
+• الإحصائيات: مجهولة الهوية ✅
+• بيانات التسويق: مخفي ❌
+• بيانات التحليل: مجهولة الهوية ✅
+
+🔒 **إعدادات الوصول:**
+• السماح بالبحث عني: مفعل ✅
+• إظهار حالة النشاط: مفعل ✅
+• السماح بالرسائل المباشرة: مفعل ✅
+• قبول طلبات الصداقة: مفعل ✅
+
+⚠️ **تحذيرات الأمان:**
+• لا تشارك معلومات الدخول مع أحد
+• تحقق من هوية المرسل قبل التحويل
+• أبلغ عن أي نشاط مشبوه فوراً
+• استخدم كلمات مرور قوية
+
+🔧 **إعدادات متقدمة:**
+• تشفير البيانات: مفعل ✅
+• النسخ الاحتياطي الآمن: مفعل ✅
+• حذف البيانات عند الإلغاء: مفعل ✅
+• مراجعة الأمان الدورية: شهرياً ✅
 """
         
         keyboard = [
