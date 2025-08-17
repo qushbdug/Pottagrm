@@ -93,6 +93,15 @@
       "error_count": 15,
       "system_cpu": 0.5,
       "system_memory_available": 14.306617736816406
+    },
+    {
+      "timestamp": "2025-08-17T01:59:04.610463",
+      "cpu_percent": 0.0,
+      "memory_mb": 125.171875,
+      "is_running": true,
+      "error_count": 15,
+      "system_cpu": 0.3,
+      "system_memory_available": 14.303730010986328
     }
   ],
   "error_log": []
