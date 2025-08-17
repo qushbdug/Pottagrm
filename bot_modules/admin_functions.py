@@ -75,16 +75,18 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
 """
         
         keyboard = [
+            [InlineKeyboardButton(f'👥 إدارة المستخدمين', callback_data='manage_users'),
+             InlineKeyboardButton(f'👑 إدارة المشرفين', callback_data='manage_admins')],
+            [InlineKeyboardButton(f'📊 لوحة المعلومات', callback_data='dashboard'),
+             InlineKeyboardButton(f'📈 التقارير التنفيذية', callback_data='executive_reports')],
             [InlineKeyboardButton(f'💰 إدارة الأرصدة', callback_data='admin_wallet'),
              InlineKeyboardButton(f'💸 إرسال رصيد', callback_data='admin_send_money')],
+            [InlineKeyboardButton(f'💼 إدارة العمولات', callback_data='commission_management'),
+             InlineKeyboardButton(f'🏛️ إدارة المنصة', callback_data='super_platform_management')],
             [InlineKeyboardButton(f'✅ تفعيل مزودين', callback_data='super_activate_suppliers'),
-             InlineKeyboardButton(f'👥 إدارة المستخدمين', callback_data='super_manage_users')],
-            [InlineKeyboardButton(f'🏛️ إدارة المنصة', callback_data='super_platform_management'),
              InlineKeyboardButton(f'🔧 إعدادات النظام', callback_data='super_system_settings')],
             [InlineKeyboardButton(f'💾 النسخ الاحتياطي', callback_data='super_backup'),
              InlineKeyboardButton(f'🚨 مراقبة الأمان', callback_data='super_security_monitoring')],
-            [InlineKeyboardButton(f'👑 إدارة المشرفين', callback_data='super_manage_admins'),
-             InlineKeyboardButton(f'📈 لوحة المعلومات', callback_data='super_dashboard')],
             [InlineKeyboardButton(f'🎫 إصدار بطاقات شحن', callback_data='super_issue_recharge_cards'),
              InlineKeyboardButton(f'💰 طباعة رصيد المحفظة', callback_data='super_print_balance')],
             [InlineKeyboardButton(f'📢 إرسال رسالة جماعية', callback_data='super_broadcast_message'),
@@ -757,8 +759,8 @@ async def backup_handler(update, context):
         logger.error(f"Error in backup handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحميل إدارة النسخ الاحتياطي.")
 
-async def executive_reports_handler(update, context):
-    """Handle executive reports"""
+async def executive_reports_handler(update: Update, context: CallbackContext):
+    """التقارير التنفيذية الشاملة"""
     try:
         query = update.callback_query
         await query.answer()
@@ -768,75 +770,164 @@ async def executive_reports_handler(update, context):
             await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
             return
         
-        # Get executive summary data
+        # الحصول على البيانات التنفيذية الشاملة
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Financial summary
-        cursor.execute('SELECT SUM(amount) as total_revenue FROM transactions WHERE type IN ("transfer_fee", "commission")')
-        total_revenue = cursor.fetchone()['total_revenue'] or 0
+        # تقرير النمو والأداء العام
+        cursor.execute('''
+            SELECT 
+                COUNT(CASE WHEN created_at >= datetime('now', '-24 hours') THEN 1 END) as growth_today,
+                COUNT(CASE WHEN created_at >= datetime('now', '-7 days') THEN 1 END) as growth_week,
+                COUNT(CASE WHEN created_at >= datetime('now', '-30 days') THEN 1 END) as growth_month,
+                COUNT(*) as total_users,
+                AVG(balance) as avg_balance,
+                SUM(balance) as total_balance
+            FROM users
+        ''')
+        growth_stats = cursor.fetchone()
         
-        cursor.execute('SELECT COUNT(*) as total_transactions FROM transactions')
-        total_transactions = cursor.fetchone()['total_transactions']
+        # تحليل الإيرادات والمعاملات
+        cursor.execute('''
+            SELECT 
+                COUNT(CASE WHEN created_at >= datetime('now', '-24 hours') THEN 1 END) as transactions_today,
+                SUM(CASE WHEN created_at >= datetime('now', '-24 hours') THEN amount ELSE 0 END) as revenue_today,
+                COUNT(CASE WHEN created_at >= datetime('now', '-7 days') THEN 1 END) as transactions_week,
+                SUM(CASE WHEN created_at >= datetime('now', '-7 days') THEN amount ELSE 0 END) as revenue_week,
+                SUM(amount) as total_revenue,
+                COUNT(*) as total_transactions
+            FROM transactions
+        ''')
+        revenue_stats = cursor.fetchone()
         
-        cursor.execute('SELECT SUM(amount) as total_volume FROM transactions WHERE type = "transfer"')
-        total_volume = cursor.fetchone()['total_volume'] or 0
+        # تحليل الشبكات والمبيعات
+        cursor.execute('''
+            SELECT 
+                COUNT(CASE WHEN n.is_active = 1 THEN 1 END) as active_networks,
+                COUNT(cc.id) as total_categories,
+                SUM(CASE WHEN cc.is_available = 1 THEN cc.stock_count ELSE 0 END) as available_stock,
+                COUNT(CASE WHEN c.is_sold = 1 THEN 1 END) as sold_cards,
+                COUNT(CASE WHEN c.is_sold = 1 AND c.sold_at >= datetime('now', '-7 days') THEN 1 END) as sold_this_week
+            FROM networks n
+            LEFT JOIN card_categories cc ON n.id = cc.network_id
+            LEFT JOIN cards c ON cc.id = c.category_id
+        ''')
+        sales_stats = cursor.fetchone()
         
-        # Growth metrics
-        cursor.execute('SELECT COUNT(*) as users_this_month FROM users WHERE date(created_at) >= date("now", "-30 days")')
-        users_this_month = cursor.fetchone()['users_this_month']
+        # تحليل الأداء حسب النوع
+        cursor.execute('''
+            SELECT 
+                role,
+                COUNT(*) as count,
+                AVG(balance) as avg_balance,
+                SUM(balance) as total_balance,
+                COUNT(CASE WHEN is_active = 1 THEN 1 END) as active_count
+            FROM users 
+            WHERE role IN ('customer', 'supplier', 'agent', 'admin')
+            GROUP BY role
+        ''')
+        role_performance = cursor.fetchall()
         
-        cursor.execute('SELECT COUNT(*) as transactions_this_month FROM transactions WHERE date(created_at) >= date("now", "-30 days")')
-        transactions_this_month = cursor.fetchone()['transactions_this_month']
-        
-        # Platform metrics
-        cursor.execute('SELECT COUNT(*) as active_networks FROM networks WHERE is_active = 1')
-        active_networks = cursor.fetchone()['active_networks']
-        
-        cursor.execute('SELECT COUNT(*) as total_users FROM users')
-        total_users = cursor.fetchone()['total_users']
+        # أفضل المؤدين
+        cursor.execute('''
+            SELECT 
+                u.full_name, u.role, u.balance,
+                COUNT(t.id) as transaction_count,
+                SUM(t.amount) as total_amount
+            FROM users u
+            LEFT JOIN transactions t ON u.id = t.user_id
+            WHERE u.balance > 0
+            GROUP BY u.id, u.full_name, u.role, u.balance
+            ORDER BY u.balance DESC, total_amount DESC
+            LIMIT 5
+        ''')
+        top_performers = cursor.fetchall()
         
         conn.close()
         
+        # حساب المعدلات والنسب المهمة
+        growth_rate_daily = (growth_stats[0] / max(growth_stats[3] - growth_stats[0], 1) * 100)
+        growth_rate_weekly = (growth_stats[1] / max(growth_stats[3] - growth_stats[1], 1) * 100)
+        growth_rate_monthly = (growth_stats[2] / max(growth_stats[3] - growth_stats[2], 1) * 100)
+        
+        avg_transaction_value = (revenue_stats[4] / max(revenue_stats[5], 1)) if revenue_stats[5] > 0 else 0
+        sales_conversion = (sales_stats[3] / max(sales_stats[2], 1) * 100) if sales_stats[2] > 0 else 0
+        
+        from datetime import datetime
+        
         text = f"""
-📊 **التقارير التنفيذية** 📊
+📈 **التقارير التنفيذية الشاملة** 📈
 
-💰 **الملخص المالي:**
-💵 إجمالي الإيرادات: **{total_revenue:,.2f}** ريال
-📈 حجم المعاملات: **{total_volume:,.2f}** ريال
-🔄 عدد المعاملات: **{total_transactions:,}**
+👑 **{user['full_name']}** - التقرير التنفيذي
+📅 **{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}**
 
-📈 **مؤشرات النمو (آخر 30 يوم):**
-👥 مستخدمين جدد: **{users_this_month:,}**
-💳 معاملات جديدة: **{transactions_this_month:,}**
-📊 معدل النمو: **{(users_this_month/max(total_users, 1)*100):.1f}%**
+📊 **تحليل النمو والتوسع:**
+📈 معدل النمو اليومي: **{growth_rate_daily:.2f}%**
+📅 معدل النمو الأسبوعي: **{growth_rate_weekly:.2f}%**
+📆 معدل النمو الشهري: **{growth_rate_monthly:.2f}%**
+👥 إجمالي قاعدة المستخدمين: **{growth_stats[3]:,}**
 
-🌐 **مؤشرات المنصة:**
-👥 إجمالي المستخدمين: **{total_users:,}**
-🏪 الشبكات النشطة: **{active_networks:,}**
-💼 متوسط المعاملة: **{(total_volume/max(total_transactions, 1)):,.0f}** ريال
+💰 **التحليل المالي التنفيذي:**
+💵 إجمالي رؤوس الأموال: **{growth_stats[5] or 0:,.2f}** ريال
+📊 متوسط رأس المال للمستخدم: **{growth_stats[4] or 0:,.2f}** ريال
+💸 الإيرادات اليومية: **{revenue_stats[1] or 0:,.2f}** ريال
+📈 الإيرادات الأسبوعية: **{revenue_stats[3] or 0:,.2f}** ريال
+🎯 متوسط قيمة المعاملة: **{avg_transaction_value:,.2f}** ريال
 
-📋 **تقارير مفصلة:**
+🏪 **أداء المبيعات والشبكات:**
+🌐 الشبكات النشطة: **{sales_stats[0] or 0:,}**
+💳 فئات الكروت المتاحة: **{sales_stats[1] or 0:,}**
+📦 المخزون المتاح: **{sales_stats[2] or 0:,}** كرت
+✅ الكروت المباعة: **{sales_stats[3] or 0:,}** كرت
+📊 معدل التحويل: **{sales_conversion:.1f}%**
+📈 مبيعات هذا الأسبوع: **{sales_stats[4] or 0:,}** كرت
+
+🎯 **تحليل الأداء حسب الفئات:**"""
+
+        for role_data in role_performance:
+            role_name = {
+                'customer': 'العملاء',
+                'supplier': 'المزودون',
+                'agent': 'الوكلاء',
+                'admin': 'المشرفون'
+            }.get(role_data[0], role_data[0])
+            
+            activity_rate = (role_data[4] / max(role_data[1], 1) * 100)
+            text += f"\n📊 {role_name}: **{role_data[1]:,}** مستخدم، نشطين: **{activity_rate:.1f}%**"
+            text += f"\n   💰 متوسط الرصيد: **{role_data[2] or 0:,.2f}** ريال"
+
+        text += f"\n\n🏆 **أفضل المؤدين:**"
+        for i, performer in enumerate(top_performers[:3], 1):
+            role_emoji = "👤" if performer[1] == 'customer' else "🏪" if performer[1] == 'supplier' else "💼"
+            text += f"\n{i}️⃣ {role_emoji} {performer[0]}: **{performer[2]:,.2f}** ريال"
+            if performer[3] > 0:
+                text += f" ({performer[3]} معاملة)"
+
+        text += f"""
+
+🎯 **المؤشرات الاستراتيجية:**
+📈 نمو قاعدة المستخدمين: **{"ممتاز" if growth_rate_weekly > 5 else "جيد" if growth_rate_weekly > 2 else "بحاجة تحسين"}**
+💰 صحة الوضع المالي: **{"ممتاز" if avg_transaction_value > 100 else "جيد" if avg_transaction_value > 50 else "ضعيف"}**
+🏪 كفاءة المبيعات: **{"ممتاز" if sales_conversion > 50 else "جيد" if sales_conversion > 25 else "بحاجة تحسين"}**
+⚡ مستوى النشاط: **{"عالي" if revenue_stats[0] > 10 else "متوسط" if revenue_stats[0] > 3 else "منخفض"}**
 """
         
         keyboard = [
-            [InlineKeyboardButton('📈 تقرير الإيرادات', callback_data='report_revenue'),
-             InlineKeyboardButton('👥 تقرير المستخدمين', callback_data='report_users')],
-            [InlineKeyboardButton('💳 تقرير المعاملات', callback_data='report_transactions'),
-             InlineKeyboardButton('🏪 تقرير المزودين', callback_data='report_suppliers')],
-            [InlineKeyboardButton('📊 تقرير الأداء', callback_data='report_performance'),
-             InlineKeyboardButton('📅 تقرير شهري', callback_data='report_monthly')],
-            [InlineKeyboardButton('📄 تصدير تقرير PDF', callback_data='export_pdf_report'),
-             InlineKeyboardButton('📋 تصدير بيانات Excel', callback_data='export_excel')],
-            [InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel'),
-             InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+            [InlineKeyboardButton('📊 تقرير مالي مفصل', callback_data='detailed_financial_report'),
+             InlineKeyboardButton('📈 تحليل النمو', callback_data='growth_analysis_report')],
+            [InlineKeyboardButton('🏪 تقرير المبيعات', callback_data='sales_performance_report'),
+             InlineKeyboardButton('👥 تحليل المستخدمين', callback_data='user_analytics_report')],
+            [InlineKeyboardButton('🎯 المؤشرات الرئيسية', callback_data='kpi_dashboard'),
+             InlineKeyboardButton('📋 تقرير شامل PDF', callback_data='generate_pdf_report')],
+            [InlineKeyboardButton('🔄 تحديث التقرير', callback_data='executive_reports'),
+             InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]
         ]
         
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
     except Exception as e:
-        logger.error(f"Error in executive reports handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحميل التقارير التنفيذية.")
+        logger.error(f"Error in executive reports: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في التقارير التنفيذية.")
 
 async def manage_users_handler(update, context):
     """Handle user management"""
@@ -1801,7 +1892,7 @@ async def dashboard_handler(update: Update, context: CallbackContext):
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض لوحة المعلومات.")
 
 async def manage_admins_handler(update: Update, context: CallbackContext):
-    """Handle admin management"""
+    """إدارة المشرفين المتقدمة مع جميع الصلاحيات"""
     try:
         query = update.callback_query
         await query.answer()
@@ -1811,45 +1902,89 @@ async def manage_admins_handler(update: Update, context: CallbackContext):
             await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
             return
         
-        # Get admin statistics
+        # Get comprehensive admin statistics
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute('SELECT COUNT(*) as total_admins FROM users WHERE role IN ("admin", "super_admin")')
-        total_admins = cursor.fetchone()['total_admins']
+        # إحصائيات المشرفين المفصلة
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as total_admins,
+                COUNT(CASE WHEN is_active = 1 THEN 1 END) as active_admins,
+                COUNT(CASE WHEN role = 'super_admin' THEN 1 END) as super_admins,
+                COUNT(CASE WHEN role = 'admin' THEN 1 END) as regular_admins,
+                COUNT(CASE WHEN created_at >= datetime('now', '-30 days') THEN 1 END) as new_admins,
+                COUNT(CASE WHEN updated_at >= datetime('now', '-24 hours') THEN 1 END) as active_today
+            FROM users WHERE role IN ('admin', 'super_admin')
+        ''')
+        admin_stats = cursor.fetchone()
         
-        cursor.execute('SELECT COUNT(*) as active_admins FROM users WHERE role IN ("admin", "super_admin") AND is_active = 1')
-        active_admins = cursor.fetchone()['active_admins']
+        # نشاط المشرفين
+        cursor.execute('''
+            SELECT 
+                u.id, u.full_name, u.role, u.is_active, u.created_at, u.updated_at,
+                COUNT(t.id) as total_actions
+            FROM users u
+            LEFT JOIN transactions t ON u.id = t.created_by AND t.created_at >= datetime('now', '-7 days')
+            WHERE u.role IN ('admin', 'super_admin')
+            GROUP BY u.id, u.full_name, u.role, u.is_active, u.created_at, u.updated_at
+            ORDER BY total_actions DESC, u.updated_at DESC
+            LIMIT 5
+        ''')
+        top_admins = cursor.fetchall()
         
-        cursor.execute('SELECT COUNT(*) as super_admins FROM users WHERE role = "super_admin"')
-        super_admins = cursor.fetchone()['super_admins']
-        
-        cursor.execute('SELECT COUNT(*) as regular_admins FROM users WHERE role = "admin"')
-        regular_admins = cursor.fetchone()['regular_admins']
+        # أحدث المشرفين
+        cursor.execute('''
+            SELECT full_name, role, created_at, is_active
+            FROM users 
+            WHERE role IN ('admin', 'super_admin')
+            ORDER BY created_at DESC 
+            LIMIT 3
+        ''')
+        recent_admins = cursor.fetchall()
         
         conn.close()
         
         text = f"""
-👑 **إدارة المشرفين** 👑
+👑 **إدارة المشرفين المتقدمة** 👑
 
 {EMOJIS['admin']} مرحباً **{user['full_name']}**
 
-📊 **إحصائيات المشرفين:**
-👥 إجمالي المشرفين: **{total_admins}**
-✅ النشطين: **{active_admins}**
-👑 المشرفين الأعلى: **{super_admins}**
-🛡️ المشرفين العاديين: **{regular_admins}**
+📊 **إحصائيات شاملة للمشرفين:**
+👥 إجمالي المشرفين: **{admin_stats[0]:,}**
+✅ النشطين: **{admin_stats[1]:,}** ({admin_stats[1]/max(admin_stats[0], 1)*100:.1f}%)
+👑 المشرفين الأعلى: **{admin_stats[2]:,}**
+🛡️ المشرفين العاديين: **{admin_stats[3]:,}**
+🆕 جدد هذا الشهر: **{admin_stats[4]:,}**
+⚡ نشطين اليوم: **{admin_stats[5]:,}**
 
-🔧 **خيارات الإدارة:**
-"""
+🏆 **أكثر المشرفين نشاطاً (آخر 7 أيام):**"""
+
+        for i, admin in enumerate(top_admins[:3], 1):
+            role_emoji = "👑" if admin[2] == 'super_admin' else "🛡️"
+            status = "✅" if admin[3] else "❌"
+            text += f"\n{i}️⃣ {role_emoji} {admin[1]} {status} - **{admin[6]}** عملية"
+
+        text += f"\n\n🆕 **أحدث المشرفين:**"
+        for admin in recent_admins[:2]:
+            role_emoji = "👑" if admin[1] == 'super_admin' else "🛡️"
+            status = "✅" if admin[3] else "❌"
+            date = admin[2][:10] if admin[2] else "غير معروف"
+            text += f"\n• {role_emoji} {admin[0]} {status} - انضم: {date}"
+
+        text += "\n\n🔧 **عمليات الإدارة المتقدمة:**"
         
         keyboard = [
-            [InlineKeyboardButton('👥 عرض جميع المشرفين', callback_data='admin_list_all'),
-             InlineKeyboardButton('➕ إضافة مشرف جديد', callback_data='admin_add_new')],
-            [InlineKeyboardButton('🔍 البحث عن مشرف', callback_data='admin_search'),
-             InlineKeyboardButton('📊 تقارير المشرفين', callback_data='admin_reports')],
-            [InlineKeyboardButton('⚙️ صلاحيات المشرفين', callback_data='admin_permissions'),
-             InlineKeyboardButton('🚫 إدارة المحظورين', callback_data='admin_banned')],
+            [InlineKeyboardButton('👥 قائمة المشرفين', callback_data='admin_list_all'),
+             InlineKeyboardButton('🔍 البحث المتقدم', callback_data='advanced_admin_search')],
+            [InlineKeyboardButton('➕ إضافة مشرف جديد', callback_data='admin_add_new'),
+             InlineKeyboardButton('📊 تقارير شاملة', callback_data='comprehensive_admin_reports')],
+            [InlineKeyboardButton('⚙️ إدارة الصلاحيات', callback_data='admin_permissions_management'),
+             InlineKeyboardButton('🏆 تقييم الأداء', callback_data='admin_performance_evaluation')],
+            [InlineKeyboardButton('🚫 إدارة المحظورين', callback_data='admin_banned_management'),
+             InlineKeyboardButton('📈 تحليل النشاط', callback_data='admin_activity_analysis')],
+            [InlineKeyboardButton('🔄 عمليات جماعية', callback_data='bulk_admin_operations'),
+             InlineKeyboardButton('⚡ المراقبة المباشرة', callback_data='admin_live_monitoring')],
             [InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]
         ]
         
@@ -1860,7 +1995,7 @@ async def manage_admins_handler(update: Update, context: CallbackContext):
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إدارة المشرفين.")
 
 async def manage_users_handler(update: Update, context: CallbackContext):
-    """Handle user management"""
+    """إدارة المستخدمين المتقدمة للمشرف الأعلى"""
     try:
         query = update.callback_query
         await query.answer()
@@ -1870,67 +2005,102 @@ async def manage_users_handler(update: Update, context: CallbackContext):
             await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
             return
         
-        # Get user statistics
+        # Get comprehensive user statistics
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute('SELECT COUNT(*) as total_users FROM users')
-        total_users = cursor.fetchone()['total_users']
+        # User counts by role
+        cursor.execute('SELECT role, COUNT(*) FROM users GROUP BY role')
+        role_stats = dict(cursor.fetchall())
         
-        cursor.execute('SELECT COUNT(*) as active_users FROM users WHERE is_active = 1')
-        active_users = cursor.fetchone()['active_users']
-        
-        cursor.execute('SELECT COUNT(*) as customers FROM users WHERE role = "customer"')
-        customers = cursor.fetchone()['customers']
-        
-        cursor.execute('SELECT COUNT(*) as agents FROM users WHERE role = "agent"')
-        agents = cursor.fetchone()['agents']
-        
-        cursor.execute('SELECT COUNT(*) as suppliers FROM users WHERE role = "supplier"')
-        suppliers = cursor.fetchone()['suppliers']
-        
+        # Recent registrations (today, this week, this month)
         cursor.execute('''
-            SELECT COUNT(*) as new_users_today 
-            FROM users 
-            WHERE created_at >= datetime('now', '-24 hours')
+            SELECT 
+                COUNT(CASE WHEN DATE(created_at) = DATE('now') THEN 1 END) as today,
+                COUNT(CASE WHEN created_at >= datetime('now', '-7 days') THEN 1 END) as week,
+                COUNT(CASE WHEN created_at >= datetime('now', '-30 days') THEN 1 END) as month
+            FROM users
         ''')
-        new_users_today = cursor.fetchone()['new_users_today']
+        reg_stats = cursor.fetchone()
         
+        # Active users statistics
         cursor.execute('''
-            SELECT COUNT(*) as new_users_week 
-            FROM users 
-            WHERE created_at >= datetime('now', '-7 days')
+            SELECT 
+                COUNT(CASE WHEN balance > 0 THEN 1 END) as with_balance,
+                COUNT(CASE WHEN is_active = 1 THEN 1 END) as active,
+                COUNT(CASE WHEN is_active = 0 THEN 1 END) as banned,
+                AVG(balance) as avg_balance,
+                SUM(balance) as total_balance
+            FROM users
         ''')
-        new_users_week = cursor.fetchone()['new_users_week']
+        active_stats = cursor.fetchone()
+        
+        # Top users by balance
+        cursor.execute('''
+            SELECT full_name, balance, role 
+            FROM users 
+            WHERE balance > 0 
+            ORDER BY balance DESC 
+            LIMIT 3
+        ''')
+        top_users = cursor.fetchall()
+        
+        # Recent activity
+        cursor.execute('''
+            SELECT COUNT(*) FROM users 
+            WHERE updated_at >= datetime('now', '-24 hours')
+        ''')
+        recent_activity = cursor.fetchone()[0]
         
         conn.close()
         
+        total_users = sum(role_stats.values())
+        
         text = f"""
-👥 **إدارة المستخدمين** 👥
+👥 **إدارة المستخدمين المتقدمة** 👥
 
 {EMOJIS['admin']} مرحباً **{user['full_name']}**
 
-📊 **إحصائيات المستخدمين:**
-👤 إجمالي المستخدمين: **{total_users:,}**
-✅ النشطين: **{active_users:,}**
-🛒 العملاء: **{customers:,}**
-👥 الوكلاء: **{agents:,}**
-🏪 المزودين: **{suppliers:,}**
+📊 **الإحصائيات الشاملة:**
+👥 إجمالي المستخدمين: **{total_users:,}** مستخدم
+✅ النشطون: **{active_stats[1]:,}** • 🚫 المحظورون: **{active_stats[2]:,}**
+💰 لديهم رصيد: **{active_stats[0]:,}** مستخدم
+📈 نشاط خلال 24 ساعة: **{recent_activity:,}**
 
-📈 **النمو:**
-🆕 جدد اليوم: **{new_users_today:,}**
-📅 جدد هذا الأسبوع: **{new_users_week:,}**
+💰 **إحصائيات الأرصدة:**
+💵 إجمالي الأرصدة: **{active_stats[4] or 0:,.2f}** ريال
+📊 متوسط الرصيد: **{active_stats[3] or 0:,.2f}** ريال
 
-🔧 **خيارات الإدارة:**
-"""
+👨‍👩‍👧‍👦 **التوزيع حسب النوع:**
+👤 العملاء: **{role_stats.get('customer', 0):,}**
+🏪 المزودون: **{role_stats.get('supplier', 0):,}**
+💼 الوكلاء: **{role_stats.get('agent', 0):,}**
+👑 المشرفون: **{role_stats.get('admin', 0):,}**
+
+📈 **التسجيلات:**
+📅 اليوم: **{reg_stats[0]:,}** • 📅 هذا الأسبوع: **{reg_stats[1]:,}**
+📅 هذا الشهر: **{reg_stats[2]:,}**
+
+⭐ **أفضل المستخدمين:**"""
+        
+        if top_users:
+            for i, (name, balance, role) in enumerate(top_users, 1):
+                role_emoji = "👤" if role == 'customer' else "🏪" if role == 'supplier' else "💼"
+                text += f"\n{i}️⃣ {role_emoji} {name}: **{balance:,.2f}** ريال"
+        else:
+            text += "\nلا توجد بيانات بعد"
         
         keyboard = [
-            [InlineKeyboardButton('👥 عرض جميع المستخدمين', callback_data='users_list_all'),
-             InlineKeyboardButton('🔍 البحث عن مستخدم', callback_data='users_search')],
-            [InlineKeyboardButton('📊 تقارير المستخدمين', callback_data='users_reports'),
+            [InlineKeyboardButton('👥 قائمة المستخدمين', callback_data='users_list_all'),
+             InlineKeyboardButton('🔍 البحث المتقدم', callback_data='advanced_user_search')],
+            [InlineKeyboardButton('📊 تقارير شاملة', callback_data='comprehensive_user_reports'),
              InlineKeyboardButton('💰 إدارة الأرصدة', callback_data='users_balance_mgmt')],
-            [InlineKeyboardButton('🚫 المستخدمين المحظورين', callback_data='users_banned'),
-             InlineKeyboardButton('⭐ أفضل المستخدمين', callback_data='users_top')],
+            [InlineKeyboardButton('🚫 إدارة المحظورين', callback_data='banned_users_management'),
+             InlineKeyboardButton('⭐ إدارة المميزين', callback_data='vip_users_management')],
+            [InlineKeyboardButton('📈 تحليل النشاط', callback_data='user_activity_analysis'),
+             InlineKeyboardButton('⚙️ إعدادات النظام', callback_data='user_system_settings')],
+            [InlineKeyboardButton('📤 عمليات جماعية', callback_data='bulk_user_operations'),
+             InlineKeyboardButton('🎯 الاستهداف والتسويق', callback_data='user_targeting')],
             [InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]
         ]
         
@@ -2039,27 +2209,6 @@ async def commission_settings_handler(update, context):
 العمولة الحالية للوكلاء: **{AGENT_COMMISSION_RATE * 100:.1f}%**
 
 هذه الميزة قيد التطوير للتحكم الكامل في العمولات.
-
-🏠 العودة للوحة الإدارة
-"""
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-
-async def executive_reports_handler(update, context):
-    """Handle executive reports"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-📊 **التقارير التنفيذية** 📊
-
-هذه الميزة قيد التطوير وستتضمن:
-
-📈 **التقارير المالية المفصلة**
-📊 **تحليلات الأداء**
-📉 **إحصائيات المبيعات**
-📋 **تقارير المستخدمين**
 
 🏠 العودة للوحة الإدارة
 """
@@ -2578,6 +2727,221 @@ async def print_balance_handler(update: Update, context: CallbackContext):
         logger.error(f"Error in print balance handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في طباعة الرصيد.")
 
+async def commission_management_handler(update: Update, context: CallbackContext):
+    """إدارة العمولات المتقدمة"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # الحصول على العمولات الحالية
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, name, percentage, fixed_amount, role, is_active 
+            FROM commissions 
+            ORDER BY role, name
+        ''')
+        commissions = cursor.fetchall()
+        
+        # احصائيات العمولات
+        cursor.execute('''
+            SELECT 
+                SUM(CASE WHEN role = 'agent' AND is_active = 1 THEN percentage ELSE 0 END) as agent_percentage,
+                SUM(CASE WHEN role = 'supplier' AND is_active = 1 THEN percentage ELSE 0 END) as supplier_percentage,
+                SUM(CASE WHEN role = 'admin' AND is_active = 1 THEN percentage ELSE 0 END) as admin_percentage,
+                SUM(CASE WHEN role = 'system' AND is_active = 1 THEN fixed_amount ELSE 0 END) as system_fees
+            FROM commissions
+        ''')
+        commission_stats = cursor.fetchone()
+        
+        conn.close()
+        
+        text = f"""
+💰 **إدارة العمولات المتقدمة** 💰
+
+{EMOJIS['admin']} مرحباً **{user['full_name']}**
+
+📊 **ملخص العمولات الحالية:**
+💼 الوكلاء: **{commission_stats[0] or 0:.1f}%**
+🏪 المزودون: **{commission_stats[1] or 0:.1f}%**
+👑 المشرفون: **{commission_stats[2] or 0:.1f}%**
+⚙️ رسوم النظام: **{commission_stats[3] or 0:.0f}** ريال
+
+📋 **العمولات المُعرَّفة:**
+"""
+
+        for comm in commissions:
+            status = "✅" if comm[5] else "❌"
+            role_name = {
+                'agent': 'الوكلاء',
+                'supplier': 'المزودين', 
+                'admin': 'المشرفون',
+                'system': 'النظام'
+            }.get(comm[4], comm[4])
+            
+            if comm[2] > 0:  # percentage
+                text += f"\n{status} **{comm[1]}** ({role_name}): **{comm[2]:.1f}%**"
+            else:  # fixed amount
+                text += f"\n{status} **{comm[1]}** ({role_name}): **{comm[3]:.0f}** ريال"
+        
+        text += "\n\n🔧 **عمليات الإدارة:**"
+        
+        keyboard = [
+            [InlineKeyboardButton('✏️ تعديل عمولة', callback_data='edit_commission'),
+             InlineKeyboardButton('➕ إضافة عمولة جديدة', callback_data='add_commission')],
+            [InlineKeyboardButton('📊 تقارير العمولات', callback_data='commission_reports'),
+             InlineKeyboardButton('⚙️ إعدادات العمولات', callback_data='commission_settings')],
+            [InlineKeyboardButton('🔄 إعادة تعيين العمولات', callback_data='reset_commissions'),
+             InlineKeyboardButton('📈 تحليل الأرباح', callback_data='profit_analysis')],
+            [InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in commission management: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إدارة العمولات.")
+
+async def edit_commission_handler(update: Update, context: CallbackContext):
+    """تعديل العمولات"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # الحصول على قائمة العمولات
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, name, percentage, fixed_amount, role, is_active 
+            FROM commissions 
+            ORDER BY role, name
+        ''')
+        commissions = cursor.fetchall()
+        conn.close()
+        
+        text = f"""
+✏️ **تعديل العمولات** ✏️
+
+{EMOJIS['admin']} اختر العمولة المراد تعديلها:
+
+📋 **العمولات المتاحة:**
+"""
+
+        keyboard = []
+        for comm in commissions:
+            status = "✅" if comm[5] else "❌"
+            role_name = {
+                'agent': 'الوكلاء',
+                'supplier': 'المزودين', 
+                'admin': 'المشرفون',
+                'system': 'النظام'
+            }.get(comm[4], comm[4])
+            
+            if comm[2] > 0:  # percentage
+                display_text = f"{status} {comm[1]} ({role_name}): {comm[2]:.1f}%"
+            else:  # fixed amount
+                display_text = f"{status} {comm[1]} ({role_name}): {comm[3]:.0f} ريال"
+            
+            text += f"\n• {display_text}"
+            
+            keyboard.append([InlineKeyboardButton(
+                f"{comm[1][:20]}... - {role_name}",
+                callback_data=f"edit_comm_{comm[0]}"
+            )])
+        
+        keyboard.append([InlineKeyboardButton('🔙 العودة لإدارة العمولات', callback_data='commission_management')])
+        
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in edit commission handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تعديل العمولات.")
+
+async def edit_specific_commission(update: Update, context: CallbackContext, commission_id: str):
+    """تعديل عمولة محددة"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # الحصول على بيانات العمولة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, name, percentage, fixed_amount, role, is_active 
+            FROM commissions 
+            WHERE id = ?
+        ''', (commission_id,))
+        commission = cursor.fetchone()
+        conn.close()
+        
+        if not commission:
+            await query.edit_message_text("❌ لم يتم العثور على العمولة المحددة.")
+            return
+        
+        role_name = {
+            'agent': 'الوكلاء',
+            'supplier': 'المزودين', 
+            'admin': 'المشرفون',
+            'system': 'النظام'
+        }.get(commission[4], commission[4])
+        
+        status = "✅ مفعلة" if commission[5] else "❌ معطلة"
+        
+        if commission[2] > 0:  # percentage
+            current_value = f"{commission[2]:.1f}%"
+            value_type = "نسبة مئوية"
+        else:  # fixed amount
+            current_value = f"{commission[3]:.0f} ريال"
+            value_type = "مبلغ ثابت"
+        
+        text = f"""
+✏️ **تعديل العمولة** ✏️
+
+📋 **بيانات العمولة الحالية:**
+📛 الاسم: **{commission[1]}**
+👥 الفئة المستهدفة: **{role_name}**
+💰 القيمة الحالية: **{current_value}** ({value_type})
+⚡ الحالة: **{status}**
+
+🔧 **خيارات التعديل:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('✏️ تعديل القيمة', callback_data=f'edit_comm_value_{commission_id}'),
+             InlineKeyboardButton('📝 تعديل الاسم', callback_data=f'edit_comm_name_{commission_id}')],
+            [InlineKeyboardButton('🔄 تغيير النوع', callback_data=f'edit_comm_type_{commission_id}'),
+             InlineKeyboardButton('👥 تغيير الفئة', callback_data=f'edit_comm_role_{commission_id}')],
+            [InlineKeyboardButton('✅ تفعيل/إلغاء تفعيل' if not commission[5] else '❌ تعطيل', 
+                                callback_data=f'toggle_comm_{commission_id}'),
+             InlineKeyboardButton('🗑️ حذف العمولة', callback_data=f'delete_comm_{commission_id}')],
+            [InlineKeyboardButton('🔙 عودة لقائمة العمولات', callback_data='edit_commission'),
+             InlineKeyboardButton('💼 إدارة العمولات', callback_data='commission_management')]
+        ]
+        
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in edit specific commission: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تعديل العمولة.")
+
 # Update ADMIN_CALLBACKS with newly defined handlers
 ADMIN_CALLBACKS.update({
     # Core admin functions - simplified
@@ -2592,6 +2956,15 @@ ADMIN_CALLBACKS.update({
     'super_executive_reports': executive_reports_handler,
     'super_platform_management': platform_management_handler,
     'super_commission_settings': commission_settings_handler,
+    
+    # New enhanced features
+    'commission_management': commission_management_handler,
+    'edit_commission': edit_commission_handler,
+    'manage_users': manage_users_handler,
+    'manage_admins': manage_admins_handler,
+    'dashboard': dashboard_handler,
+    'executive_reports': executive_reports_handler,
+    
     # Backup handlers
     'backup_full': backup_full_handler,
     'backup_data_only': backup_data_only_handler,

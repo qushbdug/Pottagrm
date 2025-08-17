@@ -135,6 +135,10 @@ async def button_click_handler(update: Update, context):
             from handlers import skip_network_location
             network_id = callback_data.split('_')[2]
             return await skip_network_location(update, context, network_id)
+        elif callback_data.startswith('edit_comm_'):
+            from bot_modules.admin_functions import edit_specific_commission
+            commission_id = callback_data.split('_')[2]
+            return await edit_specific_commission(update, context, commission_id)
         
         # Search by type handlers
         elif callback_data.startswith('search_by_'):
