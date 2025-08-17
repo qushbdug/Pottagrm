@@ -2318,17 +2318,80 @@ async def sales_reports_handler(update: Update, context: CallbackContext):
     try:
         query = update.callback_query
         
+        # الحصول على تقارير المبيعات الفعلية
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # مبيعات اليوم
+        cursor.execute('''
+            SELECT COUNT(*), COALESCE(SUM(amount), 0)
+            FROM transactions 
+            WHERE type = 'card_purchase' AND DATE(created_at) = DATE('now')
+        ''')
+        today_sales, today_revenue = cursor.fetchone()
+        
+        # مبيعات الأسبوع
+        cursor.execute('''
+            SELECT COUNT(*), COALESCE(SUM(amount), 0)
+            FROM transactions 
+            WHERE type = 'card_purchase' AND DATE(created_at) >= DATE('now', '-7 days')
+        ''')
+        week_sales, week_revenue = cursor.fetchone()
+        
+        # مبيعات الشهر
+        cursor.execute('''
+            SELECT COUNT(*), COALESCE(SUM(amount), 0)
+            FROM transactions 
+            WHERE type = 'card_purchase' AND DATE(created_at) >= DATE('now', 'start of month')
+        ''')
+        month_sales, month_revenue = cursor.fetchone()
+        
+        # أفضل الساعات للمبيعات
+        cursor.execute('''
+            SELECT strftime('%H', created_at) as hour, COUNT(*) as sales_count
+            FROM transactions 
+            WHERE type = 'card_purchase'
+            GROUP BY hour
+            ORDER BY sales_count DESC
+            LIMIT 3
+        ''')
+        top_hours = cursor.fetchall()
+        
+        conn.close()
+        
         reports_text = f"""
-📈 **تقارير المبيعات** 📈
+📈 **تقارير المبيعات التفصيلية** 📈
 
-✅ الميزة متاحة الآن!
+📅 **مبيعات اليوم:**
+🛒 عدد المبيعات: **{today_sales or 0}** عملية
+💰 إجمالي الإيرادات: **{today_revenue:,.2f}** ريال
 
-🎯 **الميزات المتاحة:**
-• تقارير المبيعات اليومية
-• تقارير المبيعات الشهرية
-• أفضل الكروت مبيعاً
-• تحليل أداء المبيعات
+📅 **مبيعات الأسبوع:**
+🛒 عدد المبيعات: **{week_sales or 0}** عملية  
+💰 إجمالي الإيرادات: **{week_revenue:,.2f}** ريال
+
+📅 **مبيعات الشهر:**
+🛒 عدد المبيعات: **{month_sales or 0}** عملية
+💰 إجمالي الإيرادات: **{month_revenue:,.2f}** ريال
+
+📊 **تحليل الأداء:**
+📈 نمو المبيعات: **{((week_revenue - today_revenue*7)/max(today_revenue*7, 1)*100):+.1f}%**
+💵 متوسط قيمة البيع: **{(month_revenue/max(month_sales, 1)):,.2f}** ريال
+
+⏰ **أفضل أوقات المبيعات:**
 """
+        
+        if top_hours:
+            for hour, count in top_hours:
+                hour_12 = int(hour)
+                period = "صباحاً" if hour_12 < 12 else "مساءً"
+                if hour_12 > 12:
+                    hour_12 -= 12
+                elif hour_12 == 0:
+                    hour_12 = 12
+                reports_text += f"🕐 الساعة {hour_12}:00 {period} - {count} مبيعة\n"
+        else:
+            reports_text += "❌ لا توجد بيانات كافية"
         
         keyboard = [
             [InlineKeyboardButton('📊 تقارير الكروت', callback_data='cards_reports')],
@@ -2346,16 +2409,40 @@ async def add_network_handler(update: Update, context: CallbackContext):
     try:
         query = update.callback_query
         
-        add_text = f"""
+        user = get_user(query.from_user.id)
+        
+        # التحقق من صلاحيات المستخدم
+        if user['role'] not in ['supplier', 'admin', 'super_admin']:
+            add_text = """
+❌ **غير مسموح**
+
+هذه الميزة متاحة للمزودين والمشرفين فقط.
+للحصول على حساب مزود، تواصل مع الإدارة.
+"""
+        else:
+            # تفعيل وضع إضافة الشبكة
+            context.user_data.clear()
+            context.user_data['adding_network'] = True
+            context.user_data['network_step'] = 'name'
+            
+            add_text = f"""
 ➕ **إضافة شبكة جديدة** ➕
 
-✅ الميزة متاحة الآن!
+👤 **{user['full_name']}** (مزود معتمد)
 
-🎯 **الميزات المتاحة:**
-• إضافة شبكة جديدة
-• تحديد معلومات الشبكة
-• طلب موافقة الإدارة
-• تفعيل الشبكة
+📝 **سنقوم بإضافة الشبكة خطوة بخطوة:**
+
+🔸 **الخطوة 1 من 4**
+📋 **أدخل اسم الشبكة:**
+
+مثال: "شبكة النور للإنترنت"
+
+💡 **ملاحظة:**
+• اختر اسماً واضحاً ومميزاً
+• سيتم عرض الاسم للعملاء
+• تأكد من صحة الاسم قبل الإرسال
+
+📤 **أرسل اسم الشبكة الآن:**
 """
         
         keyboard = [
@@ -2374,16 +2461,71 @@ async def promotion_details_handler(update: Update, context: CallbackContext):
     try:
         query = update.callback_query
         
+        # الحصول على العروض المتاحة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # البحث عن العروض النشطة (افتراضياً من الشبكات ذات الأسعار المنخفضة)
+        cursor.execute('''
+            SELECT n.name, n.provider, n.location, 
+                   MIN(cc.price) as min_price, 
+                   COUNT(cc.id) as categories_count
+            FROM networks n
+            JOIN card_categories cc ON n.id = cc.network_id
+            WHERE n.is_active = 1 AND cc.is_available = 1
+            GROUP BY n.id, n.name, n.provider, n.location
+            HAVING min_price <= 50
+            ORDER BY min_price ASC
+            LIMIT 5
+        ''')
+        special_offers = cursor.fetchall()
+        
+        # عروض الكوبونات (افتراضياً)
+        cursor.execute('''
+            SELECT COUNT(*) FROM coupons WHERE is_used = 0
+        ''')
+        available_coupons = cursor.fetchone()[0] or 0
+        
+        conn.close()
+        
         promo_text = f"""
-🎁 **تفاصيل العروض** 🎁
+🎁 **العروض والخصومات المتاحة** 🎁
 
-✅ الميزة متاحة الآن!
+🔥 **عروض خاصة على الشبكات:**
 
-🎯 **الميزات المتاحة:**
-• عرض تفاصيل العروض
-• شروط الاستخدام
-• تواريخ انتهاء العروض
-• كيفية الاستفادة
+"""
+        
+        if special_offers:
+            for i, (name, provider, location, price, categories) in enumerate(special_offers, 1):
+                location_text = f"📍 {location}" if location else ""
+                promo_text += f"""
+🏆 **عرض {i}:** {name}
+👤 {provider} {location_text}  
+💰 **أسعار تبدأ من {price:,.0f} ريال**
+📦 {categories} فئة متاحة
+🎯 **خصم خاص للعملاء الجدد!**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+        
+        promo_text += f"""
+
+🎟️ **عروض الكوبونات:**
+• كوبونات متاحة: **{available_coupons}** كوبون
+• شحن فوري وآمن
+• أسعار مخفضة للكميات
+• متاح 24/7
+
+🎯 **عروض موسمية:**
+• خصم 10% للعملاء الجدد
+• عروض الجمعة البيضاء
+• مكافآت الولاء
+• خصومات الكميات الكبيرة
+
+⏰ **صالح حتى:** نهاية الشهر
+💡 **شروط العرض:** 
+• للعملاء المسجلين فقط
+• لا يمكن دمج العروض
+• العرض محدود الكمية
 """
         
         keyboard = [

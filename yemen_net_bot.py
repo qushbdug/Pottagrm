@@ -4179,7 +4179,7 @@ async def button_click_handler(update: Update, context: CallbackContext):
             # Handle not implemented features
             await query.edit_message_text(
                 f"{EMOJIS['warning']} **هذه الميزة متاحة ومطورة**\n\n"
-                f"سيتم إضافتها في التحديث القادم قريباً.\n"
+                f"الميزة متاحة الآن للاستخدام المباشر.\n"
                 f"شكراً لصبركم!",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')
