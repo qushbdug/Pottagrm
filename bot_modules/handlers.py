@@ -340,12 +340,13 @@ def create_main_keyboard(role: str):
             [InlineKeyboardButton('💳 محفظتي المطورة', callback_data='enhanced_wallet')],
             [InlineKeyboardButton('🛒 شراء كروت', callback_data='buy_cards'),
              InlineKeyboardButton('💸 تحويل رصيد', callback_data='transfer_to_friend')],
-            [InlineKeyboardButton('🔍 البحث عن شبكات', callback_data='search_networks'),
-             InlineKeyboardButton('📊 تقاريري الشخصية', callback_data='personal_reports')],
-            [InlineKeyboardButton('🎁 العروض والخصومات', callback_data='promotions'),
-             InlineKeyboardButton('🔔 إشعاراتي', callback_data='my_notifications')],
-            [InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings'),
-             InlineKeyboardButton('⭐ تقييماتي', callback_data='my_ratings')]
+            [InlineKeyboardButton('🎟️ شحن بكوبون', callback_data='redeem_coupon'),
+             InlineKeyboardButton('🔍 البحث عن شبكات', callback_data='search_networks')],
+            [InlineKeyboardButton('📊 تقاريري الشخصية', callback_data='personal_reports'),
+             InlineKeyboardButton('🎁 العروض والخصومات', callback_data='promotions')],
+            [InlineKeyboardButton('🔔 إشعاراتي', callback_data='my_notifications'),
+             InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings')],
+            [InlineKeyboardButton('⭐ تقييماتي', callback_data='my_ratings')]
         ]
         
         # Role-specific features
@@ -567,6 +568,10 @@ async def handle_text_message(update: Update, context: CallbackContext):
         if context.user_data.get('admin_creating_coupon'):
             from bot_modules.admin_functions import process_coupon_creation
             return await process_coupon_creation(update, context)
+        
+        # Check if user is redeeming coupon
+        if context.user_data.get('redeeming_coupon'):
+            return await process_coupon_redemption(update, context)
         
         # Check if waiting for balance send (old method - keep for compatibility)
         if context.user_data.get('awaiting_balance_send'):
@@ -3144,3 +3149,266 @@ async def process_network_search(update: Update, context: CallbackContext, searc
         logger.error(f"Error in process network search: {e}")
         await update.message.reply_text("❌ حدث خطأ في البحث")
         context.user_data.pop('awaiting_network_search', None)
+
+async def redeem_coupon_handler(update: Update, context: CallbackContext):
+    """معالج شحن الرصيد بكوبون"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user:
+            await query.edit_message_text(f"{EMOJIS['error']} يرجى إرسال /start أولاً.")
+            return
+        
+        # تنظيف أي حالات سابقة
+        context.user_data.clear()
+        context.user_data['redeeming_coupon'] = True
+        
+        text = f"""
+🎟️ **شحن الرصيد بكوبون** 🎟️
+
+{EMOJIS['user']} مرحباً **{user['full_name']}**
+💰 رصيدك الحالي: **{user['balance']:,.2f}** ريال
+
+📝 **كيفية الاستخدام:**
+🔸 أدخل رقم الكوبون المكون من 9 أرقام
+🔸 يجب أن يبدأ الكوبون بالحرف A
+🔸 مثال: A12345678
+
+⚠️ **ملاحظات مهمة:**
+• كل كوبون يُستخدم مرة واحدة فقط
+• تأكد من صحة رقم الكوبون
+• الكوبون المنتهي الصلاحية لا يعمل
+• سيتم إضافة القيمة فوراً لرصيدك
+
+💡 **أدخل رقم الكوبون الآن:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('❌ إلغاء', callback_data='cancel_coupon'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in redeem coupon handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في شحن الكوبون.")
+
+async def process_coupon_redemption(update: Update, context: CallbackContext):
+    """معالجة استخدام الكوبون"""
+    try:
+        if not context.user_data.get('redeeming_coupon'):
+            return
+        
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.message.reply_text(f"{EMOJIS['error']} يرجى إرسال /start أولاً.")
+            context.user_data.clear()
+            return
+        
+        coupon_code = update.message.text.strip().upper()
+        
+        # التحقق من صحة تنسيق الكوبون
+        if not validate_coupon_format(coupon_code):
+            await update.message.reply_text(
+                "❌ **تنسيق الكوبون غير صحيح** ❌\n\n"
+                "📝 **التنسيق المطلوب:**\n"
+                "🔸 يجب أن يبدأ بالحرف A\n"
+                "🔸 متبوع بـ 8 أرقام\n"
+                "🔸 مثال: A12345678\n\n"
+                "💡 **يرجى إدخال رقم صحيح:**",
+                parse_mode='Markdown'
+            )
+            return
+        
+        # رسالة تأكيد التحقق
+        await update.message.reply_text(
+            "✅ **تنسيق الكوبون صحيح** ✅\n🔍 جاري التحقق من صحة الكوبون...",
+            parse_mode='Markdown'
+        )
+        
+        # البحث عن الكوبون في قاعدة البيانات
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, amount, is_used, used_by, expiry_date, description
+            FROM coupons 
+            WHERE coupon_code = ?
+        ''', (coupon_code,))
+        
+        coupon = cursor.fetchone()
+        
+        if not coupon:
+            conn.close()
+            await update.message.reply_text(
+                "❌ **كوبون غير صحيح** ❌\n\n"
+                "🔍 **رقم الكوبون غير موجود**\n\n"
+                "💡 **تأكد من:**\n"
+                "🔸 صحة رقم الكوبون\n"
+                "🔸 عدم وجود مسافات إضافية\n"
+                "🔸 استخدام الأرقام والحروف الصحيحة\n\n"
+                "🎟️ **أدخل رقم كوبون صحيح:**",
+                parse_mode='Markdown'
+            )
+            return
+        
+        # فحص إذا كان الكوبون مستخدم
+        if coupon['is_used']:
+            # الحصول على معلومات المستخدم الذي استخدم الكوبون
+            cursor.execute('SELECT full_name FROM users WHERE id = ?', (coupon['used_by'],))
+            used_by_user = cursor.fetchone()
+            used_by_name = used_by_user['full_name'] if used_by_user else "مستخدم غير معروف"
+            
+            conn.close()
+            await update.message.reply_text(
+                "❌ **كوبون مستخدم مسبقاً** ❌\n\n"
+                f"🎟️ **رقم الكوبون:** {coupon_code}\n"
+                f"👤 **مستخدم بواسطة:** {used_by_name}\n"
+                f"💰 **قيمة الكوبون:** {coupon['amount']:,.0f} ريال\n\n"
+                "🔍 **كل كوبون يُستخدم مرة واحدة فقط**\n"
+                "🎟️ **أدخل كوبون آخر:**",
+                parse_mode='Markdown'
+            )
+            return
+        
+        # فحص انتهاء الصلاحية
+        from datetime import datetime
+        if coupon['expiry_date']:
+            expiry_date = datetime.fromisoformat(coupon['expiry_date'].replace('Z', '+00:00'))
+            if datetime.now() > expiry_date:
+                conn.close()
+                await update.message.reply_text(
+                    "❌ **كوبون منتهي الصلاحية** ❌\n\n"
+                    f"🎟️ **رقم الكوبون:** {coupon_code}\n"
+                    f"💰 **قيمة الكوبون:** {coupon['amount']:,.0f} ريال\n"
+                    f"📅 **انتهى في:** {expiry_date.strftime('%Y-%m-%d')}\n\n"
+                    "⏰ **لا يمكن استخدام الكوبونات المنتهية الصلاحية**\n"
+                    "🎟️ **أدخل كوبون صالح:**",
+                    parse_mode='Markdown'
+                )
+                return
+        
+        # رسالة تأكيد قبل الاستخدام
+        await update.message.reply_text(
+            "✅ **كوبون صالح للاستخدام** ✅\n💳 جاري إضافة القيمة لرصيدك...",
+            parse_mode='Markdown'
+        )
+        
+        # تطبيق الكوبون
+        coupon_amount = coupon['amount']
+        old_balance = user['balance']
+        new_balance = old_balance + coupon_amount
+        
+        # تحديث رصيد المستخدم
+        cursor.execute('UPDATE users SET balance = ? WHERE id = ?', (new_balance, user['id']))
+        
+        # تسجيل استخدام الكوبون
+        cursor.execute('''
+            UPDATE coupons 
+            SET is_used = 1, used_by = ?, used_at = CURRENT_TIMESTAMP 
+            WHERE id = ?
+        ''', (user['id'], coupon['id']))
+        
+        # إنشاء معاملة في سجل المعاملات
+        cursor.execute('''
+            INSERT INTO transactions (from_user, to_user, amount, description, created_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ''', (None, user['id'], coupon_amount, f"شحن بكوبون {coupon_code}"))
+        
+        conn.commit()
+        conn.close()
+        
+        # رسالة النجاح
+        success_text = f"""
+🎉 **تم شحن الرصيد بنجاح!** 🎉
+
+👤 **اسم المستخدم:** {user['full_name']}
+🎟️ **رقم الكوبون:** {coupon_code}
+
+💰 **تفاصيل الشحن:**
+📊 رصيدك السابق: **{old_balance:,.2f}** ريال
+💎 قيمة الكوبون: **+{coupon_amount:,.2f}** ريال
+💳 رصيدك الجديد: **{new_balance:,.2f}** ريال
+
+📅 **تاريخ الاستخدام:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+🔖 **وصف الكوبون:** {coupon.get('description', 'كوبون شحن رصيد')}
+
+✅ **تم إضافة المبلغ فوراً لرصيدك**
+🛒 **يمكنك الآن استخدام رصيدك لشراء الكروت**
+
+🎊 شكراً لك على استخدام خدماتنا!
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('💳 عرض محفظتي', callback_data='enhanced_wallet'),
+             InlineKeyboardButton('🛒 شراء كروت', callback_data='buy_cards')],
+            [InlineKeyboardButton('🎟️ شحن كوبون آخر', callback_data='redeem_coupon'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await update.message.reply_text(
+            success_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+        # تنظيف الحالة
+        context.user_data.clear()
+        
+        # تسجيل العملية
+        logger.info(f"User {user['full_name']} redeemed coupon {coupon_code} worth {coupon_amount:,.2f}")
+        
+    except Exception as e:
+        logger.error(f"Error in process coupon redemption: {e}")
+        await update.message.reply_text(
+            f"❌ **حدث خطأ في استخدام الكوبون** ❌\n\n"
+            f"🔍 **تفاصيل الخطأ:** {str(e)}\n\n"
+            f"🔄 **يرجى المحاولة مرة أخرى**",
+            parse_mode='Markdown'
+        )
+        context.user_data.clear()
+
+def validate_coupon_format(coupon_code: str) -> bool:
+    """التحقق من صحة تنسيق الكوبون"""
+    try:
+        # يجب أن يكون 9 أحرف: A + 8 أرقام
+        if len(coupon_code) != 9:
+            return False
+        
+        # يجب أن يبدأ بالحرف A
+        if not coupon_code.startswith('A'):
+            return False
+        
+        # الباقي يجب أن يكون أرقام
+        if not coupon_code[1:].isdigit():
+            return False
+        
+        return True
+        
+    except Exception:
+        return False
+
+async def cancel_coupon_handler(update: Update, context: CallbackContext):
+    """إلغاء عملية شحن الكوبون"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        context.user_data.clear()
+        
+        await query.edit_message_text(
+            "❌ **تم إلغاء عملية شحن الكوبون** ❌\n\n"
+            "🏠 يمكنك العودة للقائمة الرئيسية",
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in cancel coupon handler: {e}")
+        await query.edit_message_text("❌ حدث خطأ في الإلغاء.")

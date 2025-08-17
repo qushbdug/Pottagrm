@@ -104,6 +104,14 @@ async def button_click_handler(update: Update, context):
         elif callback_data == 'advanced_search_transfer':
             from handlers import search_user_for_transfer
             return await search_user_for_transfer(update, context)
+        
+        # Coupon handlers
+        elif callback_data == 'redeem_coupon':
+            from bot_modules.handlers import redeem_coupon_handler
+            return await redeem_coupon_handler(update, context)
+        elif callback_data == 'cancel_coupon':
+            from bot_modules.handlers import cancel_coupon_handler
+            return await cancel_coupon_handler(update, context)
         elif callback_data == 'quick_transfer':
             from handlers import quick_transfer_handler
             return await quick_transfer_handler(update, context)
