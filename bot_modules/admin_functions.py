@@ -1611,13 +1611,14 @@ async def process_broadcast_message(update: Update, context: CallbackContext):
         conn.close()
         
         # Prepare broadcast message
+        from datetime import datetime
         broadcast_text = f"""
 📢 **رسالة من إدارة البوت** 📢
 
 {message_text}
 
 ───────────────────
-👑 إدارة {context.bot.first_name}
+👑 إدارة البوت
 🕐 {datetime.now().strftime('%Y-%m-%d %H:%M')}
 """
         
@@ -3041,23 +3042,29 @@ async def admin_add_network_handler(update: Update, context: CallbackContext):
 
 {EMOJIS['admin']} مرحباً **{user['full_name']}**
 
-📝 **معلومات الشبكة:**
+📝 **أدخل جميع معلومات الشبكة في رسالة واحدة:**
 
-💡 **سيتم طلب المعلومات التالية:**
-1️⃣ اسم الشبكة
-2️⃣ اسم المزود
-3️⃣ وصف الشبكة  
-4️⃣ موقع الشبكة (اختياري)
-5️⃣ رابط الشعار (اختياري)
+📋 **التنسيق المطلوب:**
+```
+اسم_الشبكة|اسم_المزود|وصف_الشبكة|موقع_الشبكة|رابط_الشعار
+```
 
-🎯 **مثال على شبكة:**
-• الاسم: شبكة الرحمن للإنترنت
-• المزود: أحمد المزود
-• الوصف: شبكة واي فاي منزلية عالية السرعة
-• الموقع: منطقة الصافية - صنعاء
-• الشعار: رابط صورة (اختياري)
+🎯 **مثال كامل:**
+```
+شبكة الرحمن للإنترنت|أحمد محمد المزود|شبكة واي فاي منزلية عالية السرعة مع تغطية ممتازة|منطقة الصافية - صنعاء|https://example.com/logo.png
+```
 
-📋 **اكتب اسم الشبكة الجديدة:**
+📋 **ملاحظات مهمة:**
+• استخدم | للفصل بين المعلومات
+• الموقع والشعار اختياريان (يمكن تركهما فارغين)
+• لا تستخدم | داخل النصوص
+
+💡 **مثال مبسط (بدون موقع وشعار):**
+```
+شبكة النور|علي المزود|إنترنت سريع||
+```
+
+📝 **أدخل معلومات الشبكة بالتنسيق أعلاه:**
 """
         
         keyboard = [
@@ -3071,7 +3078,7 @@ async def admin_add_network_handler(update: Update, context: CallbackContext):
         )
         
         context.user_data['admin_adding_network'] = True
-        context.user_data['network_step'] = 'name'
+        context.user_data['network_step'] = 'all_info'
         
     except Exception as e:
         logger.error(f"Error in admin add network handler: {e}")
@@ -3187,100 +3194,51 @@ async def admin_process_network_creation(update: Update, context: CallbackContex
             return
         
         message_text = update.message.text.strip()
-        step = context.user_data.get('network_step', 'name')
+        step = context.user_data.get('network_step', 'all_info')
         
-        if step == 'name':
-            if len(message_text) < 3:
+        if step == 'all_info':
+            # تحليل البيانات من التنسيق الموحد
+            parts = message_text.split('|')
+            
+            if len(parts) < 3:
+                await update.message.reply_text(
+                    """❌ **تنسيق خاطئ!**
+                    
+📋 **يجب إدخال المعلومات بالتنسيق التالي:**
+```
+اسم_الشبكة|اسم_المزود|وصف_الشبكة|موقع_الشبكة|رابط_الشعار
+```
+
+🎯 **مثال:**
+```
+شبكة النور|علي المزود|إنترنت سريع للمنازل||
+```
+
+📝 **حاول مرة أخرى:**""",
+                    parse_mode='Markdown'
+                )
+                return
+            
+            network_name = parts[0].strip()
+            provider = parts[1].strip()
+            description = parts[2].strip()
+            location = parts[3].strip() if len(parts) > 3 and parts[3].strip() else None
+            logo_url = parts[4].strip() if len(parts) > 4 and parts[4].strip() else None
+            
+            # التحقق من صحة البيانات
+            if len(network_name) < 3:
                 await update.message.reply_text("❌ اسم الشبكة قصير جداً. يجب أن يكون 3 أحرف على الأقل.")
                 return
             
-            context.user_data['new_network_name'] = message_text
-            context.user_data['network_step'] = 'provider'
-            
-            await update.message.reply_text(
-                f"""✅ **تم حفظ اسم الشبكة:** {message_text}
-
-👤 **الآن أدخل اسم المزود:**
-
-💡 **أمثلة:**
-• أحمد محمد المزود
-• شركة الإنترنت السريع
-• مؤسسة الاتصالات المتقدمة
-
-📝 **اكتب اسم المزود:**""",
-                parse_mode='Markdown'
-            )
-            
-        elif step == 'provider':
-            if len(message_text) < 3:
+            if len(provider) < 3:
                 await update.message.reply_text("❌ اسم المزود قصير جداً. يجب أن يكون 3 أحرف على الأقل.")
                 return
             
-            context.user_data['new_network_provider'] = message_text
-            context.user_data['network_step'] = 'description'
-            
-            await update.message.reply_text(
-                f"""✅ **تم حفظ اسم المزود:** {message_text}
-
-📝 **الآن أدخل وصف الشبكة:**
-
-💡 **أمثلة على الوصف:**
-• شبكة واي فاي منزلية عالية السرعة مع تغطية ممتازة
-• إنترنت فائق السرعة للمنازل والمكاتب
-• شبكة لاسلكية موثوقة بأسعار مناسبة
-
-📝 **اكتب وصف الشبكة:**""",
-                parse_mode='Markdown'
-            )
-            
-        elif step == 'description':
-            context.user_data['new_network_description'] = message_text
-            context.user_data['network_step'] = 'location'
-            
-            await update.message.reply_text(
-                f"""✅ **تم حفظ وصف الشبكة:** {message_text}
-
-📍 **الآن أدخل موقع الشبكة (اختياري):**
-
-💡 **أمثلة على المواقع:**
-• منطقة الصافية - صنعاء
-• حي الزراعة - عدن  
-• شارع هائل - تعز
-• مدينة الحديدة - المدينة
-
-📝 **اكتب موقع الشبكة أو اكتب "تخطي" للتخطي:**""",
-                parse_mode='Markdown'
-            )
-            
-        elif step == 'location':
-            location = None if message_text.lower() in ['تخطي', 'skip'] else message_text
-            context.user_data['new_network_location'] = location
-            context.user_data['network_step'] = 'logo'
-            
-            location_text = location if location else "لا يوجد"
-            await update.message.reply_text(
-                f"""✅ **تم حفظ الموقع:** {location_text}
-
-🖼️ **الآن أدخل رابط شعار الشبكة (اختياري):**
-
-💡 **ملاحظات:**
-• يجب أن يكون رابط صورة صالح
-• الصورة ستظهر مع معلومات الشبكة
-• يمكن تخطي هذه الخطوة
-
-📝 **أدخل رابط الشعار أو اكتب "تخطي" للتخطي:**""",
-                parse_mode='Markdown'
-            )
-            
-        elif step == 'logo':
-            logo_url = None if message_text.lower() in ['تخطي', 'skip'] else message_text
+            if len(description) < 5:
+                await update.message.reply_text("❌ وصف الشبكة قصير جداً. يجب أن يكون 5 أحرف على الأقل.")
+                return
             
             # إنشاء الشبكة في قاعدة البيانات
-            network_name = context.user_data['new_network_name']
-            provider = context.user_data['new_network_provider']
-            description = context.user_data['new_network_description']
-            location = context.user_data['new_network_location']
-            
             conn = get_db_connection()
             cursor = conn.cursor()
             
@@ -3301,12 +3259,12 @@ async def admin_process_network_creation(update: Update, context: CallbackContex
 🎉 **تم إنشاء الشبكة بنجاح!** 🎉
 
 📋 **معلومات الشبكة:**
-🌐 الاسم: **{network_name}**
-👤 المزود: **{provider}**
-📝 الوصف: **{description}**
-📍 الموقع: **{location_text}**
-🖼️ الشعار: **{logo_text}**
-🆔 معرف الشبكة: **{network_id}**
+🌐 **الاسم:** {network_name}
+👤 **المزود:** {provider}
+📝 **الوصف:** {description}
+📍 **الموقع:** {location_text}
+🖼️ **الشعار:** {logo_text}
+🆔 **معرف الشبكة:** {network_id}
 
 💳 **الخطوة التالية:**
 أضف فئات الكروت للشبكة لتتمكن من رفع الكروت
@@ -3330,10 +3288,6 @@ async def admin_process_network_creation(update: Update, context: CallbackContex
             # تنظيف البيانات المؤقتة
             context.user_data.pop('admin_adding_network', None)
             context.user_data.pop('network_step', None)
-            context.user_data.pop('new_network_name', None)
-            context.user_data.pop('new_network_provider', None)
-            context.user_data.pop('new_network_description', None)
-            context.user_data.pop('new_network_location', None)
         
     except Exception as e:
         logger.error(f"Error in admin process network creation: {e}")
