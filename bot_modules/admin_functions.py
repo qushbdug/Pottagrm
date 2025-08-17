@@ -83,6 +83,8 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
              InlineKeyboardButton(f'💸 إرسال رصيد', callback_data='admin_send_money')],
             [InlineKeyboardButton(f'💼 إدارة العمولات', callback_data='commission_management'),
              InlineKeyboardButton(f'🏛️ إدارة المنصة', callback_data='super_platform_management')],
+            [InlineKeyboardButton(f'🌐 إضافة شبكة جديدة', callback_data='admin_add_network'),
+             InlineKeyboardButton(f'💳 رفع كروت', callback_data='admin_upload_cards')],
             [InlineKeyboardButton(f'✅ تفعيل مزودين', callback_data='super_activate_suppliers'),
              InlineKeyboardButton(f'🔧 إعدادات النظام', callback_data='super_system_settings')],
             [InlineKeyboardButton(f'💾 النسخ الاحتياطي', callback_data='super_backup'),
@@ -2965,6 +2967,10 @@ ADMIN_CALLBACKS.update({
     'dashboard': dashboard_handler,
     'executive_reports': executive_reports_handler,
     
+    # Admin network and card management  
+    'admin_add_network': lambda u, c: admin_add_network_handler(u, c),
+    'admin_upload_cards': lambda u, c: admin_upload_cards_handler(u, c),
+    
     # Backup handlers
     'backup_full': backup_full_handler,
     'backup_data_only': backup_data_only_handler,
@@ -3018,3 +3024,779 @@ ADMIN_CALLBACKS.update({
     'export_pdf_report': lambda u, c: placeholder_handler(u, c, "تصدير PDF"),
     'export_excel': lambda u, c: placeholder_handler(u, c, "تصدير Excel"),
 })
+
+async def admin_add_network_handler(update: Update, context: CallbackContext):
+    """إضافة شبكة جديدة للمشرف الأعلى"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        text = f"""
+🌐 **إضافة شبكة جديدة** 🌐
+
+{EMOJIS['admin']} مرحباً **{user['full_name']}**
+
+📝 **معلومات الشبكة:**
+
+💡 **سيتم طلب المعلومات التالية:**
+1️⃣ اسم الشبكة
+2️⃣ اسم المزود
+3️⃣ وصف الشبكة  
+4️⃣ موقع الشبكة (اختياري)
+5️⃣ رابط الشعار (اختياري)
+
+🎯 **مثال على شبكة:**
+• الاسم: شبكة الرحمن للإنترنت
+• المزود: أحمد المزود
+• الوصف: شبكة واي فاي منزلية عالية السرعة
+• الموقع: منطقة الصافية - صنعاء
+• الشعار: رابط صورة (اختياري)
+
+📋 **اكتب اسم الشبكة الجديدة:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('❌ إلغاء', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+        context.user_data['admin_adding_network'] = True
+        context.user_data['network_step'] = 'name'
+        
+    except Exception as e:
+        logger.error(f"Error in admin add network handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إضافة الشبكة.")
+
+async def admin_upload_cards_handler(update: Update, context: CallbackContext):
+    """رفع كروت للمشرف الأعلى"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # الحصول على الشبكات المتاحة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT n.id, n.name, n.provider, 
+                   COUNT(cc.id) as categories_count,
+                   SUM(cc.stock_count) as total_stock
+            FROM networks n
+            LEFT JOIN card_categories cc ON n.id = cc.network_id
+            WHERE n.is_active = 1
+            GROUP BY n.id, n.name, n.provider
+            ORDER BY n.name
+        ''')
+        networks = cursor.fetchall()
+        conn.close()
+        
+        if not networks:
+            text = f"""
+💳 **رفع كروت جديدة** 💳
+
+{EMOJIS['admin']} مرحباً **{user['full_name']}**
+
+❌ **لا توجد شبكات متاحة حالياً**
+
+🔧 **يجب إضافة شبكة أولاً قبل رفع الكروت**
+
+📋 **الخطوات المطلوبة:**
+1️⃣ إضافة شبكة جديدة
+2️⃣ إضافة فئات الكروت للشبكة
+3️⃣ رفع الكروت لكل فئة
+
+🌐 **أضف شبكة جديدة أولاً:**
+"""
+            keyboard = [
+                [InlineKeyboardButton('🌐 إضافة شبكة جديدة', callback_data='admin_add_network'),
+                 InlineKeyboardButton('🔙 عودة', callback_data='super_admin_panel')]
+            ]
+        else:
+            text = f"""
+💳 **رفع كروت جديدة** 💳
+
+{EMOJIS['admin']} مرحباً **{user['full_name']}**
+
+📊 **الشبكات المتاحة:** ({len(networks)} شبكة)
+
+🔍 **اختر الشبكة لرفع الكروت إليها:**
+
+"""
+            
+            keyboard = []
+            for network in networks:
+                network_id, name, provider, categories, stock = network
+                button_text = f"🌐 {name}"
+                if categories > 0:
+                    button_text += f" ({categories} فئة، {stock or 0} كرت)"
+                else:
+                    button_text += " (بدون فئات)"
+                
+                text += f"""
+🏢 **{name}**
+👤 المزود: {provider}
+💳 الفئات: {categories or 0} فئة
+📦 المخزون: {stock or 0} كرت
+━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+                
+                keyboard.append([InlineKeyboardButton(
+                    button_text[:60] + "..." if len(button_text) > 60 else button_text,
+                    callback_data=f'admin_upload_to_network_{network_id}'
+                )])
+            
+            keyboard.extend([
+                [InlineKeyboardButton('🌐 إضافة شبكة جديدة', callback_data='admin_add_network'),
+                 InlineKeyboardButton('🔙 عودة', callback_data='super_admin_panel')]
+            ])
+        
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in admin upload cards handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في رفع الكروت.")
+
+async def admin_process_network_creation(update: Update, context: CallbackContext):
+    """معالجة إنشاء شبكة جديدة من المشرف الأعلى"""
+    try:
+        if not context.user_data.get('admin_adding_network'):
+            return
+        
+        user = get_user(update.effective_user.id)
+        if not user or user['role'] != 'super_admin':
+            await update.message.reply_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        message_text = update.message.text.strip()
+        step = context.user_data.get('network_step', 'name')
+        
+        if step == 'name':
+            if len(message_text) < 3:
+                await update.message.reply_text("❌ اسم الشبكة قصير جداً. يجب أن يكون 3 أحرف على الأقل.")
+                return
+            
+            context.user_data['new_network_name'] = message_text
+            context.user_data['network_step'] = 'provider'
+            
+            await update.message.reply_text(
+                f"""✅ **تم حفظ اسم الشبكة:** {message_text}
+
+👤 **الآن أدخل اسم المزود:**
+
+💡 **أمثلة:**
+• أحمد محمد المزود
+• شركة الإنترنت السريع
+• مؤسسة الاتصالات المتقدمة
+
+📝 **اكتب اسم المزود:**""",
+                parse_mode='Markdown'
+            )
+            
+        elif step == 'provider':
+            if len(message_text) < 3:
+                await update.message.reply_text("❌ اسم المزود قصير جداً. يجب أن يكون 3 أحرف على الأقل.")
+                return
+            
+            context.user_data['new_network_provider'] = message_text
+            context.user_data['network_step'] = 'description'
+            
+            await update.message.reply_text(
+                f"""✅ **تم حفظ اسم المزود:** {message_text}
+
+📝 **الآن أدخل وصف الشبكة:**
+
+💡 **أمثلة على الوصف:**
+• شبكة واي فاي منزلية عالية السرعة مع تغطية ممتازة
+• إنترنت فائق السرعة للمنازل والمكاتب
+• شبكة لاسلكية موثوقة بأسعار مناسبة
+
+📝 **اكتب وصف الشبكة:**""",
+                parse_mode='Markdown'
+            )
+            
+        elif step == 'description':
+            context.user_data['new_network_description'] = message_text
+            context.user_data['network_step'] = 'location'
+            
+            await update.message.reply_text(
+                f"""✅ **تم حفظ وصف الشبكة:** {message_text}
+
+📍 **الآن أدخل موقع الشبكة (اختياري):**
+
+💡 **أمثلة على المواقع:**
+• منطقة الصافية - صنعاء
+• حي الزراعة - عدن  
+• شارع هائل - تعز
+• مدينة الحديدة - المدينة
+
+📝 **اكتب موقع الشبكة أو اكتب "تخطي" للتخطي:**""",
+                parse_mode='Markdown'
+            )
+            
+        elif step == 'location':
+            location = None if message_text.lower() in ['تخطي', 'skip'] else message_text
+            context.user_data['new_network_location'] = location
+            context.user_data['network_step'] = 'logo'
+            
+            location_text = location if location else "لا يوجد"
+            await update.message.reply_text(
+                f"""✅ **تم حفظ الموقع:** {location_text}
+
+🖼️ **الآن أدخل رابط شعار الشبكة (اختياري):**
+
+💡 **ملاحظات:**
+• يجب أن يكون رابط صورة صالح
+• الصورة ستظهر مع معلومات الشبكة
+• يمكن تخطي هذه الخطوة
+
+📝 **أدخل رابط الشعار أو اكتب "تخطي" للتخطي:**""",
+                parse_mode='Markdown'
+            )
+            
+        elif step == 'logo':
+            logo_url = None if message_text.lower() in ['تخطي', 'skip'] else message_text
+            
+            # إنشاء الشبكة في قاعدة البيانات
+            network_name = context.user_data['new_network_name']
+            provider = context.user_data['new_network_provider']
+            description = context.user_data['new_network_description']
+            location = context.user_data['new_network_location']
+            
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                INSERT INTO networks (name, provider, description, location, logo_url, created_by, is_active)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (network_name, provider, description, location, logo_url, user['id'], 1))
+            
+            network_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            
+            # رسالة التأكيد
+            logo_text = logo_url if logo_url else "لا يوجد"
+            location_text = location if location else "لا يوجد"
+            
+            success_text = f"""
+🎉 **تم إنشاء الشبكة بنجاح!** 🎉
+
+📋 **معلومات الشبكة:**
+🌐 الاسم: **{network_name}**
+👤 المزود: **{provider}**
+📝 الوصف: **{description}**
+📍 الموقع: **{location_text}**
+🖼️ الشعار: **{logo_text}**
+🆔 معرف الشبكة: **{network_id}**
+
+💳 **الخطوة التالية:**
+أضف فئات الكروت للشبكة لتتمكن من رفع الكروت
+
+🔧 **الخيارات المتاحة:**
+"""
+            
+            keyboard = [
+                [InlineKeyboardButton('💳 إضافة فئة كرت', callback_data=f'admin_add_category_{network_id}'),
+                 InlineKeyboardButton('📦 رفع كروت', callback_data=f'admin_upload_to_network_{network_id}')],
+                [InlineKeyboardButton('🌐 إضافة شبكة أخرى', callback_data='admin_add_network'),
+                 InlineKeyboardButton('🏠 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
+            ]
+            
+            await update.message.reply_text(
+                success_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+            # تنظيف البيانات المؤقتة
+            context.user_data.pop('admin_adding_network', None)
+            context.user_data.pop('network_step', None)
+            context.user_data.pop('new_network_name', None)
+            context.user_data.pop('new_network_provider', None)
+            context.user_data.pop('new_network_description', None)
+            context.user_data.pop('new_network_location', None)
+        
+    except Exception as e:
+        logger.error(f"Error in admin process network creation: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في إنشاء الشبكة.")
+
+async def admin_add_category_handler(update: Update, context: CallbackContext, network_id: str):
+    """إضافة فئة كرت جديدة للشبكة"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # الحصول على معلومات الشبكة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT name, provider FROM networks WHERE id = ?', (network_id,))
+        network = cursor.fetchone()
+        
+        if not network:
+            await query.edit_message_text("❌ لم يتم العثور على الشبكة المحددة.")
+            return
+        
+        # الحصول على الفئات الموجودة
+        cursor.execute('''
+            SELECT name, value, price, stock_count, is_available 
+            FROM card_categories 
+            WHERE network_id = ?
+            ORDER BY price
+        ''', (network_id,))
+        categories = cursor.fetchall()
+        conn.close()
+        
+        text = f"""
+💳 **إضافة فئة كرت جديدة** 💳
+
+🌐 **الشبكة:** {network[0]}
+👤 **المزود:** {network[1]}
+
+📊 **الفئات الموجودة:** ({len(categories)} فئة)
+"""
+
+        if categories:
+            for cat in categories:
+                status = "✅" if cat[4] else "❌"
+                text += f"\n{status} {cat[0]} - {cat[1]} - {cat[2]:,.0f} ريال ({cat[3]} كرت)"
+        else:
+            text += "\n🔸 لا توجد فئات بعد"
+
+        text += f"""
+
+🔧 **معلومات الفئة الجديدة:**
+
+💡 **سيتم طلب:**
+1️⃣ اسم الفئة (مثل: كرت 1 جيجا)
+2️⃣ قيمة الكرت (مثل: 1024 ميجا)
+3️⃣ سعر الكرت (بالريال)
+4️⃣ عدد الكروت المتوفرة
+
+📝 **اكتب اسم الفئة الجديدة:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('❌ إلغاء', callback_data=f'admin_upload_to_network_{network_id}')]
+        ]
+        
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+        context.user_data['admin_adding_category'] = True
+        context.user_data['category_network_id'] = network_id
+        context.user_data['category_step'] = 'name'
+        
+    except Exception as e:
+        logger.error(f"Error in admin add category handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إضافة الفئة.")
+
+async def admin_network_upload_handler(update: Update, context: CallbackContext, network_id: str):
+    """معالجة رفع الكروت لشبكة محددة"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # الحصول على معلومات الشبكة والفئات
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT name, provider, description, location FROM networks WHERE id = ?', (network_id,))
+        network = cursor.fetchone()
+        
+        if not network:
+            await query.edit_message_text("❌ لم يتم العثور على الشبكة المحددة.")
+            return
+        
+        # الحصول على فئات الكروت
+        cursor.execute('''
+            SELECT id, name, value, price, stock_count, is_available 
+            FROM card_categories 
+            WHERE network_id = ?
+            ORDER BY price
+        ''', (network_id,))
+        categories = cursor.fetchall()
+        conn.close()
+        
+        text = f"""
+💳 **رفع كروت للشبكة** 💳
+
+🌐 **الشبكة:** {network[0]}
+👤 **المزود:** {network[1]}
+📝 **الوصف:** {network[2] or 'غير محدد'}
+📍 **الموقع:** {network[3] or 'غير محدد'}
+
+📊 **فئات الكروت المتاحة:** ({len(categories)} فئة)
+"""
+
+        keyboard = []
+        
+        if categories:
+            for cat in categories:
+                status = "✅" if cat[5] else "❌"
+                text += f"""
+{status} **{cat[1]}**
+💰 السعر: {cat[3]:,.0f} ريال
+📦 المخزون: {cat[4]} كرت
+━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+                
+                button_text = f"💳 {cat[1]} ({cat[4]} كرت)"
+                keyboard.append([InlineKeyboardButton(
+                    button_text[:50] + "..." if len(button_text) > 50 else button_text,
+                    callback_data=f'admin_upload_category_{cat[0]}'
+                )])
+            
+            text += "\n🔧 **اختر فئة لرفع كروت إليها:**"
+        else:
+            text += "\n❌ **لا توجد فئات كروت بعد**\n\n🔧 **يجب إضافة فئة أولاً:**"
+        
+        keyboard.extend([
+            [InlineKeyboardButton('➕ إضافة فئة جديدة', callback_data=f'admin_add_category_{network_id}'),
+             InlineKeyboardButton('📊 إحصائيات الشبكة', callback_data=f'admin_network_stats_{network_id}')],
+            [InlineKeyboardButton('🔙 عودة لرفع الكروت', callback_data='admin_upload_cards'),
+             InlineKeyboardButton('🏠 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
+        ])
+        
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in admin network upload handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في رفع الكروت.")
+
+async def admin_upload_category_handler(update: Update, context: CallbackContext, category_id: str):
+    """رفع كروت لفئة محددة"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # الحصول على معلومات الفئة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT cc.id, cc.name, cc.value, cc.price, cc.stock_count, cc.network_id,
+                   n.name as network_name, n.provider
+            FROM card_categories cc
+            JOIN networks n ON cc.network_id = n.id
+            WHERE cc.id = ?
+        ''', (category_id,))
+        category = cursor.fetchone()
+        conn.close()
+        
+        if not category:
+            await query.edit_message_text("❌ لم يتم العثور على الفئة المحددة.")
+            return
+        
+        text = f"""
+💳 **رفع كروت جديدة** 💳
+
+🌐 **الشبكة:** {category[6]}
+👤 **المزود:** {category[7]}
+💳 **الفئة:** {category[1]}
+💰 **السعر:** {category[3]:,.0f} ريال
+📦 **المخزون الحالي:** {category[4]} كرت
+
+📋 **طرق رفع الكروت:**
+
+1️⃣ **رفع كروت منفردة:**
+   • إدخال رقم كرت واحد في كل مرة
+   • مناسب للكروت القليلة
+
+2️⃣ **رفع كروت متعددة:**
+   • إدخال عدة أرقام كروت مرة واحدة
+   • كل رقم في سطر منفصل
+
+3️⃣ **رفع من ملف:**
+   • رفع ملف نصي يحتوي على أرقام الكروت
+   • سريع وفعال للكميات الكبيرة
+
+🔧 **اختر طريقة الرفع:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('1️⃣ رفع كرت منفرد', callback_data=f'admin_upload_single_{category_id}'),
+             InlineKeyboardButton('2️⃣ رفع كروت متعددة', callback_data=f'admin_upload_multiple_{category_id}')],
+            [InlineKeyboardButton('3️⃣ رفع من ملف', callback_data=f'admin_upload_file_{category_id}'),
+             InlineKeyboardButton('📊 إحصائيات الفئة', callback_data=f'admin_category_stats_{category_id}')],
+            [InlineKeyboardButton('🔙 عودة للشبكة', callback_data=f'admin_upload_to_network_{category[5]}'),
+             InlineKeyboardButton('🏠 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in admin upload category handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في رفع الكروت.")
+
+async def admin_upload_single_card_handler(update: Update, context: CallbackContext, category_id: str):
+    """رفع كرت منفرد"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # الحصول على معلومات الفئة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT cc.name, n.name as network_name
+            FROM card_categories cc
+            JOIN networks n ON cc.network_id = n.id
+            WHERE cc.id = ?
+        ''', (category_id,))
+        category_info = cursor.fetchone()
+        conn.close()
+        
+        if not category_info:
+            await query.edit_message_text("❌ لم يتم العثور على الفئة المحددة.")
+            return
+        
+        text = f"""
+1️⃣ **رفع كرت منفرد** 1️⃣
+
+🌐 **الشبكة:** {category_info[1]}
+💳 **الفئة:** {category_info[0]}
+
+📝 **أدخل معلومات الكرت:**
+
+💡 **تنسيق الإدخال:**
+```
+رقم_الكرت|الرقم_التسلسلي|تاريخ_الانتهاء
+```
+
+🎯 **مثال:**
+```
+1234567890123456|ABC123DEF|2025-12-31
+```
+
+📋 **ملاحظات:**
+• رقم الكرت مطلوب
+• الرقم التسلسلي اختياري
+• تاريخ الانتهاء اختياري
+• استخدم | للفصل بين البيانات
+
+📝 **أدخل معلومات الكرت:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('❌ إلغاء', callback_data=f'admin_upload_category_{category_id}')]
+        ]
+        
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+        context.user_data['admin_uploading_card'] = True
+        context.user_data['upload_category_id'] = category_id
+        context.user_data['upload_type'] = 'single'
+        
+    except Exception as e:
+        logger.error(f"Error in admin upload single card handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في رفع الكرت.")
+
+async def admin_process_card_upload(update: Update, context: CallbackContext):
+    """معالجة رفع الكروت من المشرف الأعلى"""
+    try:
+        if not context.user_data.get('admin_uploading_card'):
+            return
+        
+        user = get_user(update.effective_user.id)
+        if not user or user['role'] != 'super_admin':
+            await update.message.reply_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        category_id = context.user_data.get('upload_category_id')
+        upload_type = context.user_data.get('upload_type', 'single')
+        message_text = update.message.text.strip()
+        
+        if not category_id:
+            await update.message.reply_text("❌ خطأ في معرف الفئة.")
+            return
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # الحصول على معلومات الفئة
+        cursor.execute('''
+            SELECT cc.name, cc.network_id, n.name as network_name
+            FROM card_categories cc
+            JOIN networks n ON cc.network_id = n.id
+            WHERE cc.id = ?
+        ''', (category_id,))
+        category_info = cursor.fetchone()
+        
+        if not category_info:
+            await update.message.reply_text("❌ لم يتم العثور على الفئة المحددة.")
+            return
+        
+        uploaded_cards = []
+        errors = []
+        
+        if upload_type == 'single':
+            # رفع كرت منفرد
+            parts = message_text.split('|')
+            card_number = parts[0].strip()
+            serial_number = parts[1].strip() if len(parts) > 1 else None
+            expiry_date = parts[2].strip() if len(parts) > 2 else None
+            
+            if len(card_number) < 8:
+                await update.message.reply_text("❌ رقم الكرت قصير جداً. يجب أن يكون 8 أرقام على الأقل.")
+                return
+            
+            # فحص إذا كان الكرت موجود مسبقاً
+            cursor.execute('SELECT id FROM cards WHERE card_number = ?', (card_number,))
+            if cursor.fetchone():
+                await update.message.reply_text(f"❌ رقم الكرت {card_number} موجود مسبقاً.")
+                return
+            
+            # إضافة الكرت
+            cursor.execute('''
+                INSERT INTO cards (category_id, card_number, serial_number, expiry_date, uploaded_by)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (category_id, card_number, serial_number, expiry_date, user['id']))
+            
+            uploaded_cards.append(card_number)
+            
+        elif upload_type == 'multiple':
+            # رفع كروت متعددة
+            lines = message_text.split('\n')
+            
+            for line_num, line in enumerate(lines, 1):
+                line = line.strip()
+                if not line:
+                    continue
+                
+                parts = line.split('|')
+                card_number = parts[0].strip()
+                serial_number = parts[1].strip() if len(parts) > 1 else None
+                expiry_date = parts[2].strip() if len(parts) > 2 else None
+                
+                if len(card_number) < 8:
+                    errors.append(f"السطر {line_num}: رقم الكرت قصير جداً")
+                    continue
+                
+                # فحص إذا كان الكرت موجود مسبقاً
+                cursor.execute('SELECT id FROM cards WHERE card_number = ?', (card_number,))
+                if cursor.fetchone():
+                    errors.append(f"السطر {line_num}: رقم الكرت {card_number} موجود مسبقاً")
+                    continue
+                
+                # إضافة الكرت
+                cursor.execute('''
+                    INSERT INTO cards (category_id, card_number, serial_number, expiry_date, uploaded_by)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (category_id, card_number, serial_number, expiry_date, user['id']))
+                
+                uploaded_cards.append(card_number)
+        
+        # تحديث عدد الكروت في الفئة
+        cursor.execute('''
+            UPDATE card_categories 
+            SET stock_count = stock_count + ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (len(uploaded_cards), category_id))
+        
+        conn.commit()
+        conn.close()
+        
+        # رسالة النتائج
+        success_text = f"""
+🎉 **تم رفع الكروت بنجاح!** 🎉
+
+🌐 **الشبكة:** {category_info[2]}
+💳 **الفئة:** {category_info[0]}
+
+📊 **النتائج:**
+✅ تم رفع: **{len(uploaded_cards)}** كرت
+❌ أخطاء: **{len(errors)}**
+
+"""
+
+        if uploaded_cards:
+            success_text += "✅ **الكروت المرفوعة:**\n"
+            for card in uploaded_cards[:5]:  # عرض أول 5 كروت فقط
+                success_text += f"• {card}\n"
+            if len(uploaded_cards) > 5:
+                success_text += f"• ... و {len(uploaded_cards) - 5} كرت آخر\n"
+        
+        if errors:
+            success_text += "\n❌ **الأخطاء:**\n"
+            for error in errors[:5]:  # عرض أول 5 أخطاء فقط
+                success_text += f"• {error}\n"
+            if len(errors) > 5:
+                success_text += f"• ... و {len(errors) - 5} خطأ آخر\n"
+        
+        keyboard = [
+            [InlineKeyboardButton('📦 رفع كروت أخرى', callback_data=f'admin_upload_category_{category_id}'),
+             InlineKeyboardButton('📊 إحصائيات الفئة', callback_data=f'admin_category_stats_{category_id}')],
+            [InlineKeyboardButton('🔙 عودة للشبكة', callback_data=f'admin_upload_to_network_{category_info[1]}'),
+             InlineKeyboardButton('🏠 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
+        ]
+        
+        await update.message.reply_text(
+            success_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+        # تنظيف البيانات المؤقتة
+        context.user_data.pop('admin_uploading_card', None)
+        context.user_data.pop('upload_category_id', None)
+        context.user_data.pop('upload_type', None)
+        
+    except Exception as e:
+        logger.error(f"Error in admin process card upload: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في رفع الكروت.")

@@ -139,6 +139,22 @@ async def button_click_handler(update: Update, context):
             from bot_modules.admin_functions import edit_specific_commission
             commission_id = callback_data.split('_')[2]
             return await edit_specific_commission(update, context, commission_id)
+        elif callback_data.startswith('admin_add_category_'):
+            from bot_modules.admin_functions import admin_add_category_handler
+            network_id = callback_data.split('_')[3]
+            return await admin_add_category_handler(update, context, network_id)
+        elif callback_data.startswith('admin_upload_to_network_'):
+            from bot_modules.admin_functions import admin_network_upload_handler
+            network_id = callback_data.split('_')[4]
+            return await admin_network_upload_handler(update, context, network_id)
+        elif callback_data.startswith('admin_upload_category_'):
+            from bot_modules.admin_functions import admin_upload_category_handler
+            category_id = callback_data.split('_')[3]
+            return await admin_upload_category_handler(update, context, category_id)
+        elif callback_data.startswith('admin_upload_single_'):
+            from bot_modules.admin_functions import admin_upload_single_card_handler
+            category_id = callback_data.split('_')[3]
+            return await admin_upload_single_card_handler(update, context, category_id)
         
         # Search by type handlers
         elif callback_data.startswith('search_by_'):

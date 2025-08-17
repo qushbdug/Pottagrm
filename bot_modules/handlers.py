@@ -553,6 +553,16 @@ async def handle_text_message(update: Update, context: CallbackContext):
         if context.user_data.get('awaiting_network_search'):
             return await process_network_search(update, context, update.message.text)
         
+        # Check if admin is adding network
+        if context.user_data.get('admin_adding_network'):
+            from bot_modules.admin_functions import admin_process_network_creation
+            return await admin_process_network_creation(update, context)
+        
+        # Check if admin is uploading cards
+        if context.user_data.get('admin_uploading_card'):
+            from bot_modules.admin_functions import admin_process_card_upload
+            return await admin_process_card_upload(update, context)
+        
         # Check if waiting for balance send (old method - keep for compatibility)
         if context.user_data.get('awaiting_balance_send'):
             return await process_balance_send(update, context)
