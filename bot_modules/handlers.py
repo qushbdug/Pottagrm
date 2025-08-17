@@ -3318,9 +3318,9 @@ async def process_coupon_redemption(update: Update, context: CallbackContext):
         
         # إنشاء معاملة في سجل المعاملات
         cursor.execute('''
-            INSERT INTO transactions (from_user, to_user, amount, description, created_at)
-            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ''', (None, user['id'], coupon_amount, f"شحن بكوبون {coupon_code}"))
+            INSERT INTO transactions (from_user, to_user, amount, type, description, created_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ''', (None, user['id'], coupon_amount, 'coupon_redeem', f"شحن بكوبون {coupon_code}"))
         
         conn.commit()
         conn.close()
