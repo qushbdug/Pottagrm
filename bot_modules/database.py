@@ -629,6 +629,24 @@ def init_db():
             )
         ''')
         
+        # Create coupons table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS coupons (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                coupon_code TEXT NOT NULL UNIQUE,
+                amount REAL NOT NULL,
+                is_used BOOLEAN DEFAULT 0,
+                used_by INTEGER,
+                created_by INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                used_at TIMESTAMP,
+                expiry_date TIMESTAMP,
+                description TEXT,
+                FOREIGN KEY (used_by) REFERENCES users (id),
+                FOREIGN KEY (created_by) REFERENCES users (id)
+            )
+        ''')
+        
         # Data insertion is handled separately to avoid conflicts
 
         conn.commit()

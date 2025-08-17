@@ -89,7 +89,7 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
              InlineKeyboardButton(f'🔧 إعدادات النظام', callback_data='super_system_settings')],
             [InlineKeyboardButton(f'💾 النسخ الاحتياطي', callback_data='super_backup'),
              InlineKeyboardButton(f'🚨 مراقبة الأمان', callback_data='super_security_monitoring')],
-            [InlineKeyboardButton(f'🎫 إصدار بطاقات شحن', callback_data='super_issue_recharge_cards'),
+            [InlineKeyboardButton(f'🎟️ إنشاء كوبونات', callback_data='super_create_coupons'),
              InlineKeyboardButton(f'💰 طباعة رصيد المحفظة', callback_data='super_print_balance')],
             [InlineKeyboardButton(f'📢 إرسال رسالة جماعية', callback_data='super_broadcast_message'),
              InlineKeyboardButton(f'🔄 تحديث أوامر البوت', callback_data='super_update_commands')],
@@ -2259,7 +2259,7 @@ ADMIN_CALLBACKS = {
     'super_view_all_suppliers': view_all_suppliers_handler,
     'view_supplier_details': view_supplier_details_handler,
     # New enhanced features
-    'super_issue_recharge_cards': issue_recharge_cards_handler,
+
     'super_print_balance': print_balance_handler,
     'super_broadcast_message': broadcast_message_handler,
     'super_update_commands': update_commands_handler,
@@ -2972,6 +2972,9 @@ ADMIN_CALLBACKS.update({
     'admin_add_network': lambda u, c: admin_add_network_handler(u, c),
     'admin_upload_cards': lambda u, c: admin_upload_cards_handler(u, c),
     
+    # Coupon management
+    'super_create_coupons': lambda u, c: create_coupons_handler(u, c),
+    
     # Backup handlers
     'backup_full': backup_full_handler,
     'backup_data_only': backup_data_only_handler,
@@ -3042,29 +3045,24 @@ async def admin_add_network_handler(update: Update, context: CallbackContext):
 
 {EMOJIS['admin']} مرحباً **{user['full_name']}**
 
-📝 **أدخل جميع معلومات الشبكة في رسالة واحدة:**
+📝 **سنقوم بإضافة الشبكة خطوة بخطوة**
 
-📋 **التنسيق المطلوب:**
-```
-اسم_الشبكة|اسم_المزود|وصف_الشبكة|موقع_الشبكة|رابط_الشعار
-```
+🔸 **الخطوة 1 من 4**
 
-🎯 **مثال كامل:**
-```
-شبكة الرحمن للإنترنت|أحمد محمد المزود|شبكة واي فاي منزلية عالية السرعة مع تغطية ممتازة|منطقة الصافية - صنعاء|https://example.com/logo.png
-```
+📋 **أدخل اسم الشبكة:**
 
-📋 **ملاحظات مهمة:**
-• استخدم | للفصل بين المعلومات
-• الموقع والشعار اختياريان (يمكن تركهما فارغين)
-• لا تستخدم | داخل النصوص
+💡 **أمثلة:**
+• شبكة الرحمن للإنترنت
+• شبكة النور للواي فاي
+• إنترنت البركة السريع
+• شبكة الأمل المنزلية
 
-💡 **مثال مبسط (بدون موقع وشعار):**
-```
-شبكة النور|علي المزود|إنترنت سريع||
-```
+⚠️ **ملاحظات:**
+• يجب أن يكون الاسم واضح ومميز
+• لا يقل عن 3 أحرف
+• يفضل أن يحتوي على كلمة "شبكة" أو "إنترنت"
 
-📝 **أدخل معلومات الشبكة بالتنسيق أعلاه:**
+📝 **اكتب اسم الشبكة:**
 """
         
         keyboard = [
@@ -3078,7 +3076,7 @@ async def admin_add_network_handler(update: Update, context: CallbackContext):
         )
         
         context.user_data['admin_adding_network'] = True
-        context.user_data['network_step'] = 'all_info'
+        context.user_data['network_step'] = 'name'
         
     except Exception as e:
         logger.error(f"Error in admin add network handler: {e}")
@@ -3194,65 +3192,121 @@ async def admin_process_network_creation(update: Update, context: CallbackContex
             return
         
         message_text = update.message.text.strip()
-        step = context.user_data.get('network_step', 'all_info')
+        step = context.user_data.get('network_step', 'name')
         
-        if step == 'all_info':
-            # تحليل البيانات من التنسيق الموحد
-            parts = message_text.split('|')
-            
-            if len(parts) < 3:
-                await update.message.reply_text(
-                    """❌ **تنسيق خاطئ!**
-                    
-📋 **يجب إدخال المعلومات بالتنسيق التالي:**
-```
-اسم_الشبكة|اسم_المزود|وصف_الشبكة|موقع_الشبكة|رابط_الشعار
-```
-
-🎯 **مثال:**
-```
-شبكة النور|علي المزود|إنترنت سريع للمنازل||
-```
-
-📝 **حاول مرة أخرى:**""",
-                    parse_mode='Markdown'
-                )
-                return
-            
-            network_name = parts[0].strip()
-            provider = parts[1].strip()
-            description = parts[2].strip()
-            location = parts[3].strip() if len(parts) > 3 and parts[3].strip() else None
-            logo_url = parts[4].strip() if len(parts) > 4 and parts[4].strip() else None
-            
-            # التحقق من صحة البيانات
-            if len(network_name) < 3:
+        if step == 'name':
+            if len(message_text) < 3:
                 await update.message.reply_text("❌ اسم الشبكة قصير جداً. يجب أن يكون 3 أحرف على الأقل.")
                 return
             
-            if len(provider) < 3:
+            context.user_data['new_network_name'] = message_text
+            context.user_data['network_step'] = 'provider'
+            
+            await update.message.reply_text(
+                f"""✅ **تم حفظ اسم الشبكة:** {message_text}
+
+🔸 **الخطوة 2 من 4**
+
+👤 **أدخل اسم المزود:**
+
+💡 **أمثلة:**
+• أحمد محمد المزود
+• شركة الإنترنت السريع
+• مؤسسة الاتصالات المتقدمة
+• علي حسن للإنترنت
+
+⚠️ **ملاحظات:**
+• اكتب الاسم الحقيقي للمزود
+• يفضل الاسم الكامل
+• لا يقل عن 3 أحرف
+
+📝 **اكتب اسم المزود:**""",
+                parse_mode='Markdown'
+            )
+            
+        elif step == 'provider':
+            if len(message_text) < 3:
                 await update.message.reply_text("❌ اسم المزود قصير جداً. يجب أن يكون 3 أحرف على الأقل.")
                 return
             
-            if len(description) < 5:
-                await update.message.reply_text("❌ وصف الشبكة قصير جداً. يجب أن يكون 5 أحرف على الأقل.")
+            context.user_data['new_network_provider'] = message_text
+            context.user_data['network_step'] = 'description'
+            
+            await update.message.reply_text(
+                f"""✅ **تم حفظ اسم المزود:** {message_text}
+
+🔸 **الخطوة 3 من 4**
+
+📝 **أدخل وصف الشبكة:**
+
+💡 **أمثلة:**
+• شبكة واي فاي منزلية عالية السرعة مع تغطية ممتازة
+• إنترنت فائق السرعة للمنازل والمكاتب
+• شبكة لاسلكية موثوقة بأسعار مناسبة
+• خدمة إنترنت منزلي بجودة عالية
+
+⚠️ **ملاحظات:**
+• اكتب وصف واضح ومفيد
+• يساعد العملاء في فهم الخدمة
+• لا يقل عن 10 أحرف
+
+📝 **اكتب وصف الشبكة:**""",
+                parse_mode='Markdown'
+            )
+            
+        elif step == 'description':
+            if len(message_text) < 10:
+                await update.message.reply_text("❌ وصف الشبكة قصير جداً. يجب أن يكون 10 أحرف على الأقل.")
                 return
             
+            context.user_data['new_network_description'] = message_text
+            context.user_data['network_step'] = 'location'
+            
+            await update.message.reply_text(
+                f"""✅ **تم حفظ وصف الشبكة:** {message_text}
+
+🔸 **الخطوة 4 من 4**
+
+📍 **أدخل موقع الشبكة:**
+
+💡 **أمثلة:**
+• منطقة الصافية - صنعاء
+• حي الزراعة - عدن  
+• شارع هائل - تعز
+• مدينة الحديدة - المدينة
+• إب - جبلة
+
+⚠️ **ملاحظات:**
+• اذكر الحي أو المنطقة بوضوح
+• أضف المحافظة إذا أمكن
+• استخدم أسماء معروفة محلياً
+• يمكن تخطي هذه الخطوة
+
+📝 **اكتب موقع الشبكة أو اكتب "تخطي" للتخطي:**""",
+                parse_mode='Markdown'
+            )
+            
+        elif step == 'location':
+            location = None if message_text.lower() in ['تخطي', 'skip'] else message_text
+            
             # إنشاء الشبكة في قاعدة البيانات
+            network_name = context.user_data['new_network_name']
+            provider = context.user_data['new_network_provider']
+            description = context.user_data['new_network_description']
+            
             conn = get_db_connection()
             cursor = conn.cursor()
             
             cursor.execute('''
-                INSERT INTO networks (name, provider, description, location, logo_url, created_by, is_active)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (network_name, provider, description, location, logo_url, user['id'], 1))
+                INSERT INTO networks (name, provider, description, location, created_by, is_active)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (network_name, provider, description, location, user['id'], 1))
             
             network_id = cursor.lastrowid
             conn.commit()
             conn.close()
             
             # رسالة التأكيد
-            logo_text = logo_url if logo_url else "لا يوجد"
             location_text = location if location else "لا يوجد"
             
             success_text = f"""
@@ -3263,7 +3317,6 @@ async def admin_process_network_creation(update: Update, context: CallbackContex
 👤 **المزود:** {provider}
 📝 **الوصف:** {description}
 📍 **الموقع:** {location_text}
-🖼️ **الشعار:** {logo_text}
 🆔 **معرف الشبكة:** {network_id}
 
 💳 **الخطوة التالية:**
@@ -3288,6 +3341,9 @@ async def admin_process_network_creation(update: Update, context: CallbackContex
             # تنظيف البيانات المؤقتة
             context.user_data.pop('admin_adding_network', None)
             context.user_data.pop('network_step', None)
+            context.user_data.pop('new_network_name', None)
+            context.user_data.pop('new_network_provider', None)
+            context.user_data.pop('new_network_description', None)
         
     except Exception as e:
         logger.error(f"Error in admin process network creation: {e}")
@@ -3754,3 +3810,173 @@ async def admin_process_card_upload(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in admin process card upload: {e}")
         await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في رفع الكروت.")
+
+async def create_coupons_handler(update: Update, context: CallbackContext):
+    """Handle coupon creation for super admin"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        text = f"""
+🎟️ **إنشاء كوبونات جديدة** 🎟️
+
+{EMOJIS['admin']} مرحباً **{user['full_name']}**
+
+📝 **معلومات الكوبون:**
+
+💰 **أدخل قيمة الكوبون بالريال:**
+
+💡 **أمثلة:**
+• 100 - كوبون بقيمة 100 ريال
+• 250 - كوبون بقيمة 250 ريال
+• 500 - كوبون بقيمة 500 ريال
+• 1000 - كوبون بقيمة 1000 ريال
+
+⚠️ **ملاحظات:**
+• سيتم إنشاء رقم كوبون عشوائي (A + 8 أرقام)
+• الكوبون صالح للاستخدام مرة واحدة فقط
+• يمكن للمستخدمين تطبيق الكوبون على محافظهم
+• القيمة يجب أن تكون أكبر من صفر
+
+📝 **اكتب قيمة الكوبون بالريال:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('❌ إلغاء', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+        context.user_data['admin_creating_coupon'] = True
+        
+    except Exception as e:
+        logger.error(f"Error in create coupons handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إنشاء الكوبون.")
+
+def generate_coupon_code():
+    """Generate random coupon code starting with A and 8 digits"""
+    import random
+    
+    # Generate 8 random digits
+    digits = ''.join([str(random.randint(0, 9)) for _ in range(8)])
+    
+    # Combine A with 8 digits
+    coupon_code = f"A{digits}"
+    
+    return coupon_code
+
+async def process_coupon_creation(update: Update, context: CallbackContext):
+    """Process coupon creation from super admin"""
+    try:
+        if not context.user_data.get('admin_creating_coupon'):
+            return
+        
+        user = get_user(update.effective_user.id)
+        if not user or user['role'] != 'super_admin':
+            await update.message.reply_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # Parse amount
+        try:
+            amount = float(update.message.text.strip())
+        except ValueError:
+            await update.message.reply_text(f"{EMOJIS['error']} يجب إدخال رقم صحيح لقيمة الكوبون.")
+            return
+        
+        # Validate amount
+        if amount <= 0:
+            await update.message.reply_text(f"{EMOJIS['error']} قيمة الكوبون يجب أن تكون أكبر من صفر.")
+            return
+        
+        if amount > 100000:
+            await update.message.reply_text(f"{EMOJIS['error']} قيمة الكوبون كبيرة جداً. الحد الأقصى 100,000 ريال.")
+            return
+        
+        # Generate unique coupon code
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        max_attempts = 10
+        coupon_code = None
+        
+        for _ in range(max_attempts):
+            potential_code = generate_coupon_code()
+            
+            # Check if code already exists
+            cursor.execute('SELECT id FROM coupons WHERE coupon_code = ?', (potential_code,))
+            if not cursor.fetchone():
+                coupon_code = potential_code
+                break
+        
+        if not coupon_code:
+            await update.message.reply_text(f"{EMOJIS['error']} فشل في إنشاء رقم كوبون فريد. حاول مرة أخرى.")
+            conn.close()
+            return
+        
+        # Create coupon
+        from datetime import datetime, timedelta
+        expiry_date = datetime.now() + timedelta(days=365)  # صالح لمدة سنة
+        
+        cursor.execute('''
+            INSERT INTO coupons (coupon_code, amount, created_by, expiry_date, description)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (coupon_code, amount, user['id'], expiry_date, f'كوبون بقيمة {amount:,.0f} ريال'))
+        
+        coupon_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        # Success message
+        success_text = f"""
+🎉 **تم إنشاء الكوبون بنجاح!** 🎉
+
+🎟️ **معلومات الكوبون:**
+🔢 **رقم الكوبون:** `{coupon_code}`
+💰 **القيمة:** {amount:,.0f} ريال
+📅 **تاريخ الإنشاء:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+📅 **تاريخ الانتهاء:** {expiry_date.strftime('%Y-%m-%d')}
+🆔 **معرف الكوبون:** {coupon_id}
+
+📋 **حالة الكوبون:**
+✅ **جاهز للاستخدام**
+🔓 **غير مستخدم**
+
+💡 **كيفية الاستخدام:**
+• يمكن للمستخدمين إدخال الكوبون في محافظهم
+• الكوبون صالح للاستخدام مرة واحدة فقط
+• سيتم إضافة المبلغ لرصيد المحفظة مباشرة
+
+🔧 **الخيارات المتاحة:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🎟️ إنشاء كوبون آخر', callback_data='super_create_coupons'),
+             InlineKeyboardButton('📊 إحصائيات الكوبونات', callback_data='super_coupons_stats')],
+            [InlineKeyboardButton('📋 قائمة الكوبونات', callback_data='super_list_coupons'),
+             InlineKeyboardButton('🏠 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
+        ]
+        
+        await update.message.reply_text(
+            success_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+        # Clear user state
+        context.user_data.pop('admin_creating_coupon', None)
+        
+        # Log the action
+        logger.info(f"Super admin {user['full_name']} created coupon {coupon_code} with value {amount}")
+        
+    except Exception as e:
+        logger.error(f"Error in process coupon creation: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في إنشاء الكوبون.")

@@ -563,6 +563,11 @@ async def handle_text_message(update: Update, context: CallbackContext):
             from bot_modules.admin_functions import admin_process_card_upload
             return await admin_process_card_upload(update, context)
         
+        # Check if admin is creating coupon
+        if context.user_data.get('admin_creating_coupon'):
+            from bot_modules.admin_functions import process_coupon_creation
+            return await process_coupon_creation(update, context)
+        
         # Check if waiting for balance send (old method - keep for compatibility)
         if context.user_data.get('awaiting_balance_send'):
             return await process_balance_send(update, context)
