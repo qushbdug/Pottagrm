@@ -560,6 +560,10 @@ async def handle_text_message(update: Update, context: CallbackContext):
             from bot_modules.admin_functions import admin_process_network_creation
             return await admin_process_network_creation(update, context)
         
+        # Check if supplier is adding network
+        if context.user_data.get('adding_network'):
+            return await process_supplier_network_creation(update, context)
+        
         # Check if admin is uploading cards
         if context.user_data.get('admin_uploading_card'):
             from bot_modules.admin_functions import admin_process_card_upload
@@ -3525,3 +3529,74 @@ async def contact_support_handler(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in contact support handler: {e}")
         await query.edit_message_text("❌ حدث خطأ في عرض معلومات الدعم.")
+
+async def process_supplier_network_creation(update: Update, context: CallbackContext):
+    """معالجة إضافة الشبكة للمزود خطوة بخطوة"""
+    try:
+        text = update.message.text.strip()
+        user = get_user(update.effective_user.id)
+        step = context.user_data.get('network_step', 'name')
+        
+        if step == 'name':
+            # حفظ اسم الشبكة
+            context.user_data['network_name'] = text
+            context.user_data['network_step'] = 'provider'
+            
+            await update.message.reply_text(
+                f"✅ **تم حفظ اسم الشبكة:** {text}\n\n🔸 **الخطوة 2 من 4**\n👤 **أدخل اسم المزود:**",
+                parse_mode='Markdown'
+            )
+            
+        elif step == 'provider':
+            # حفظ اسم المزود
+            context.user_data['network_provider'] = text
+            context.user_data['network_step'] = 'description'
+            
+            await update.message.reply_text(
+                f"✅ **تم حفظ اسم المزود:** {text}\n\n🔸 **الخطوة 3 من 4**\n📝 **أدخل وصف الشبكة:**",
+                parse_mode='Markdown'
+            )
+            
+        elif step == 'description':
+            # حفظ الوصف
+            context.user_data['network_description'] = text
+            context.user_data['network_step'] = 'location'
+            
+            await update.message.reply_text(
+                f"✅ **تم حفظ وصف الشبكة:** {text}\n\n�� **الخطوة 4 من 4**\n📍 **أدخل موقع الشبكة:**",
+                parse_mode='Markdown'
+            )
+            
+        elif step == 'location':
+            # إنشاء الشبكة
+            network_name = context.user_data.get('network_name')
+            provider = context.user_data.get('network_provider')
+            description = context.user_data.get('network_description')
+            
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                
+                cursor.execute('''
+                    INSERT INTO networks (name, provider, description, location, created_by, is_active, is_approved, created_at)
+                    VALUES (?, ?, ?, ?, ?, 1, 1, CURRENT_TIMESTAMP)
+                ''', (network_name, provider, description, text, user['id']))
+                
+                network_id = cursor.lastrowid
+                conn.commit()
+                conn.close()
+                
+                context.user_data.clear()
+                
+                await update.message.reply_text(
+                    f"✅ **تم إنشاء الشبكة بنجاح!**\n\n🌐 **{network_name}**\n👤 {provider}\n📍 {text}\n🆔 معرف: #{network_id}",
+                    parse_mode='Markdown'
+                )
+                
+            except Exception as e:
+                await update.message.reply_text(f"❌ خطأ في إنشاء الشبكة: {e}")
+                context.user_data.clear()
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطأ في معالجة الشبكة: {e}")
+        context.user_data.clear()
