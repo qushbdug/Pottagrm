@@ -576,6 +576,15 @@ async def account_settings_handler(update: Update, context):
         
         permissions = get_user_permissions(user['id'])
         
+                # تحديد نوع الحساب
+        role_names = {
+            'user': 'عميل', 
+            'agent': 'وكيل', 
+            'supplier': 'مزود', 
+            'admin': 'مشرف', 
+            'super_admin': 'مشرف أعلى'
+        }
+        
         settings_text = f"""
 ⚙️ **إعدادات الحساب** ⚙️
 
@@ -1620,6 +1629,15 @@ async def supplier_settings_handler(update: Update, context):
         
         conn.close()
         
+                # تحديد نوع الحساب
+        role_names = {
+            'user': 'عميل', 
+            'agent': 'وكيل', 
+            'supplier': 'مزود', 
+            'admin': 'مشرف', 
+            'super_admin': 'مشرف أعلى'
+        }
+        
         settings_text = f"""
 ⚙️ **إعدادات المزود المتقدمة** ⚙️
 
@@ -2026,6 +2044,15 @@ async def notification_settings_handler(update: Update, context: CallbackContext
         query = update.callback_query
         
         user = get_user(query.from_user.id)
+        
+                # تحديد نوع الحساب
+        role_names = {
+            'user': 'عميل', 
+            'agent': 'وكيل', 
+            'supplier': 'مزود', 
+            'admin': 'مشرف', 
+            'super_admin': 'مشرف أعلى'
+        }
         
         settings_text = f"""
 🔔 **إعدادات الإشعارات المتقدمة** 🔔
@@ -3014,6 +3041,15 @@ async def account_settings_handler(update: Update, context: CallbackContext):
         query = update.callback_query
         user = get_user(query.from_user.id)
         
+                # تحديد نوع الحساب
+        role_names = {
+            'user': 'عميل', 
+            'agent': 'وكيل', 
+            'supplier': 'مزود', 
+            'admin': 'مشرف', 
+            'super_admin': 'مشرف أعلى'
+        }
+        
         settings_text = f"""
 ⚙️ **إعدادات الحساب** ⚙️
 
@@ -3021,7 +3057,7 @@ async def account_settings_handler(update: Update, context: CallbackContext):
 💳 **رقم المحفظة:** {user['wallet_number']}
 📱 **رقم الهاتف:** {user.get('phone', 'غير محدد')}
 🆔 **معرف تلغرام:** {user.get('telegram_id', 'غير محدد')}
-👑 **نوع الحساب:** {{'user': 'عميل', 'agent': 'وكيل', 'supplier': 'مزود', 'admin': 'مشرف', 'super_admin': 'مشرف أعلى'}.get(user.get('role', 'user'), 'عميل')}
+👑 **نوع الحساب:** {role_names.get(user.get('role', 'user'), 'عميل')}
 
 ⚙️ **الإعدادات المتاحة:**
 
