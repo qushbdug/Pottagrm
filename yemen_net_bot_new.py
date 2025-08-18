@@ -2703,6 +2703,47 @@ async def search_networks_handler(update: Update, context: CallbackContext):
         logger.error(f"Error in search networks handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في البحث عن الشبكات.")
 
+async def transfer_to_friend_handler(update: Update, context: CallbackContext):
+    """معالج تحويل الرصيد للأصدقاء"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        transfer_text = f"""
+💸 **تحويل رصيد لصديق** 💸
+
+👤 **{user['full_name']}**
+💰 رصيدك: **{user['balance']:,.2f}** ريال
+
+📋 **تعليمات التحويل:**
+1️⃣ أدخل رقم محفظة المستلم (9 أرقام)
+2️⃣ أدخل المبلغ المراد تحويله
+3️⃣ تأكيد العملية
+
+💡 **للتحويل السريع:**
+• استخدم زر "🔍 البحث عن مستخدم" أدناه
+• ابحث بالاسم أو رقم المحفظة أو الهاتف
+• أدخل المبلغ المطلوب تحويله
+• تأكيد العملية بأمان
+
+🔒 **ضمانات الأمان:**
+• تأكيد مزدوج قبل التحويل
+• إشعار فوري للطرفين
+• سجل كامل للمعاملة
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton(f'🔍 البحث عن مستخدم', callback_data='search_user')],
+            [InlineKeyboardButton(f'📋 آخر التحويلات', callback_data='transfer_history')],
+            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(transfer_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in transfer handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض صفحة التحويل.")
+
 async def recharge_balance_handler(update: Update, context: CallbackContext):
     """Handle balance recharge"""
     try:
