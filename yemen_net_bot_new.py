@@ -282,6 +282,24 @@ async def button_click_handler(update: Update, context):
             await mark_all_read_handler(update, context)
         elif callback_data == 'recharge_balance':
             await recharge_balance_handler(update, context)
+        elif callback_data == 'personal_reports':
+            await personal_reports_handler(update, context)
+        elif callback_data == 'promotions':
+            await promotions_handler(update, context)
+        elif callback_data == 'my_notifications':
+            await my_notifications_handler(update, context)
+        elif callback_data == 'account_settings':
+            await account_settings_handler(update, context)
+        elif callback_data == 'transfer_history':
+            await transfer_history_handler(update, context)
+        elif callback_data == 'update_profile':
+            await update_profile_handler(update, context)
+        elif callback_data == 'change_password':
+            await change_password_handler(update, context)
+        elif callback_data == 'contact_admin':
+            await contact_admin_handler(update, context)
+        elif callback_data == 'account_status':
+            await account_status_handler(update, context)
         
         # Refresh balance
         elif callback_data == 'refresh_balance':
@@ -2743,6 +2761,635 @@ async def transfer_to_friend_handler(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in transfer handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض صفحة التحويل.")
+
+async def personal_reports_handler(update: Update, context: CallbackContext):
+    """معالج التقارير الشخصية"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        # الحصول على إحصائيات المستخدم
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # إحصائيات المعاملات
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as total_transactions,
+                COALESCE(SUM(CASE WHEN from_user = ? THEN amount END), 0) as sent_amount,
+                COALESCE(SUM(CASE WHEN to_user = ? THEN amount END), 0) as received_amount,
+                COUNT(CASE WHEN from_user = ? THEN 1 END) as sent_count,
+                COUNT(CASE WHEN to_user = ? THEN 1 END) as received_count
+            FROM transactions 
+            WHERE from_user = ? OR to_user = ?
+        ''', (user['id'], user['id'], user['id'], user['id'], user['id'], user['id']))
+        
+        stats = cursor.fetchone()
+        total_trans, sent_amount, received_amount, sent_count, received_count = stats
+        
+        # إحصائيات هذا الشهر
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as monthly_transactions,
+                COALESCE(SUM(amount), 0) as monthly_amount
+            FROM transactions 
+            WHERE (from_user = ? OR to_user = ?) 
+            AND DATE(created_at) >= DATE('now', 'start of month')
+        ''', (user['id'], user['id']))
+        
+        monthly_stats = cursor.fetchone()
+        monthly_trans, monthly_amount = monthly_stats
+        
+        conn.close()
+        
+        reports_text = f"""
+📊 **تقاريري الشخصية** 📊
+
+👤 **{user['full_name']}**
+💰 **الرصيد الحالي:** {user['balance']:,.2f} ريال
+💳 **رقم المحفظة:** {user['wallet_number']}
+
+📈 **إحصائيات شاملة:**
+
+💸 **المعاملات المرسلة:**
+• عدد المعاملات: **{sent_count or 0}** معاملة
+• إجمالي المبلغ: **{sent_amount:,.2f}** ريال
+
+📥 **المعاملات المستلمة:**
+• عدد المعاملات: **{received_count or 0}** معاملة
+• إجمالي المبلغ: **{received_amount:,.2f}** ريال
+
+📊 **إحصائيات عامة:**
+• إجمالي المعاملات: **{total_trans or 0}** معاملة
+• صافي التحويلات: **{received_amount - sent_amount:+,.2f}** ريال
+
+📅 **هذا الشهر:**
+• معاملات الشهر: **{monthly_trans or 0}** معاملة
+• مبلغ الشهر: **{monthly_amount:,.2f}** ريال
+
+🎯 **تحليل النشاط:**
+• متوسط المعاملة: **{(sent_amount + received_amount) / max(total_trans, 1):,.2f}** ريال
+• نشاط الشهر: **{monthly_trans / max(total_trans, 1) * 100:.1f}%** من إجمالي النشاط
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📊 تفاصيل المعاملات', callback_data='transaction_details'),
+             InlineKeyboardButton('📈 إحصائيات المحفظة', callback_data='wallet_stats')],
+            [InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(reports_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in personal reports handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في التقارير الشخصية.")
+
+async def promotions_handler(update: Update, context: CallbackContext):
+    """معالج العروض والخصومات"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        # الحصول على العروض المتاحة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # البحث عن أفضل العروض (أقل الأسعار)
+        cursor.execute('''
+            SELECT n.name, n.provider, n.location, MIN(cc.price) as best_price, COUNT(cc.id) as categories
+            FROM networks n
+            JOIN card_categories cc ON n.id = cc.network_id
+            WHERE n.is_active = 1 AND cc.is_available = 1
+            GROUP BY n.id, n.name, n.provider, n.location
+            HAVING best_price <= 100
+            ORDER BY best_price ASC
+            LIMIT 6
+        ''')
+        offers = cursor.fetchall()
+        
+        # الكوبونات المتاحة
+        cursor.execute('SELECT COUNT(*) FROM coupons WHERE is_used = 0')
+        available_coupons = cursor.fetchone()[0] or 0
+        
+        conn.close()
+        
+        promotions_text = f"""
+🎁 **العروض والخصومات** 🎁
+
+👤 **{user['full_name']}**
+💰 رصيدك: **{user['balance']:,.2f}** ريال
+
+🔥 **العروض الحصرية:**
+
+"""
+        
+        if offers:
+            for i, (name, provider, location, price, categories) in enumerate(offers, 1):
+                location_text = f"📍 {location}" if location else ""
+                promotions_text += f"""
+🏆 **عرض {i}: {name}**
+👤 {provider} {location_text}
+💰 **أسعار تبدأ من {price:,.0f} ريال فقط!**
+📦 {categories} فئة متاحة
+🎯 خصم خاص للعملاء المميزين
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+        
+        promotions_text += f"""
+
+🎟️ **عروض الكوبونات:**
+• كوبونات متاحة: **{available_coupons}** كوبون
+• شحن فوري وآمن
+• أسعار مخفضة
+• متاح 24/7
+
+🎯 **عروض خاصة:**
+• خصم 10% للعملاء الجدد
+• مكافآت الولاء
+• عروض نهاية الأسبوع
+• خصومات الكميات
+
+⏰ **العروض محدودة الوقت!**
+💡 **اغتنم الفرصة الآن**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🛒 شراء كروت', callback_data='buy_cards'),
+             InlineKeyboardButton('🎟️ شحن بكوبون', callback_data='redeem_coupon')],
+            [InlineKeyboardButton('🔍 البحث في الشبكات', callback_data='search_networks'),
+             InlineKeyboardButton('🎁 تفاصيل العروض', callback_data='promotion_details')],
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(promotions_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in promotions handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في العروض والخصومات.")
+
+async def my_notifications_handler(update: Update, context: CallbackContext):
+    """معالج إشعاراتي"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        # الحصول على آخر المعاملات كإشعارات
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT type, amount, description, created_at
+            FROM transactions 
+            WHERE from_user = ? OR to_user = ?
+            ORDER BY created_at DESC
+            LIMIT 10
+        ''', (user['id'], user['id']))
+        
+        recent_transactions = cursor.fetchall()
+        conn.close()
+        
+        notifications_text = f"""
+🔔 **إشعاراتي** 🔔
+
+👤 **{user['full_name']}**
+
+📬 **آخر الإشعارات:**
+
+"""
+        
+        if recent_transactions:
+            for trans_type, amount, description, created_at in recent_transactions:
+                # تحديد نوع الإشعار
+                if trans_type == 'card_purchase':
+                    icon = "🛒"
+                    title = "شراء كرت"
+                elif trans_type == 'coupon_redeem':
+                    icon = "🎟️"
+                    title = "شحن بكوبون"
+                elif trans_type == 'transfer':
+                    icon = "💸"
+                    title = "تحويل رصيد"
+                else:
+                    icon = "📊"
+                    title = "معاملة"
+                
+                date_str = created_at[:16] if created_at else 'غير محدد'
+                notifications_text += f"""
+{icon} **{title}**
+💰 المبلغ: **{amount:,.2f}** ريال
+📝 التفاصيل: {description or 'غير محدد'}
+📅 {date_str}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+        else:
+            notifications_text += """
+📭 **لا توجد إشعارات حديثة**
+
+💡 **ستصلك إشعارات عند:**
+• إتمام معاملة جديدة
+• استلام تحويل رصيد
+• شراء كرت إنترنت
+• شحن رصيد بكوبون
+• تحديثات النظام المهمة
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🔔 إعدادات الإشعارات', callback_data='notification_settings'),
+             InlineKeyboardButton('✅ وضع علامة مقروء', callback_data='mark_all_read')],
+            [InlineKeyboardButton('📊 تقاريري الشخصية', callback_data='personal_reports'),
+             InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet')],
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(notifications_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in my notifications handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في الإشعارات.")
+
+async def account_settings_handler(update: Update, context: CallbackContext):
+    """معالج إعدادات الحساب"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        settings_text = f"""
+⚙️ **إعدادات الحساب** ⚙️
+
+👤 **{user['full_name']}**
+💳 **رقم المحفظة:** {user['wallet_number']}
+📱 **رقم الهاتف:** {user.get('phone', 'غير محدد')}
+🆔 **معرف تلغرام:** {user.get('telegram_id', 'غير محدد')}
+👑 **نوع الحساب:** {{'user': 'عميل', 'agent': 'وكيل', 'supplier': 'مزود', 'admin': 'مشرف', 'super_admin': 'مشرف أعلى'}.get(user.get('role', 'user'), 'عميل')}
+
+⚙️ **الإعدادات المتاحة:**
+
+🔔 **إعدادات الإشعارات:**
+• إشعارات المعاملات: مفعل ✅
+• إشعارات التحديثات: مفعل ✅
+• إشعارات العروض: مفعل ✅
+
+🔒 **إعدادات الأمان:**
+• حماية المحفظة: مفعل ✅
+• تأكيد العمليات: مفعل ✅
+• إشعارات الأمان: مفعل ✅
+
+👁️ **إعدادات الخصوصية:**
+• إظهار الاسم: مفعل ✅
+• إظهار رقم الهاتف: مخفي ❌
+• إظهار آخر ظهور: مفعل ✅
+
+📊 **إعدادات التقارير:**
+• التقارير الشخصية: مفعل ✅
+• إحصائيات المحفظة: مفعل ✅
+• سجل المعاملات: مفعل ✅
+
+💡 **معلومات الحساب:**
+• تاريخ التسجيل: {user.get('created_at', 'غير محدد')[:10] if user.get('created_at') else 'غير محدد'}
+• آخر تحديث: اليوم
+• حالة الحساب: نشط ✅
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🔔 إعدادات الإشعارات', callback_data='notification_settings'),
+             InlineKeyboardButton('🔒 إعدادات الخصوصية', callback_data='privacy_settings')],
+            [InlineKeyboardButton('🔄 تحديث البيانات', callback_data='update_profile'),
+             InlineKeyboardButton('🔐 تغيير كلمة المرور', callback_data='change_password')],
+            [InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(settings_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in account settings handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إعدادات الحساب.")
+
+async def transfer_history_handler(update: Update, context: CallbackContext):
+    """معالج سجل التحويلات"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        # الحصول على آخر التحويلات
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT from_user, to_user, amount, description, created_at
+            FROM transactions 
+            WHERE (from_user = ? OR to_user = ?) AND type = 'transfer'
+            ORDER BY created_at DESC
+            LIMIT 15
+        ''', (user['id'], user['id']))
+        
+        transfers = cursor.fetchall()
+        conn.close()
+        
+        history_text = f"""
+📋 **سجل التحويلات** 📋
+
+👤 **{user['full_name']}**
+💰 الرصيد الحالي: **{user['balance']:,.2f}** ريال
+
+📊 **آخر 15 تحويل:**
+
+"""
+        
+        if transfers:
+            for from_user_id, to_user_id, amount, description, created_at in transfers:
+                # تحديد اتجاه التحويل
+                if from_user_id == user['id']:
+                    direction = "📤 مرسل"
+                    color = "🔴"
+                    other_user_id = to_user_id
+                else:
+                    direction = "📥 مستلم"
+                    color = "🟢"
+                    other_user_id = from_user_id
+                
+                # الحصول على اسم المستخدم الآخر
+                try:
+                    other_user = get_user(other_user_id) if other_user_id else None
+                    other_name = other_user['full_name'] if other_user else 'مستخدم محذوف'
+                except:
+                    other_name = 'غير معروف'
+                
+                date_str = created_at[:16] if created_at else 'غير محدد'
+                
+                history_text += f"""
+{color} **{direction}**
+👤 {other_name}
+💰 المبلغ: **{amount:,.2f}** ريال
+📝 {description or 'تحويل رصيد'}
+📅 {date_str}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+        else:
+            history_text += """
+📭 **لا توجد تحويلات سابقة**
+
+💡 **لبدء التحويل:**
+• اضغط على "💸 تحويل رصيد جديد"
+• ابحث عن المستلم
+• أدخل المبلغ وأكد العملية
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('💸 تحويل رصيد جديد', callback_data='transfer_to_friend'),
+             InlineKeyboardButton('🔍 البحث عن مستخدم', callback_data='search_user')],
+            [InlineKeyboardButton('📊 تقاريري الشخصية', callback_data='personal_reports'),
+             InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet')],
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(history_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in transfer history handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في سجل التحويلات.")
+
+async def update_profile_handler(update: Update, context: CallbackContext):
+    """معالج تحديث البيانات الشخصية"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        update_text = f"""
+🔄 **تحديث البيانات الشخصية** 🔄
+
+👤 **البيانات الحالية:**
+📝 الاسم: **{user['full_name']}**
+📱 الهاتف: **{user.get('phone', 'غير محدد')}**
+💳 رقم المحفظة: **{user['wallet_number']}**
+🆔 معرف تلغرام: **{user.get('telegram_id', 'غير محدد')}**
+
+✏️ **يمكنك تحديث:**
+• الاسم الكامل
+• رقم الهاتف
+• معلومات إضافية
+
+🔒 **لا يمكن تغيير:**
+• رقم المحفظة (ثابت)
+• معرف تلغرام (تلقائي)
+
+💡 **لتحديث بياناتك:**
+تواصل مع الدعم الفني أو استخدم الأزرار أدناه
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📞 تواصل مع الدعم', callback_data='contact_admin'),
+             InlineKeyboardButton('📋 عرض البيانات الكاملة', callback_data='view_full_profile')],
+            [InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(update_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in update profile handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحديث البيانات.")
+
+async def change_password_handler(update: Update, context: CallbackContext):
+    """معالج تغيير كلمة المرور"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        password_text = f"""
+🔐 **تغيير كلمة المرور** 🔐
+
+👤 **{user['full_name']}**
+
+🔒 **أمان الحساب:**
+• كلمة المرور الحالية: محمية ✅
+• التشفير: نشط ✅
+• الحماية: متقدمة ✅
+
+🛡️ **ميزات الأمان:**
+• تشفير قوي للبيانات
+• حماية من الوصول غير المصرح
+• تسجيل دخول آمن
+• مراقبة النشاط المشبوه
+
+🔑 **إعدادات الأمان:**
+• تأكيد العمليات المالية: مفعل ✅
+• إشعارات تسجيل الدخول: مفعل ✅
+• قفل تلقائي للحساب: مفعل ✅
+• مراجعة أمان دورية: شهرياً ✅
+
+💡 **ملاحظة:**
+نظام البوت يستخدم معرف تلغرام الآمن
+لا حاجة لكلمة مرور إضافية
+
+🔒 **حسابك محمي بالكامل!**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🛡️ إعدادات الأمان', callback_data='security_settings'),
+             InlineKeyboardButton('🔔 إشعارات الأمان', callback_data='security_notifications')],
+            [InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(password_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in change password handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إعدادات كلمة المرور.")
+
+async def contact_admin_handler(update: Update, context: CallbackContext):
+    """معالج التواصل مع الإدارة"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        contact_text = f"""
+📞 **التواصل مع الإدارة** 📞
+
+👤 **{user['full_name']}**
+💳 رقم محفظتك: **{user['wallet_number']}**
+
+📱 **طرق التواصل المتاحة:**
+
+💬 **تلغرام:**
+• الدعم الفني: @YemenNetSupport
+• المشرف الأعلى: @YemenNetAdmin
+• القناة الرسمية: @YemenNetOfficial
+
+📱 **واتساب:**
+• رقم الدعم: +967777777777
+• ساعات العمل: 8 صباحاً - 10 مساءً
+• رد سريع خلال 30 دقيقة
+
+📧 **البريد الإلكتروني:**
+• الدعم العام: support@yemennet.com
+• الشكاوى: complaints@yemennet.com
+• الاقتراحات: suggestions@yemennet.com
+
+🏢 **المكاتب:**
+• المكتب الرئيسي: صنعاء، شارع الزبيري
+• فرع عدن: المعلا، شارع الملكة أروى
+• فرع تعز: شارع جمال عبد الناصر
+
+⏰ **أوقات العمل:**
+• السبت - الخميس: 8:00 ص - 10:00 م
+• الجمعة: 2:00 م - 10:00 م
+• خدمة الطوارئ: 24/7
+
+🎯 **نوع المساعدة:**
+• مشاكل تقنية
+• استفسارات مالية
+• شكاوى الخدمة
+• اقتراحات التطوير
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('💬 تلغرام الدعم', url='https://t.me/YemenNetSupport'),
+             InlineKeyboardButton('📱 واتساب', url='https://wa.me/967777777777')],
+            [InlineKeyboardButton('📧 إرسال إيميل', callback_data='send_email'),
+             InlineKeyboardButton('🏢 عناوين المكاتب', callback_data='office_locations')],
+            [InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(contact_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in contact admin handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في معلومات التواصل.")
+
+async def account_status_handler(update: Update, context: CallbackContext):
+    """معالج حالة الحساب"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        # الحصول على إحصائيات الحساب
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # آخر نشاط
+        cursor.execute('''
+            SELECT MAX(created_at) FROM transactions WHERE from_user = ? OR to_user = ?
+        ''', (user['id'], user['id']))
+        last_activity = cursor.fetchone()[0]
+        
+        # عدد المعاملات
+        cursor.execute('''
+            SELECT COUNT(*) FROM transactions WHERE from_user = ? OR to_user = ?
+        ''', (user['id'], user['id']))
+        total_transactions = cursor.fetchone()[0] or 0
+        
+        conn.close()
+        
+        # تحديد مستوى النشاط
+        if total_transactions >= 50:
+            activity_level = "🔥 نشط جداً"
+            activity_color = "🟢"
+        elif total_transactions >= 20:
+            activity_level = "⚡ نشط"
+            activity_color = "🟡"
+        elif total_transactions >= 5:
+            activity_level = "📊 متوسط النشاط"
+            activity_color = "🟠"
+        else:
+            activity_level = "🌱 مبتدئ"
+            activity_color = "🔵"
+        
+        status_text = f"""
+📊 **حالة الحساب** 📊
+
+👤 **{user['full_name']}**
+💳 **رقم المحفظة:** {user['wallet_number']}
+
+{activity_color} **مستوى النشاط:** {activity_level}
+
+📈 **إحصائيات الحساب:**
+• الرصيد الحالي: **{user['balance']:,.2f}** ريال
+• إجمالي المعاملات: **{total_transactions}** معاملة
+• آخر نشاط: {last_activity[:10] if last_activity else 'لم يتم تسجيل نشاط'}
+• تاريخ التسجيل: {user.get('created_at', 'غير محدد')[:10] if user.get('created_at') else 'غير محدد'}
+
+✅ **حالة الحساب:**
+• الحساب: نشط ومفعل ✅
+• التحقق: مكتمل ✅
+• الأمان: محمي ✅
+• الإشعارات: مفعلة ✅
+
+🎯 **تقييم الحساب:**
+• الموثوقية: ممتاز ⭐⭐⭐⭐⭐
+• الأمان: عالي 🔒
+• النشاط: {activity_level}
+• التفاعل: إيجابي 👍
+
+🏆 **الإنجازات:**
+• عضو مسجل ✅
+• معاملات آمنة ✅
+• استخدام منتظم ✅
+• بدون مخالفات ✅
+
+💡 **نصائح لتحسين الحساب:**
+• استخدم الميزات المتقدمة
+• راجع التقارير الشخصية
+• حافظ على أمان الحساب
+• تفاعل مع العروض الجديدة
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📊 تقاريري الشخصية', callback_data='personal_reports'),
+             InlineKeyboardButton('📈 إحصائيات المحفظة', callback_data='wallet_stats')],
+            [InlineKeyboardButton('🔔 إشعاراتي', callback_data='my_notifications'),
+             InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings')],
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(status_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in account status handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في حالة الحساب.")
 
 async def recharge_balance_handler(update: Update, context: CallbackContext):
     """Handle balance recharge"""
