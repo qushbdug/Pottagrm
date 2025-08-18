@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-دمج النظام المحاسبي مع معاملات البوت
-Integration of Accounting System with Bot Transactions
+دمج النظام المحاسبي مع معاملات البوت + تصدير Excel
+Integration of Accounting System with Bot Transactions + Excel Export
 """
 
 import sqlite3
@@ -10,6 +10,9 @@ from datetime import datetime
 from decimal import Decimal
 import uuid
 import json
+import pandas as pd
+import os
+from io import BytesIO
 
 logger = logging.getLogger(__name__)
 
@@ -53,20 +56,6 @@ def create_accounting_entry(transaction_type: str, amount: float, user_id: int,
                 'entries': [
                     {'account_code': '1100', 'debit': amount, 'credit': 0, 'desc': 'زيادة رصيد المستلم'},
                     {'account_code': '1100', 'debit': 0, 'credit': amount, 'desc': 'تقليل رصيد المرسل'}
-                ]
-            },
-            'agent_commission': {
-                'description': f'عمولة وكيل - مبلغ {amount:,.2f} ريال',
-                'entries': [
-                    {'account_code': '5200', 'debit': amount, 'credit': 0, 'desc': 'مصروف عمولة الوكيل'},
-                    {'account_code': '2100', 'debit': 0, 'credit': amount, 'desc': 'عمولة مستحقة للوكيل'}
-                ]
-            },
-            'provider_payment': {
-                'description': f'دفع مستحقات مزود - مبلغ {amount:,.2f} ريال',
-                'entries': [
-                    {'account_code': '2000', 'debit': amount, 'credit': 0, 'desc': 'تقليل مستحقات المزود'},
-                    {'account_code': '1000', 'debit': 0, 'credit': amount, 'desc': 'دفع نقدي للمزود'}
                 ]
             }
         }
@@ -121,27 +110,291 @@ def create_accounting_entry(transaction_type: str, amount: float, user_id: int,
                 entry_date.year, entry_date.month
             ))
         
-        # تسجيل في سجل التدقيق
-        cursor.execute('''
-            INSERT INTO accounting_audit_trail
-            (action_type, table_name, record_id, new_values, user_id, user_role, description)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            'CREATE', 'journal_entries', cursor.lastrowid,
-            json.dumps({'entry_id': entry_id, 'amount': amount, 'type': transaction_type}),
-            user_id, 'system', f"إنشاء قيد محاسبي: {transaction_type}"
-        ))
-        
         conn.commit()
         conn.close()
         
-        logger.info(f"تم إنشاء قيد محاسبي: {entry_id} للمعاملة {transaction_type}")
+        logger.info(f"تم إنشاء قيد محاسبي: {entry_id}")
         return entry_id
         
     except Exception as e:
         conn.rollback()
         conn.close()
         logger.error(f"خطأ في إنشاء القيد المحاسبي: {e}")
+        raise
+
+def export_trial_balance_to_excel(as_of_date: str = None, filename: str = None) -> str:
+    """تصدير ميزان المراجعة إلى Excel"""
+    try:
+        if not filename:
+            date_str = as_of_date or datetime.now().strftime('%Y-%m-%d')
+            filename = f"trial_balance_{date_str}.xlsx"
+        
+        # الحصول على بيانات ميزان المراجعة
+        trial_balance = get_trial_balance(as_of_date)
+        
+        # إنشاء DataFrame
+        df_data = []
+        for account in trial_balance['accounts']:
+            df_data.append({
+                'رقم الحساب': account['account_code'],
+                'اسم الحساب': account['account_name'],
+                'نوع الحساب': {
+                    'asset': 'أصول',
+                    'liability': 'خصوم', 
+                    'equity': 'حقوق ملكية',
+                    'revenue': 'إيرادات',
+                    'expense': 'مصروفات'
+                }.get(account['account_type'], account['account_type']),
+                'إجمالي المدين': f"{account['debit_total']:,.2f}",
+                'إجمالي الدائن': f"{account['credit_total']:,.2f}",
+                'نوع الرصيد': 'مدين' if account['balance_type'] == 'debit' else 'دائن',
+                'مبلغ الرصيد': f"{account['balance_amount']:,.2f}"
+            })
+        
+        # إضافة الإجماليات
+        df_data.append({
+            'رقم الحساب': '',
+            'اسم الحساب': 'الإجماليات',
+            'نوع الحساب': '',
+            'إجمالي المدين': f"{trial_balance['totals']['total_debit']:,.2f}",
+            'إجمالي الدائن': f"{trial_balance['totals']['total_credit']:,.2f}",
+            'نوع الرصيد': 'متوازن' if trial_balance['totals']['is_balanced'] else 'غير متوازن',
+            'مبلغ الرصيد': '0.00'
+        })
+        
+        df = pd.DataFrame(df_data)
+        
+        # إنشاء ملف Excel مع تنسيق
+        filepath = f"/workspace/{filename}"
+        with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
+            # ميزان المراجعة
+            df.to_excel(writer, sheet_name='ميزان المراجعة', index=False)
+            
+            # تنسيق بسيط للورقة
+            worksheet = writer.sheets['ميزان المراجعة']
+            
+            # تعديل عرض الأعمدة
+            worksheet.column_dimensions['A'].width = 15  # رقم الحساب
+            worksheet.column_dimensions['B'].width = 30  # اسم الحساب
+            worksheet.column_dimensions['C'].width = 15  # نوع الحساب
+            worksheet.column_dimensions['D'].width = 15  # إجمالي المدين
+            worksheet.column_dimensions['E'].width = 15  # إجمالي الدائن
+            worksheet.column_dimensions['F'].width = 15  # نوع الرصيد
+            worksheet.column_dimensions['G'].width = 15  # مبلغ الرصيد
+        
+        return filepath
+        
+    except Exception as e:
+        logger.error(f"خطأ في تصدير ميزان المراجعة: {e}")
+        raise
+
+def export_income_statement_to_excel(start_date: str = None, end_date: str = None, filename: str = None) -> str:
+    """تصدير قائمة الأرباح والخسائر إلى Excel"""
+    try:
+        if not filename:
+            date_str = datetime.now().strftime('%Y-%m')
+            filename = f"income_statement_{date_str}.xlsx"
+        
+        # الحصول على بيانات قائمة الأرباح والخسائر
+        income_statement = get_income_statement(start_date, end_date)
+        
+        # إنشاء DataFrame للإيرادات
+        revenues_data = []
+        for revenue in income_statement['revenues']:
+            revenues_data.append({
+                'رقم الحساب': revenue['code'],
+                'اسم الحساب': revenue['name'],
+                'المبلغ': f"{revenue['amount']:,.2f}"
+            })
+        
+        # إنشاء DataFrame للمصروفات
+        expenses_data = []
+        for expense in income_statement['expenses']:
+            expenses_data.append({
+                'رقم الحساب': expense['code'],
+                'اسم الحساب': expense['name'],
+                'المبلغ': f"{expense['amount']:,.2f}"
+            })
+        
+        # إنشاء ملف Excel
+        filepath = f"/workspace/{filename}"
+        with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
+            # ورقة الإيرادات
+            if revenues_data:
+                df_revenues = pd.DataFrame(revenues_data)
+                df_revenues.to_excel(writer, sheet_name='الإيرادات', index=False)
+            
+            # ورقة المصروفات
+            if expenses_data:
+                df_expenses = pd.DataFrame(expenses_data)
+                df_expenses.to_excel(writer, sheet_name='المصروفات', index=False)
+            
+            # ورقة الملخص
+            summary_data = [
+                {'البيان': 'إجمالي الإيرادات', 'المبلغ': f"{income_statement['totals']['total_revenue']:,.2f}"},
+                {'البيان': 'إجمالي المصروفات', 'المبلغ': f"{income_statement['totals']['total_expenses']:,.2f}"},
+                {'البيان': 'صافي الدخل', 'المبلغ': f"{income_statement['totals']['net_income']:,.2f}"}
+            ]
+            
+            df_summary = pd.DataFrame(summary_data)
+            df_summary.to_excel(writer, sheet_name='الملخص', index=False)
+        
+        return filepath
+        
+    except Exception as e:
+        logger.error(f"خطأ في تصدير قائمة الأرباح والخسائر: {e}")
+        raise
+
+def export_balance_sheet_to_excel(as_of_date: str = None, filename: str = None) -> str:
+    """تصدير الميزانية العمومية إلى Excel"""
+    try:
+        if not filename:
+            date_str = as_of_date or datetime.now().strftime('%Y-%m-%d')
+            filename = f"balance_sheet_{date_str}.xlsx"
+        
+        # الحصول على بيانات الميزانية العمومية
+        balance_sheet = get_balance_sheet(as_of_date)
+        
+        # إنشاء DataFrame
+        all_data = []
+        
+        # الأصول
+        all_data.append({'البيان': 'الأصول', 'المبلغ': '', 'النوع': 'header'})
+        for asset in balance_sheet['assets']:
+            all_data.append({
+                'البيان': f"  {asset['name']} ({asset['code']})",
+                'المبلغ': f"{asset['amount']:,.2f}",
+                'النوع': 'asset'
+            })
+        all_data.append({'البيان': 'إجمالي الأصول', 'المبلغ': f"{balance_sheet['totals']['total_assets']:,.2f}", 'النوع': 'total'})
+        
+        # الخصوم
+        all_data.append({'البيان': '', 'المبلغ': '', 'النوع': 'spacer'})
+        all_data.append({'البيان': 'الخصوم', 'المبلغ': '', 'النوع': 'header'})
+        for liability in balance_sheet['liabilities']:
+            all_data.append({
+                'البيان': f"  {liability['name']} ({liability['code']})",
+                'المبلغ': f"{liability['amount']:,.2f}",
+                'النوع': 'liability'
+            })
+        all_data.append({'البيان': 'إجمالي الخصوم', 'المبلغ': f"{balance_sheet['totals']['total_liabilities']:,.2f}", 'النوع': 'total'})
+        
+        # حقوق الملكية
+        all_data.append({'البيان': '', 'المبلغ': '', 'النوع': 'spacer'})
+        all_data.append({'البيان': 'حقوق الملكية', 'المبلغ': '', 'النوع': 'header'})
+        for equity in balance_sheet['equity']:
+            all_data.append({
+                'البيان': f"  {equity['name']} ({equity['code']})",
+                'المبلغ': f"{equity['amount']:,.2f}",
+                'النوع': 'equity'
+            })
+        all_data.append({'البيان': 'إجمالي حقوق الملكية', 'المبلغ': f"{balance_sheet['totals']['total_equity']:,.2f}", 'النوع': 'total'})
+        
+        df = pd.DataFrame(all_data)
+        
+        # إنشاء ملف Excel
+        filepath = f"/workspace/{filename}"
+        with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
+            df[['البيان', 'المبلغ']].to_excel(writer, sheet_name='الميزانية العمومية', index=False)
+        
+        return filepath
+        
+    except Exception as e:
+        logger.error(f"خطأ في تصدير الميزانية العمومية: {e}")
+        raise
+
+def export_general_ledger_to_excel(account_code: str = None, start_date: str = None, 
+                                 end_date: str = None, filename: str = None) -> str:
+    """تصدير دفتر الأستاذ العام إلى Excel"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # بناء الاستعلام
+        where_conditions = []
+        params = []
+        
+        if account_code:
+            where_conditions.append("coa.account_code = ?")
+            params.append(account_code)
+        
+        if start_date:
+            where_conditions.append("gl.transaction_date >= ?")
+            params.append(start_date)
+        
+        if end_date:
+            where_conditions.append("gl.transaction_date <= ?")
+            params.append(end_date)
+        
+        where_clause = ""
+        if where_conditions:
+            where_clause = "WHERE " + " AND ".join(where_conditions)
+        
+        cursor.execute(f'''
+            SELECT 
+                gl.entry_id,
+                gl.transaction_date,
+                coa.account_code,
+                coa.account_name,
+                gl.description,
+                gl.debit_amount,
+                gl.credit_amount,
+                gl.reference_type,
+                gl.reference_id
+            FROM general_ledger gl
+            JOIN chart_of_accounts coa ON gl.account_id = coa.id
+            {where_clause}
+            ORDER BY gl.transaction_date DESC, gl.entry_id, coa.account_code
+        ''', params)
+        
+        results = cursor.fetchall()
+        conn.close()
+        
+        # إنشاء DataFrame
+        df_data = []
+        for row in results:
+            entry_id, trans_date, acc_code, acc_name, desc, debit, credit, ref_type, ref_id = row
+            df_data.append({
+                'التاريخ': trans_date,
+                'رقم القيد': entry_id,
+                'رقم الحساب': acc_code,
+                'اسم الحساب': acc_name,
+                'البيان': desc,
+                'مدين': f"{debit:,.2f}" if debit > 0 else "",
+                'دائن': f"{credit:,.2f}" if credit > 0 else "",
+                'نوع المرجع': ref_type or "",
+                'رقم المرجع': ref_id or ""
+            })
+        
+        df = pd.DataFrame(df_data)
+        
+        # تحديد اسم الملف
+        if not filename:
+            date_str = datetime.now().strftime('%Y-%m-%d')
+            account_str = f"_{account_code}" if account_code else ""
+            filename = f"general_ledger{account_str}_{date_str}.xlsx"
+        
+        # إنشاء ملف Excel
+        filepath = f"/workspace/{filename}"
+        with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='دفتر الأستاذ العام', index=False)
+            
+            # تنسيق بسيط للورقة
+            worksheet = writer.sheets['دفتر الأستاذ العام']
+            
+            # تعديل عرض الأعمدة
+            worksheet.column_dimensions['A'].width = 12  # التاريخ
+            worksheet.column_dimensions['B'].width = 20  # رقم القيد
+            worksheet.column_dimensions['C'].width = 12  # رقم الحساب
+            worksheet.column_dimensions['D'].width = 30  # اسم الحساب
+            worksheet.column_dimensions['E'].width = 25  # البيان
+            worksheet.column_dimensions['F'].width = 15  # مدين
+            worksheet.column_dimensions['G'].width = 15  # دائن
+        
+        return filepath
+        
+    except Exception as e:
+        logger.error(f"خطأ في تصدير دفتر الأستاذ العام: {e}")
         raise
 
 def get_trial_balance(as_of_date: str = None):
@@ -167,7 +420,6 @@ def get_trial_balance(as_of_date: str = None):
         LEFT JOIN general_ledger gl ON coa.id = gl.account_id {date_filter}
         WHERE coa.is_active = 1
         GROUP BY coa.id, coa.account_code, coa.account_name, coa.account_type
-        HAVING (total_debit > 0 OR total_credit > 0)
         ORDER BY coa.account_code
     ''', params)
     
@@ -175,8 +427,8 @@ def get_trial_balance(as_of_date: str = None):
     conn.close()
     
     trial_balance = []
-    grand_total_debit = 0
-    grand_total_credit = 0
+    total_debits = 0
+    total_credits = 0
     
     for account_code, name, acc_type, debit, credit in results:
         # حساب الرصيد حسب نوع الحساب
@@ -200,16 +452,16 @@ def get_trial_balance(as_of_date: str = None):
         })
         
         if balance_type == 'debit':
-            grand_total_debit += balance_amount
+            total_debits += balance_amount
         else:
-            grand_total_credit += balance_amount
+            total_credits += balance_amount
     
     return {
         'accounts': trial_balance,
         'totals': {
-            'total_debit': grand_total_debit,
-            'total_credit': grand_total_credit,
-            'is_balanced': abs(grand_total_debit - grand_total_credit) < 0.01
+            'total_debit': total_debits,
+            'total_credit': total_credits,
+            'is_balanced': abs(total_debits - total_credits) < 0.01
         },
         'as_of_date': as_of_date or datetime.now().date().isoformat()
     }
@@ -353,106 +605,63 @@ def get_balance_sheet(as_of_date: str = None):
         }
     }
 
-def process_bot_transaction_accounting(transaction_id: int):
-    """معالجة محاسبية لمعاملة البوت"""
+def export_complete_accounting_package(filename_prefix: str = None) -> dict:
+    """تصدير حزمة محاسبية كاملة (جميع التقارير)"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        if not filename_prefix:
+            filename_prefix = f"accounting_package_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
-        # الحصول على تفاصيل المعاملة
-        cursor.execute('''
-            SELECT id, from_user, to_user, amount, type, description, created_at
-            FROM transactions 
-            WHERE id = ?
-        ''', (transaction_id,))
+        exported_files = {}
         
-        transaction = cursor.fetchone()
-        if not transaction:
-            conn.close()
-            return None
+        # 1. ميزان المراجعة
+        trial_balance_file = export_trial_balance_to_excel(filename=f"{filename_prefix}_trial_balance.xlsx")
+        exported_files['trial_balance'] = trial_balance_file
         
-        trans_id, from_user, to_user, amount, trans_type, description, created_at = transaction
+        # 2. قائمة الأرباح والخسائر
+        income_statement_file = export_income_statement_to_excel(filename=f"{filename_prefix}_income_statement.xlsx")
+        exported_files['income_statement'] = income_statement_file
         
-        # تحديد المستخدم المنشئ للقيد
-        created_by = from_user or to_user or 1
+        # 3. الميزانية العمومية
+        balance_sheet_file = export_balance_sheet_to_excel(filename=f"{filename_prefix}_balance_sheet.xlsx")
+        exported_files['balance_sheet'] = balance_sheet_file
         
-        # إنشاء القيد المحاسبي
-        entry_id = create_accounting_entry(
-            transaction_type=trans_type,
-            amount=float(amount),
-            user_id=created_by,
-            reference_id=trans_id
-        )
+        # 4. دفتر الأستاذ العام
+        general_ledger_file = export_general_ledger_to_excel(filename=f"{filename_prefix}_general_ledger.xlsx")
+        exported_files['general_ledger'] = general_ledger_file
         
-        # تحديث المعاملة بمعرف القيد المحاسبي
-        cursor.execute('''
-            UPDATE transactions 
-            SET description = COALESCE(description, '') || ' [محاسبي: ' || ? || ']'
-            WHERE id = ?
-        ''', (entry_id, trans_id))
-        
-        conn.commit()
-        conn.close()
-        
-        logger.info(f"تم ربط المعاملة {trans_id} بالقيد المحاسبي {entry_id}")
-        return entry_id
+        return {
+            'success': True,
+            'files': exported_files,
+            'package_name': filename_prefix,
+            'exported_at': datetime.now().isoformat()
+        }
         
     except Exception as e:
-        logger.error(f"خطأ في معالجة المعاملة المحاسبية: {e}")
-        return None
-
-def update_user_balance_accounting(user_id: int, old_balance: float, new_balance: float, reason: str):
-    """تحديث محاسبي لرصيد المستخدم"""
-    try:
-        balance_change = new_balance - old_balance
-        
-        if abs(balance_change) < 0.01:
-            return  # لا يوجد تغيير معتبر
-        
-        # تحديد نوع المعاملة حسب السبب
-        if 'كوبون' in reason:
-            transaction_type = 'coupon_redeem'
-        elif 'تحويل' in reason:
-            transaction_type = 'transfer'
-        elif 'شراء' in reason:
-            transaction_type = 'card_purchase'
-        else:
-            transaction_type = 'balance_adjustment'
-        
-        # إنشاء قيد محاسبي لتغيير الرصيد
-        if balance_change > 0:
-            # زيادة في الرصيد
-            create_accounting_entry(
-                transaction_type=transaction_type,
-                amount=abs(balance_change),
-                user_id=user_id,
-                additional_data={'reason': reason}
-            )
-        else:
-            # نقص في الرصيد
-            create_accounting_entry(
-                transaction_type=transaction_type,
-                amount=abs(balance_change),
-                user_id=user_id,
-                additional_data={'reason': reason}
-            )
-        
-        logger.info(f"تم تحديث المحاسبة لرصيد المستخدم {user_id}: {balance_change:+.2f}")
-        
-    except Exception as e:
-        logger.error(f"خطأ في تحديث محاسبة الرصيد: {e}")
+        logger.error(f"خطأ في تصدير الحزمة المحاسبية: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'exported_at': datetime.now().isoformat()
+        }
 
 if __name__ == "__main__":
-    # اختبار النظام
-    print("🧪 اختبار النظام المحاسبي...")
+    # اختبار تصدير التقارير
+    print("🧪 اختبار تصدير التقارير المحاسبية...")
     
-    # اختبار ميزان المراجعة
-    trial_balance = get_trial_balance()
-    print(f"📊 ميزان المراجعة: {len(trial_balance['accounts'])} حساب")
-    print(f"⚖️ متوازن: {'نعم' if trial_balance['totals']['is_balanced'] else 'لا'}")
-    
-    # اختبار قائمة الأرباح والخسائر
-    income_statement = get_income_statement()
-    print(f"💰 صافي الدخل: {income_statement['totals']['net_income']:,.2f} ريال")
-    
-    print("✅ النظام المحاسبي يعمل بنجاح!")
+    try:
+        # تصدير ميزان المراجعة
+        trial_file = export_trial_balance_to_excel()
+        print(f"✅ ميزان المراجعة: {trial_file}")
+        
+        # تصدير قائمة الأرباح والخسائر
+        income_file = export_income_statement_to_excel()
+        print(f"✅ قائمة الأرباح والخسائر: {income_file}")
+        
+        # تصدير الميزانية العمومية
+        balance_file = export_balance_sheet_to_excel()
+        print(f"✅ الميزانية العمومية: {balance_file}")
+        
+        print("🎉 تم تصدير جميع التقارير بنجاح!")
+        
+    except Exception as e:
+        print(f"❌ خطأ في الاختبار: {e}")

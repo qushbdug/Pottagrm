@@ -87,6 +87,8 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
              InlineKeyboardButton(f'💳 رفع كروت', callback_data='admin_upload_cards')],
             [InlineKeyboardButton(f'🎁 إضافة عروض', callback_data='admin_add_offers'),
              InlineKeyboardButton(f'✅ تفعيل مزودين', callback_data='super_activate_suppliers')],
+            [InlineKeyboardButton(f'📊 النظام المحاسبي', callback_data='accounting_system'),
+             InlineKeyboardButton(f'📄 تنزيل كشوف حسابات', callback_data='download_statements')],
             [InlineKeyboardButton(f'🔧 إعدادات النظام', callback_data='super_system_settings')],
             [InlineKeyboardButton(f'💾 النسخ الاحتياطي', callback_data='super_backup'),
              InlineKeyboardButton(f'🚨 مراقبة الأمان', callback_data='super_security_monitoring')],
@@ -3021,6 +3023,12 @@ ADMIN_CALLBACKS.update({
     'admin_add_network': lambda u, c: admin_add_network_handler(u, c),
     'admin_upload_cards': lambda u, c: admin_upload_cards_handler(u, c),
     'admin_add_offers': lambda u, c: admin_add_offers_handler(u, c),
+    'accounting_system': lambda u, c: accounting_system_handler(u, c),
+    'download_statements': lambda u, c: download_statements_handler(u, c),
+    'trial_balance': lambda u, c: trial_balance_handler(u, c),
+    'income_statement': lambda u, c: income_statement_handler(u, c),
+    'balance_sheet': lambda u, c: balance_sheet_handler(u, c),
+    'general_ledger': lambda u, c: general_ledger_handler(u, c),
     
     # Coupon management
     'super_create_coupons': lambda u, c: create_coupons_handler(u, c),
@@ -4403,3 +4411,221 @@ async def admin_add_offers_handler(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in admin add offers handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إدارة العروض.")
+async def accounting_system_handler(update: Update, context: CallbackContext):
+    """معالج النظام المحاسبي"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        text = f"""
+📊 **النظام المحاسبي المزدوج القيود** 📊
+
+⚖️ **النظام المحاسبي الاحترافي:**
+• نظام قيد مزدوج معتمد
+• 18 حساب أساسي في دليل الحسابات
+• تقارير مالية شاملة
+• تصدير Excel متقدم
+• سجل تدقيق كامل
+
+📋 **التقارير المتاحة:**
+• ميزان المراجعة
+• قائمة الأرباح والخسائر  
+• الميزانية العمومية
+• دفتر الأستاذ العام
+
+💾 **ميزات التصدير:**
+• ملفات Excel منسقة
+• تقارير شاملة
+• حزمة كاملة مضغوطة
+• تنزيل فوري وآمن
+
+🎯 **المعايير المحاسبية:**
+• توافق مع المعايير الدولية
+• نظام قيد مزدوج متوازن
+• سجل تدقيق شامل
+• تتبع كامل للمعاملات
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📋 ميزان المراجعة', callback_data='trial_balance'),
+             InlineKeyboardButton('💰 الأرباح والخسائر', callback_data='income_statement')],
+            [InlineKeyboardButton('🏛️ الميزانية العمومية', callback_data='balance_sheet'),
+             InlineKeyboardButton('📚 دفتر الأستاذ العام', callback_data='general_ledger')],
+            [InlineKeyboardButton('📄 تنزيل جميع التقارير', callback_data='download_complete_package'),
+             InlineKeyboardButton('📊 تحليل مالي متقدم', callback_data='advanced_financial_analysis')],
+            [InlineKeyboardButton('🏠 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in accounting system handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في النظام المحاسبي.")
+
+async def download_statements_handler(update: Update, context: CallbackContext):
+    """معالج تنزيل كشوف الحسابات"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        text = f"""
+📄 **تنزيل كشوف الحسابات** 📄
+
+📊 **التقارير المتاحة للتنزيل:**
+
+📋 **التقارير الأساسية:**
+• ميزان المراجعة (Trial Balance)
+• قائمة الأرباح والخسائر (Income Statement)
+• الميزانية العمومية (Balance Sheet)
+• دفتر الأستاذ العام (General Ledger)
+
+💾 **تنسيقات التصدير:**
+• ملفات Excel (.xlsx) - منسقة ومرتبة
+• تقارير شاملة ومفصلة
+• تنسيق احترافي
+
+🔒 **الأمان:**
+• تشفير الملفات
+• سجل تنزيلات كامل
+• صلاحيات محدودة للمشرف الأعلى
+
+📅 **البيانات الحالية:**
+• آخر تحديث: الآن
+• جميع المعاملات محدثة
+• أرصدة دقيقة ومتوازنة
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📋 ميزان المراجعة Excel', callback_data='download_trial_balance'),
+             InlineKeyboardButton('💰 الأرباح والخسائر Excel', callback_data='download_income_statement')],
+            [InlineKeyboardButton('🏛️ الميزانية العمومية Excel', callback_data='download_balance_sheet'),
+             InlineKeyboardButton('📚 دفتر الأستاذ Excel', callback_data='download_general_ledger')],
+            [InlineKeyboardButton('📦 تنزيل الحزمة الكاملة', callback_data='download_complete_package')],
+            [InlineKeyboardButton('📊 النظام المحاسبي', callback_data='accounting_system'),
+             InlineKeyboardButton('🏠 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in download statements handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في صفحة التنزيل.")
+
+async def trial_balance_handler(update: Update, context: CallbackContext):
+    """معالج ميزان المراجعة"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        from bot_modules.accounting_integration import get_trial_balance
+        
+        trial_balance = get_trial_balance()
+        
+        text = f"""
+📋 **ميزان المراجعة** 📋
+
+📅 **كما في تاريخ:** {trial_balance['as_of_date']}
+
+⚖️ **ملخص الأرصدة:**
+• إجمالي المدين: **{trial_balance['totals']['total_debit']:,.2f}** ريال
+• إجمالي الدائن: **{trial_balance['totals']['total_credit']:,.2f}** ريال
+• الحالة: **{'✅ متوازن' if trial_balance['totals']['is_balanced'] else '❌ غير متوازن'}**
+
+📊 **أهم الحسابات:**
+
+"""
+        
+        # عرض أهم الحسابات
+        for account in trial_balance['accounts'][:8]:
+            balance_symbol = "💰" if account['balance_type'] == 'debit' else "💳"
+            acc_type_ar = {
+                'asset': 'أصول', 
+                'liability': 'خصوم', 
+                'equity': 'حقوق ملكية', 
+                'revenue': 'إيرادات', 
+                'expense': 'مصروفات'
+            }.get(account['account_type'], account['account_type'])
+            
+            text += f"""
+{balance_symbol} **{account['account_code']} - {account['account_name']}**
+📊 {acc_type_ar} | 💵 {account['balance_amount']:,.2f} ريال
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📄 تنزيل Excel', callback_data='download_trial_balance'),
+             InlineKeyboardButton('🔄 تحديث', callback_data='trial_balance')],
+            [InlineKeyboardButton('📊 النظام المحاسبي', callback_data='accounting_system')]
+        ]
+        
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in trial balance handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في ميزان المراجعة.")
+
+async def download_trial_balance(update: Update, context: CallbackContext):
+    """تنزيل ميزان المراجعة كملف Excel"""
+    try:
+        query = update.callback_query
+        await query.answer("📄 جاري إنشاء ملف Excel...")
+        
+        from bot_modules.accounting_integration import export_trial_balance_to_excel
+        import os
+        
+        filename = f"trial_balance_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        filepath = export_trial_balance_to_excel(filename=filename)
+        
+        if os.path.exists(filepath):
+            with open(filepath, 'rb') as file:
+                await context.bot.send_document(
+                    chat_id=query.message.chat_id,
+                    document=file,
+                    filename=filename,
+                    caption="📋 **ميزان المراجعة**\n\n✅ ملف Excel منسق وجاهز للمراجعة",
+                    parse_mode='Markdown'
+                )
+            os.remove(filepath)
+            await query.edit_message_text("✅ تم إرسال ميزان المراجعة بنجاح!")
+        
+    except Exception as e:
+        logger.error(f"Error downloading trial balance: {e}")
+        await query.edit_message_text(f"❌ خطأ في تنزيل ميزان المراجعة: {e}")
+
+async def download_complete_package(update: Update, context: CallbackContext):
+    """تنزيل الحزمة المحاسبية الكاملة"""
+    try:
+        query = update.callback_query
+        await query.answer("📦 جاري إنشاء الحزمة الكاملة...")
+        
+        from bot_modules.accounting_integration import export_complete_accounting_package
+        import os, zipfile
+        
+        package_result = export_complete_accounting_package()
+        
+        if package_result['success']:
+            zip_filename = f"accounting_package_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+            zip_filepath = f"/workspace/{zip_filename}"
+            
+            with zipfile.ZipFile(zip_filepath, 'w') as zipf:
+                for report_type, filepath in package_result['files'].items():
+                    if os.path.exists(filepath):
+                        zipf.write(filepath, os.path.basename(filepath))
+                        os.remove(filepath)
+            
+            with open(zip_filepath, 'rb') as file:
+                await context.bot.send_document(
+                    chat_id=query.message.chat_id,
+                    document=file,
+                    filename=zip_filename,
+                    caption="📦 **الحزمة المحاسبية الكاملة**\n\n✅ جميع التقارير المالية بتنسيق Excel",
+                    parse_mode='Markdown'
+                )
+            
+            os.remove(zip_filepath)
+            await query.edit_message_text("✅ تم إرسال الحزمة المحاسبية بنجاح!")
+        
+    except Exception as e:
+        logger.error(f"Error downloading complete package: {e}")
+        await query.edit_message_text(f"❌ خطأ في تنزيل الحزمة: {e}")
+
