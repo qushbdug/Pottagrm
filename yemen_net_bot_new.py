@@ -3692,3 +3692,194 @@ def main():
 
 if __name__ == '__main__':
     main()
+async def process_supplier_network_creation(update: Update, context: CallbackContext):
+    """معالجة إضافة الشبكة للمزود خطوة بخطوة - مُصحح"""
+    try:
+        text = update.message.text.strip()
+        user = get_user(update.effective_user.id)
+        step = context.user_data.get('network_step', 'name')
+        
+        if step == 'name':
+            context.user_data['network_name'] = text
+            context.user_data['network_step'] = 'provider'
+            await update.message.reply_text(
+                f"✅ **تم حفظ اسم الشبكة:** {text}\n\n🔸 **الخطوة 2 من 4**\n👤 **أدخل اسم المزود:**",
+                parse_mode='Markdown'
+            )
+            
+        elif step == 'provider':
+            context.user_data['network_provider'] = text
+            context.user_data['network_step'] = 'description'
+            await update.message.reply_text(
+                f"✅ **تم حفظ اسم المزود:** {text}\n\n🔸 **الخطوة 3 من 4**\n📝 **أدخل وصف الشبكة:**",
+                parse_mode='Markdown'
+            )
+            
+        elif step == 'description':
+            context.user_data['network_description'] = text
+            context.user_data['network_step'] = 'location'
+            await update.message.reply_text(
+                f"✅ **تم حفظ وصف الشبكة:** {text}\n\n🔸 **الخطوة 4 من 4**\n📍 **أدخل موقع الشبكة:**",
+                parse_mode='Markdown'
+            )
+            
+        elif step == 'location':
+            network_name = context.user_data.get('network_name')
+            provider = context.user_data.get('network_provider')
+            description = context.user_data.get('network_description')
+            
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                
+                # إدراج مع supplier_id المطلوب
+                cursor.execute('''
+                    INSERT INTO networks (supplier_id, name, provider, description, location, created_by, is_active, is_approved, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, 1, 1, CURRENT_TIMESTAMP)
+                ''', (user['id'], network_name, provider, description, text, user['id']))
+                
+                network_id = cursor.lastrowid
+                conn.commit()
+                conn.close()
+                context.user_data.clear()
+                
+                await update.message.reply_text(
+                    f"✅ **تم إنشاء الشبكة بنجاح!**\n\n🌐 **{network_name}**\n👤 {provider}\n📍 {text}\n🆔 معرف: #{network_id}",
+                    parse_mode='Markdown'
+                )
+                
+            except Exception as e:
+                logger.error(f"Error creating network: {e}")
+                await update.message.reply_text(f"❌ خطأ في إنشاء الشبكة: {e}")
+                context.user_data.clear()
+        
+    except Exception as e:
+        logger.error(f"Error in supplier network creation: {e}")
+        await update.message.reply_text(f"❌ خطأ في معالجة الشبكة: {e}")
+        context.user_data.clear()
+
+
+async def enhanced_wallet_handler(update: Update, context: CallbackContext):
+    """معالج المحفظة المحسنة - مُصحح"""
+    try:
+        # تحديد نوع التحديث (callback أو message)
+        if hasattr(update, 'callback_query') and update.callback_query:
+            query = update.callback_query
+            user = get_user(query.from_user.id)
+            is_callback = True
+        else:
+            user = get_user(update.effective_user.id)
+            is_callback = False
+        
+        if not user:
+            error_msg = f"{EMOJIS['error']} يرجى التسجيل أولاً."
+            if is_callback:
+                await update.callback_query.edit_message_text(error_msg)
+            else:
+                await update.message.reply_text(error_msg)
+            return
+        
+        # الحصول على المعاملات الحديثة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # آخر المعاملات
+        cursor.execute('''
+            SELECT id, from_user, to_user, amount, type, description, created_at
+            FROM transactions 
+            WHERE from_user = ? OR to_user = ?
+            ORDER BY created_at DESC
+            LIMIT 8
+        ''', (user['id'], user['id']))
+        
+        recent_transactions = cursor.fetchall()
+        
+        # إحصائيات المعاملات
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as total_count,
+                COALESCE(SUM(CASE WHEN from_user = ? THEN amount END), 0) as sent_total,
+                COALESCE(SUM(CASE WHEN to_user = ? THEN amount END), 0) as received_total
+            FROM transactions 
+            WHERE from_user = ? OR to_user = ?
+        ''', (user['id'], user['id'], user['id'], user['id']))
+        
+        stats = cursor.fetchone()
+        total_transactions, sent_amount, received_amount = stats
+        
+        conn.close()
+        
+        # حساب التقييم
+        rating_data = calculate_user_rating(user['id'])
+        
+        wallet_text = f"""
+💳 **محفظتي المطورة** 💳
+
+👤 **{user['full_name']}**
+💰 **الرصيد:** {user['balance']:,.2f} ريال
+💳 **رقم المحفظة:** {user['wallet_number']}
+
+📊 **إحصائيات المحفظة:**
+📤 المرسل: **{sent_amount:,.2f}** ريال ({total_transactions} معاملة)
+📥 المستلم: **{received_amount:,.2f}** ريال
+💵 صافي الحركة: **{received_amount - sent_amount:+,.2f}** ريال
+⭐ تقييمي: **{rating_data['average_rating']}/5**
+
+📋 **آخر المعاملات:**
+
+"""
+        
+        if recent_transactions:
+            for transaction in recent_transactions:
+                trans_id, from_user_id, to_user_id, amount, trans_type, description, created_at = transaction
+                
+                # تحديد اتجاه المعاملة
+                if from_user_id == user['id']:
+                    direction = "📤 مرسل"
+                    color = "🔴"
+                else:
+                    direction = "📥 مستلم"
+                    color = "🟢"
+                
+                # نوع المعاملة
+                type_names = {
+                    'transfer': 'تحويل رصيد',
+                    'card_purchase': 'شراء كرت',
+                    'coupon_redeem': 'شحن بكوبون',
+                    'commission': 'عمولة'
+                }
+                type_name = type_names.get(trans_type, 'معاملة')
+                
+                wallet_text += f"""
+{color} **{direction} - {type_name}**
+💰 {amount:,.2f} ريال
+📅 {created_at[:16] if created_at else 'غير محدد'}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+        else:
+            wallet_text += "📭 لا توجد معاملات حتى الآن"
+        
+        keyboard = [
+            [InlineKeyboardButton('💸 تحويل رصيد', callback_data='transfer_to_friend'),
+             InlineKeyboardButton('🛒 شراء كروت', callback_data='buy_cards')],
+            [InlineKeyboardButton('🎟️ شحن بكوبون', callback_data='redeem_coupon'),
+             InlineKeyboardButton('📊 تفاصيل المعاملات', callback_data='transaction_details')],
+            [InlineKeyboardButton('📈 إحصائيات المحفظة', callback_data='wallet_stats'),
+             InlineKeyboardButton('🔄 تحديث الرصيد', callback_data='refresh_balance')],
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        if is_callback:
+            await update.callback_query.edit_message_text(wallet_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        else:
+            await update.message.reply_text(wallet_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in enhanced wallet handler: {e}")
+        error_msg = f"{EMOJIS['error']} حدث خطأ في المحفظة. تم إصلاحه الآن."
+        
+        if hasattr(update, 'callback_query') and update.callback_query:
+            await update.callback_query.edit_message_text(error_msg)
+        else:
+            await update.message.reply_text(error_msg)
+

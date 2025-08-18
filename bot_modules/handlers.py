@@ -399,16 +399,16 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
         cursor = conn.cursor()
         
         cursor.execute('''
-            SELECT wt.*, u.full_name as related_user
-            FROM wallet_transactions wt
+            SELECT t.*, u.full_name as related_user
+            FROM transactions t
             LEFT JOIN users u ON (
                 CASE 
-                    WHEN wt.transaction_type = 'credit' THEN NULL
+                    WHEN t.type = 'credit' THEN NULL
                     ELSE u.id = ?
                 END
             )
-            WHERE wt.user_id = ?
-            ORDER BY wt.created_at DESC
+            WHERE t.from_user = ? OR t.to_user = ?
+            ORDER BY t.created_at DESC
             LIMIT 10
         ''', (user['id'], user['id']))
         
@@ -2717,9 +2717,9 @@ async def process_network_creation(update: Update, context: CallbackContext, net
         
         # إضافة الشبكة الجديدة
         cursor.execute('''
-            INSERT INTO networks (name, provider, description, created_by, is_active)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (network_name, user['full_name'], f'شبكة واي فاي منزلية - {network_name}', user['id'], 0))
+            INSERT INTO networks (supplier_id, name, provider, description, created_by, is_active, is_approved)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (user['id'], network_name, user['full_name'], f'شبكة واي فاي منزلية - {network_name}', user['id'], 1, 1))
         
         network_id = cursor.lastrowid
         
