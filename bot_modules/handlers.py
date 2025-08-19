@@ -3578,9 +3578,9 @@ async def process_supplier_network_creation(update: Update, context: CallbackCon
                 cursor = conn.cursor()
                 
                 cursor.execute('''
-                    INSERT INTO networks (name, provider, description, location, created_by, is_active, is_approved, created_at)
-                    VALUES (?, ?, ?, ?, ?, 1, 1, CURRENT_TIMESTAMP)
-                ''', (network_name, provider, description, text, user['id']))
+                    INSERT INTO networks (supplier_id, name, city, provider, description, location, created_by, is_active, is_approved, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, CURRENT_TIMESTAMP)
+                ''', (user['id'], network_name, text, provider, description, text, user['id']))
                 
                 network_id = cursor.lastrowid
                 conn.commit()

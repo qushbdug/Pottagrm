@@ -180,9 +180,9 @@ class DatabaseManager:
             
             # إنشاء الشبكة
             query = '''
-                INSERT INTO networks (supplier_id, name, provider, description, location, 
+                INSERT INTO networks (supplier_id, name, city, provider, description, location, 
                                     created_by, is_active, is_approved, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, 1, 1, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, CURRENT_TIMESTAMP)
             '''
             
             with self.get_connection() as conn:
@@ -190,6 +190,7 @@ class DatabaseManager:
                 cursor.execute(query, (
                     user_id,  # supplier_id
                     network_data['name'],
+                    network_data.get('city', network_data['location']),  # city
                     network_data['provider'],
                     network_data['description'],
                     network_data['location'],
