@@ -57,52 +57,66 @@ def init_db():
             )
         ''')
 
-        # Networks table
+        # Networks table (unified schema)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS networks (
-                id TEXT PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 supplier_id INTEGER NOT NULL,
                 name TEXT NOT NULL,
-                city TEXT NOT NULL,
-                network_code TEXT UNIQUE NOT NULL,
-                is_active BOOLEAN DEFAULT 0,
+                provider TEXT NOT NULL,
+                description TEXT,
+                logo_url TEXT,
+                city TEXT,
+                location TEXT,
+                network_code TEXT UNIQUE,
+                is_active BOOLEAN DEFAULT 1,
                 is_approved BOOLEAN DEFAULT 0,
+                created_by INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 approved_at TIMESTAMP,
                 approved_by INTEGER,
                 FOREIGN KEY(supplier_id) REFERENCES users(id),
-                FOREIGN KEY(approved_by) REFERENCES users(id)
+                FOREIGN KEY(approved_by) REFERENCES users(id),
+                FOREIGN KEY(created_by) REFERENCES users(id)
             )
         ''')
 
-        # Card categories table
+        # Card categories table (unified schema)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS card_categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                network_id TEXT NOT NULL,
+                network_id INTEGER,
+                name TEXT,
                 value REAL NOT NULL,
                 price REAL NOT NULL,
+                currency TEXT DEFAULT 'YER',
                 is_available BOOLEAN DEFAULT 1,
+                stock_count INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 category_name TEXT,
                 description TEXT,
                 FOREIGN KEY(network_id) REFERENCES networks(id)
             )
         ''')
 
-        # Cards table
+        # Cards table (unified schema)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS cards (
-                id TEXT PRIMARY KEY,
-                category_id INTEGER NOT NULL,
-                code TEXT NOT NULL,
-                is_used BOOLEAN DEFAULT 0,
-                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                used_at TIMESTAMP,
-                used_by INTEGER,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category_id INTEGER,
+                card_number TEXT NOT NULL,
+                serial_number TEXT,
                 expiry_date TEXT,
-                FOREIGN KEY(category_id) REFERENCES card_categories(id),
-                FOREIGN KEY(used_by) REFERENCES users(id)
+                is_sold BOOLEAN DEFAULT 0,
+                sold_to INTEGER,
+                sold_at TIMESTAMP,
+                uploaded_by INTEGER,
+                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (category_id) REFERENCES card_categories (id),
+                FOREIGN KEY (sold_to) REFERENCES users (id),
+                FOREIGN KEY (uploaded_by) REFERENCES users (id)
             )
         ''')
 
@@ -577,29 +591,38 @@ def init_db():
             )
         ''')
         
-        # Create networks table
+        # Create networks table (duplicate call with same unified schema for idempotency)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS networks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                supplier_id INTEGER NOT NULL,
                 name TEXT NOT NULL,
                 provider TEXT NOT NULL,
                 description TEXT,
                 logo_url TEXT,
+                city TEXT,
+                location TEXT,
+                network_code TEXT UNIQUE,
                 is_active BOOLEAN DEFAULT 1,
+                is_approved BOOLEAN DEFAULT 0,
                 created_by INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (created_by) REFERENCES users (id)
+                approved_at TIMESTAMP,
+                approved_by INTEGER,
+                FOREIGN KEY(supplier_id) REFERENCES users(id),
+                FOREIGN KEY(approved_by) REFERENCES users(id),
+                FOREIGN KEY(created_by) REFERENCES users(id)
             )
         ''')
         
-        # Create card_categories table
+        # Create card_categories table (duplicate call with same unified schema for idempotency)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS card_categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 network_id INTEGER,
-                name TEXT NOT NULL,
-                value INTEGER NOT NULL,
+                name TEXT,
+                value REAL NOT NULL,
                 price REAL NOT NULL,
                 currency TEXT DEFAULT 'YER',
                 is_available BOOLEAN DEFAULT 1,
@@ -610,7 +633,7 @@ def init_db():
             )
         ''')
         
-        # Create cards table
+        # Create cards table (duplicate call with same unified schema for idempotency)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS cards (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

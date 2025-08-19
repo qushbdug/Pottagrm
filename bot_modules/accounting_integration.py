@@ -18,7 +18,9 @@ logger = logging.getLogger(__name__)
 
 def get_db_connection():
     """الحصول على اتصال قاعدة البيانات"""
-    conn = sqlite3.connect("yemen_net.db", timeout=30.0)
+    # احترام نفس المسار المستخدم في بقية المشروع
+    db_path = os.getenv('DB_PATH', os.path.abspath('yemen_net.db'))
+    conn = sqlite3.connect(db_path, timeout=30.0)
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
