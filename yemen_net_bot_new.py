@@ -145,7 +145,7 @@ async def button_click_handler(update: Update, context):
             return await admin_add_category_handler(update, context, network_id)
         elif callback_data.startswith('admin_upload_to_network_'):
             from bot_modules.admin_functions import admin_network_upload_handler
-            network_id = callback_data.split('_')[4]
+            network_id = callback_data.split('_')[-1]  # آخر عنصر هو network_id
             return await admin_network_upload_handler(update, context, network_id)
         elif callback_data.startswith('admin_upload_category_'):
             from bot_modules.admin_functions import admin_upload_category_handler
@@ -3882,4 +3882,336 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
             await update.callback_query.edit_message_text(error_msg)
         else:
             await update.message.reply_text(error_msg)
+
+
+# معالجات إدارة الشبكات للمشرف الأعلى
+async def admin_manage_networks_handler(update: Update, context: CallbackContext):
+    """معالج إدارة الشبكات للمشرف الأعلى"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text("❌ ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # الحصول على جميع الشبكات
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT n.id, n.name, n.provider, n.city, n.location, n.is_active, n.is_approved,
+                   u.full_name as supplier_name,
+                   COUNT(cc.id) as categories_count,
+                   COUNT(c.id) as total_cards,
+                   COUNT(CASE WHEN c.is_sold = 0 THEN 1 END) as available_cards
+            FROM networks n
+            LEFT JOIN users u ON n.supplier_id = u.id
+            LEFT JOIN card_categories cc ON n.id = cc.network_id
+            LEFT JOIN cards c ON cc.id = c.category_id
+            GROUP BY n.id
+            ORDER BY n.created_at DESC
+        ''')
+        
+        networks = cursor.fetchall()
+        conn.close()
+        
+        if not networks:
+            text = f"""
+🗑️ **إدارة الشبكات** 🗑️
+
+👑 مرحباً **{user['full_name']}**
+
+❌ **لا توجد شبكات للإدارة**
+
+🔧 **يجب إضافة شبكة أولاً**
+"""
+            keyboard = [
+                [InlineKeyboardButton('🌐 إضافة شبكة جديدة', callback_data='admin_add_network')],
+                [InlineKeyboardButton('🔙 عودة', callback_data='super_admin_panel')]
+            ]
+        else:
+            text = f"""
+🗑️ **إدارة الشبكات** 🗑️
+
+👑 مرحباً **{user['full_name']}**
+
+📊 **إجمالي الشبكات:** {len(networks)} شبكة
+
+🔽 **اختر شبكة للإدارة:**
+"""
+            keyboard = []
+            
+            for network in networks:
+                network_id, name, provider, city, location, is_active, is_approved, supplier_name, categories, total_cards, available_cards = network
+                
+                status_icon = "🟢" if is_active else "🔴"
+                button_text = f"{status_icon} {name} - {provider} ({available_cards or 0} كرت متاح)"
+                
+                keyboard.append([InlineKeyboardButton(
+                    button_text[:60] + "..." if len(button_text) > 60 else button_text,
+                    callback_data=f'admin_network_details_{network_id}'
+                )])
+            
+            keyboard.extend([
+                [InlineKeyboardButton('🌐 إضافة شبكة جديدة', callback_data='admin_add_network')],
+                [InlineKeyboardButton('🔙 عودة', callback_data='super_admin_panel')]
+            ])
+        
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in admin manage networks: {e}")
+        await query.edit_message_text("❌ حدث خطأ في إدارة الشبكات.")
+
+async def admin_network_details_handler(update: Update, context: CallbackContext, network_id: str):
+    """عرض تفاصيل الشبكة مع خيارات الإدارة"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text("❌ ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # الحصول على تفاصيل الشبكة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT n.id, n.name, n.provider, n.city, n.location, n.description, n.is_active, n.is_approved,
+                   n.created_at, u.full_name as supplier_name,
+                   COUNT(cc.id) as categories_count,
+                   COUNT(c.id) as total_cards,
+                   COUNT(CASE WHEN c.is_sold = 0 THEN 1 END) as available_cards,
+                   COUNT(CASE WHEN c.is_sold = 1 THEN 1 END) as sold_cards
+            FROM networks n
+            LEFT JOIN users u ON n.supplier_id = u.id
+            LEFT JOIN card_categories cc ON n.id = cc.network_id
+            LEFT JOIN cards c ON cc.id = c.category_id
+            WHERE n.id = ?
+            GROUP BY n.id
+        ''', (network_id,))
+        
+        network = cursor.fetchone()
+        
+        if not network:
+            await query.edit_message_text("❌ لم يتم العثور على الشبكة المحددة.")
+            return
+        
+        conn.close()
+        
+        network_id, name, provider, city, location, description, is_active, is_approved, created_at, supplier_name, categories_count, total_cards, available_cards, sold_cards = network
+        
+        status_text = "🟢 نشطة" if is_active else "🔴 متوقفة"
+        approval_text = "✅ معتمدة" if is_approved else "⏳ في الانتظار"
+        
+        text = f"""
+📋 **تفاصيل الشبكة** 📋
+
+🌐 **الاسم:** {name}
+👤 **المزود:** {provider}
+🏢 **المالك:** {supplier_name or 'غير محدد'}
+🏙️ **المدينة:** {city or 'غير محدد'}
+📍 **الموقع:** {location or 'غير محدد'}
+
+📊 **الحالة:**
+• **الحالة:** {status_text}
+• **الاعتماد:** {approval_text}
+• **تاريخ الإنشاء:** {created_at[:10] if created_at else 'غير محدد'}
+
+💳 **إحصائيات الكروت:**
+• **فئات الكروت:** {categories_count or 0}
+• **إجمالي الكروت:** {total_cards or 0}
+• **متاحة:** {available_cards or 0}
+• **مباعة:** {sold_cards or 0}
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('💳 إدارة الكروت', callback_data=f'admin_upload_to_network_{network_id}'),
+             InlineKeyboardButton('📊 إحصائيات', callback_data=f'admin_network_stats_{network_id}')],
+            [InlineKeyboardButton('🗑️ حذف الشبكة', callback_data=f'admin_delete_network_{network_id}')],
+            [InlineKeyboardButton('🔙 عودة للقائمة', callback_data='admin_manage_networks'),
+             InlineKeyboardButton('🏠 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in network details: {e}")
+        await query.edit_message_text("❌ حدث خطأ في عرض تفاصيل الشبكة.")
+
+async def admin_delete_network_handler(update: Update, context: CallbackContext, network_id: str):
+    """تأكيد حذف الشبكة"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text("❌ ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # الحصول على تفاصيل الشبكة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT n.name, n.provider, u.full_name as supplier_name,
+                   COUNT(c.id) as total_cards,
+                   COUNT(CASE WHEN c.is_sold = 1 THEN 1 END) as sold_cards
+            FROM networks n
+            LEFT JOIN users u ON n.supplier_id = u.id
+            LEFT JOIN card_categories cc ON n.id = cc.network_id
+            LEFT JOIN cards c ON cc.id = c.category_id
+            WHERE n.id = ?
+            GROUP BY n.id
+        ''', (network_id,))
+        
+        network = cursor.fetchone()
+        conn.close()
+        
+        if not network:
+            await query.edit_message_text("❌ لم يتم العثور على الشبكة المحددة.")
+            return
+        
+        name, provider, supplier_name, total_cards, sold_cards = network
+        
+        text = f"""
+⚠️ **تأكيد حذف الشبكة** ⚠️
+
+🌐 **الشبكة:** {name}
+👤 **المزود:** {provider}
+🏢 **المالك:** {supplier_name or 'غير محدد'}
+
+📊 **البيانات التي ستُحذف:**
+• **إجمالي الكروت:** {total_cards or 0}
+• **الكروت المباعة:** {sold_cards or 0}
+• **جميع فئات الكروت**
+• **جميع الإحصائيات**
+
+⚠️ **تحذير هام:**
+• هذا الإجراء **لا يمكن التراجع عنه**
+• سيتم حذف جميع البيانات المرتبطة
+
+❓ **هل أنت متأكد من الحذف؟**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('✅ نعم، احذف الشبكة', callback_data=f'admin_confirm_delete_{network_id}'),
+             InlineKeyboardButton('❌ إلغاء', callback_data=f'admin_network_details_{network_id}')]
+        ]
+        
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in delete network confirmation: {e}")
+        await query.edit_message_text("❌ حدث خطأ في تأكيد حذف الشبكة.")
+
+async def admin_confirm_delete_network_handler(update: Update, context: CallbackContext, network_id: str):
+    """تنفيذ حذف الشبكة فعلياً"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text("❌ ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # الحصول على اسم الشبكة قبل الحذف
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT name, provider FROM networks WHERE id = ?', (network_id,))
+        network = cursor.fetchone()
+        
+        if not network:
+            await query.edit_message_text("❌ لم يتم العثور على الشبكة المحددة.")
+            return
+        
+        network_name, provider = network
+        
+        # حذف الشبكة وجميع البيانات المرتبطة
+        try:
+            # 1. حذف الكروت أولاً
+            cursor.execute('''
+                DELETE FROM cards 
+                WHERE category_id IN (
+                    SELECT id FROM card_categories WHERE network_id = ?
+                )
+            ''', (network_id,))
+            deleted_cards = cursor.rowcount
+            
+            # 2. حذف فئات الكروت
+            cursor.execute('DELETE FROM card_categories WHERE network_id = ?', (network_id,))
+            deleted_categories = cursor.rowcount
+            
+            # 3. حذف الشبكة نفسها
+            cursor.execute('DELETE FROM networks WHERE id = ?', (network_id,))
+            
+            conn.commit()
+            conn.close()
+            
+            success_text = f"""
+✅ **تم حذف الشبكة بنجاح** ✅
+
+🗑️ **الشبكة المحذوفة:**
+• **الاسم:** {network_name}
+• **المزود:** {provider}
+
+📊 **البيانات المحذوفة:**
+• **الكروت:** {deleted_cards}
+• **فئات الكروت:** {deleted_categories}
+
+⏰ **وقت الحذف:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+👤 **تم بواسطة:** {user['full_name']}
+"""
+            
+            keyboard = [
+                [InlineKeyboardButton('🗑️ إدارة شبكات أخرى', callback_data='admin_manage_networks')],
+                [InlineKeyboardButton('�� إضافة شبكة جديدة', callback_data='admin_add_network')],
+                [InlineKeyboardButton('🏠 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
+            ]
+            
+            await query.edit_message_text(
+                success_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+            logger.info(f"تم حذف الشبكة {network_name} (ID: {network_id}) بواسطة {user['full_name']}")
+            
+        except Exception as db_error:
+            conn.rollback()
+            conn.close()
+            
+            logger.error(f"خطأ في حذف الشبكة: {db_error}")
+            
+            await query.edit_message_text(
+                f"❌ **فشل في حذف الشبكة**\n\n🔍 **السبب:** {str(db_error)}",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton('🔄 إعادة المحاولة', callback_data=f'admin_delete_network_{network_id}')],
+                    [InlineKeyboardButton('🔙 عودة للتفاصيل', callback_data=f'admin_network_details_{network_id}')]
+                ]),
+                parse_mode='Markdown'
+            )
+        
+    except Exception as e:
+        logger.error(f"Error in confirm delete network: {e}")
+        await query.edit_message_text("❌ حدث خطأ في حذف الشبكة.")
 
