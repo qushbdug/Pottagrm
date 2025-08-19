@@ -4629,3 +4629,178 @@ async def download_complete_package(update: Update, context: CallbackContext):
         logger.error(f"Error downloading complete package: {e}")
         await query.edit_message_text(f"❌ خطأ في تنزيل الحزمة: {e}")
 
+
+async def create_new_offer(update: Update, context: CallbackContext):
+    """إنشاء عرض جديد - معالج فعلي"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        # تفعيل وضع إنشاء العرض
+        from bot_modules.conversation_states import set_conversation_state, ConversationStates
+        set_conversation_state(context, ConversationStates.CREATE_OFFER_TITLE)
+        
+        text = f"""
+🎁 **إنشاء عرض جديد** 🎁
+
+📝 **سنقوم بإنشاء العرض خطوة بخطوة:**
+
+🔸 **الخطوة 1 من 5**
+🏷️ **أدخل عنوان العرض:**
+
+مثال: "خصم 20% على شبكة النور"
+
+💡 **ملاحظات:**
+• اختر عنواناً جذاباً وواضحاً
+• سيظهر للعملاء في قائمة العروض
+• يفضل ذكر نسبة الخصم أو الفائدة
+
+📤 **أرسل عنوان العرض الآن:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('❌ إلغاء', callback_data='cancel_offer_creation')],
+            [InlineKeyboardButton('🏠 إدارة العروض', callback_data='admin_add_offers')]
+        ]
+        
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in create new offer: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إنشاء العرض.")
+
+async def process_offer_creation_step(update: Update, context: CallbackContext):
+    """معالجة خطوات إنشاء العرض"""
+    try:
+        from bot_modules.conversation_states import get_conversation_state, set_conversation_state, ConversationStates
+        from bot_modules.input_validation import InputValidator
+        from services.offer_service import offer_service
+        
+        text = update.message.text.strip()
+        user = get_user(update.effective_user.id)
+        state, state_name = get_conversation_state(context)
+        
+        if state == ConversationStates.CREATE_OFFER_TITLE:
+            # التحقق من العنوان
+            if len(text) < 5:
+                await update.message.reply_text("❌ العنوان قصير جداً (الحد الأدنى 5 أحرف)")
+                return
+            
+            context.user_data['offer_title'] = text
+            set_conversation_state(context, ConversationStates.CREATE_OFFER_DESCRIPTION)
+            
+            await update.message.reply_text(
+                f"✅ **تم حفظ عنوان العرض:** {text}\n\n🔸 **الخطوة 2 من 5**\n📝 **أدخل وصف العرض التفصيلي:**",
+                parse_mode='Markdown'
+            )
+            
+        elif state == ConversationStates.CREATE_OFFER_DESCRIPTION:
+            # التحقق من الوصف
+            is_valid, validated_desc = InputValidator.validate_description(text, min_length=10)
+            if not is_valid:
+                await update.message.reply_text(f"❌ {validated_desc}")
+                return
+            
+            context.user_data['offer_description'] = validated_desc
+            set_conversation_state(context, ConversationStates.CREATE_OFFER_DISCOUNT)
+            
+            await update.message.reply_text(
+                f"✅ **تم حفظ وصف العرض**\n\n🔸 **الخطوة 3 من 5**\n💰 **أدخل نسبة الخصم (%):**\n\nمثال: 20 (للخصم 20%)",
+                parse_mode='Markdown'
+            )
+            
+        elif state == ConversationStates.CREATE_OFFER_DISCOUNT:
+            # التحقق من نسبة الخصم
+            is_valid, discount, error_msg = InputValidator.validate_percentage(text)
+            if not is_valid:
+                await update.message.reply_text(f"❌ {error_msg}")
+                return
+            
+            context.user_data['offer_discount'] = discount
+            set_conversation_state(context, ConversationStates.CREATE_OFFER_DURATION)
+            
+            await update.message.reply_text(
+                f"✅ **تم حفظ نسبة الخصم:** {discount}%\n\n🔸 **الخطوة 4 من 5**\n📅 **أدخل مدة العرض (بالأيام):**\n\nمثال: 30 (للمدة 30 يوم)",
+                parse_mode='Markdown'
+            )
+            
+        elif state == ConversationStates.CREATE_OFFER_DURATION:
+            # التحقق من المدة
+            try:
+                duration = int(text)
+                if duration <= 0 or duration > 365:
+                    await update.message.reply_text("❌ مدة العرض يجب أن تكون بين 1 و 365 يوم")
+                    return
+            except ValueError:
+                await update.message.reply_text("❌ يرجى إدخال رقم صحيح للمدة")
+                return
+            
+            context.user_data['offer_duration'] = duration
+            set_conversation_state(context, ConversationStates.CREATE_OFFER_MAX_USES)
+            
+            await update.message.reply_text(
+                f"✅ **تم حفظ مدة العرض:** {duration} يوم\n\n🔸 **الخطوة 5 من 5**\n🔢 **أدخل الحد الأقصى للاستخدام:**\n\nمثال: 100 (يمكن استخدامه 100 مرة)\nأو اكتب 0 للاستخدام غير المحدود",
+                parse_mode='Markdown'
+            )
+            
+        elif state == ConversationStates.CREATE_OFFER_MAX_USES:
+            # التحقق من الحد الأقصى
+            try:
+                max_uses = int(text)
+                if max_uses < 0:
+                    await update.message.reply_text("❌ الحد الأقصى لا يمكن أن يكون سالباً")
+                    return
+            except ValueError:
+                await update.message.reply_text("❌ يرجى إدخال رقم صحيح للحد الأقصى")
+                return
+            
+            # إنشاء العرض
+            offer_data = {
+                'title': context.user_data.get('offer_title'),
+                'description': context.user_data.get('offer_description'),
+                'discount_percentage': context.user_data.get('offer_discount'),
+                'duration_days': context.user_data.get('offer_duration'),
+                'max_uses': max_uses if max_uses > 0 else None
+            }
+            
+            success, offer_id, message = offer_service.create_offer(offer_data, user['id'])
+            
+            if success:
+                from datetime import datetime, timedelta
+                end_date = (datetime.now() + timedelta(days=offer_data['duration_days'])).strftime('%Y-%m-%d')
+                
+                success_text = f"""
+✅ **تم إنشاء العرض بنجاح!** ✅
+
+🎁 **تفاصيل العرض الجديد:**
+🏷️ **العنوان:** {offer_data['title']}
+📝 **الوصف:** {offer_data['description']}
+💰 **نسبة الخصم:** {offer_data['discount_percentage']}%
+📅 **ينتهي في:** {end_date}
+🔢 **الحد الأقصى:** {max_uses if max_uses > 0 else 'غير محدود'} استخدام
+🆔 **معرف العرض:** #{offer_id}
+
+🚀 **العرض نشط ومتاح للعملاء الآن!**
+💡 **سيظهر في قائمة العروض تلقائياً**
+"""
+                
+                keyboard = [
+                    [InlineKeyboardButton('🎁 إدارة العروض', callback_data='admin_add_offers'),
+                     InlineKeyboardButton('🆕 إضافة عرض آخر', callback_data='create_new_offer')],
+                    [InlineKeyboardButton('🏠 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
+                ]
+            else:
+                success_text = f"❌ **فشل في إنشاء العرض**\n\n🔍 السبب: {message}"
+                keyboard = [
+                    [InlineKeyboardButton('🔄 إعادة المحاولة', callback_data='create_new_offer')],
+                    [InlineKeyboardButton('🎁 إدارة العروض', callback_data='admin_add_offers')]
+                ]
+            
+            context.user_data.clear()
+            await update.message.reply_text(success_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in offer creation step: {e}")
+        context.user_data.clear()
+        await update.message.reply_text(f"❌ خطأ في إنشاء العرض: {e}")
+
