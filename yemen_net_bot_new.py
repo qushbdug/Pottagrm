@@ -2741,7 +2741,10 @@ async def search_networks_handler(update: Update, context: CallbackContext):
              InlineKeyboardButton('📊 جميع الشبكات', callback_data='view_networks')],
             [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ])
-        
+
+        # enable typing a search term after this screen
+        context.user_data['awaiting_network_search'] = True
+
         await query.edit_message_text(search_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
     except Exception as e:

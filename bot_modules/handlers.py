@@ -3067,16 +3067,22 @@ async def process_network_search(update: Update, context: CallbackContext, searc
                 MAX(cc.price) as max_price
             FROM networks n
             LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
-            WHERE n.is_active = 1 AND (
+            LEFT JOIN supplier_codes sc ON sc.supplier_id = n.supplier_id
+            WHERE n.is_active = 1 AND n.is_approved = 1 AND (
                 n.name LIKE ? OR 
                 n.location LIKE ? OR 
                 n.provider LIKE ? OR 
-                n.description LIKE ?
+                n.description LIKE ? OR
+                n.network_code LIKE ? OR
+                sc.supplier_code LIKE ?
             )
             GROUP BY n.id, n.name, n.provider, n.description, n.location
             ORDER BY n.name
             LIMIT 10
-        ''', (f"%{search_term}%", f"%{search_term}%", f"%{search_term}%", f"%{search_term}%"))
+        ''', (
+            f"%{search_term}%", f"%{search_term}%", f"%{search_term}%", f"%{search_term}%",
+            f"%{search_term}%", f"%{search_term}%"
+        ))
         
         search_results = cursor.fetchall()
         conn.close()
