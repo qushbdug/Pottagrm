@@ -9,9 +9,12 @@ import sqlite3
 import uuid
 import random
 from datetime import datetime
-from bot_modules.config import *
+import os
 
 logger = logging.getLogger(__name__)
+
+# Define constants locally for now
+DB_PATH = os.getenv('DB_PATH', os.path.abspath('yemen_net.db'))
 
 def get_db_connection():
     """Get database connection with error handling"""

@@ -8,34 +8,72 @@ import logging
 import uuid
 import base64
 import json
+import os
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Tuple, Any
-from bot_modules.config import *
+# from bot_modules.config import *
 from bot_modules.database import get_db_connection
 
 logger = logging.getLogger(__name__)
 
+# Define constants locally for now
+EMOJIS = {
+    'success': '✅',
+    'error': '❌',
+    'warning': '⚠️',
+    'info': 'ℹ️',
+    'loading': '⏳',
+    'money': '💰',
+    'card': '🎫',
+    'network': '📶',
+    'user': '👤',
+    'admin': '👑',
+    'stats': '📊',
+    'home': '🏠',
+    'back': '↩️',
+    'cancel': '❌',
+    'confirm': '✅',
+    'search': '🔍',
+    'settings': '⚙️',
+    'wallet': '💳',
+    'transfer': '💸',
+    'purchase': '🛒',
+    'upload': '📤',
+    'download': '📥',
+    'phone': '📱',
+    'email': '📧',
+    'id': '🆔',
+    'time': '⏰',
+    'date': '📅',
+    'star': '⭐',
+    'fire': '🔥',
+    'new': '🆕',
+    'hot': '🔥',
+    'cool': '😎'
+}
+
 # Encryption functions
 def _load_cipher_suite():
     """Load or generate encryption key for secure data storage"""
-    if not CRYPTO_AVAILABLE:
+    try:
+        from cryptography.fernet import Fernet
+        key_b64: Optional[str] = os.getenv('ENCRYPTION_KEY_B64')
+        if key_b64 and key_b64.strip():
+            key_bytes = key_b64.strip().encode()
+        else:
+            key_file = os.path.abspath('encryption.key')
+            if os.path.exists(key_file):
+                with open(key_file, 'rb') as f:
+                    key_bytes = f.read().strip()
+            else:
+                key_bytes = Fernet.generate_key()
+                with open(key_file, 'wb') as f:
+                    f.write(key_bytes)
+                logger.warning('Generated new encryption.key (development only). Set ENCRYPTION_KEY_B64 in production.')
+        return Fernet(key_bytes)
+    except ImportError:
         logger.warning("Cryptography library not available - using basic encoding")
         return None
-        
-    key_b64: Optional[str] = os.getenv('ENCRYPTION_KEY_B64')
-    if key_b64 and key_b64.strip():
-        key_bytes = key_b64.strip().encode()
-    else:
-        key_file = os.path.abspath('encryption.key')
-        if os.path.exists(key_file):
-            with open(key_file, 'rb') as f:
-                key_bytes = f.read().strip()
-        else:
-            key_bytes = Fernet.generate_key()
-            with open(key_file, 'wb') as f:
-                f.write(key_bytes)
-            logger.warning('Generated new encryption.key (development only). Set ENCRYPTION_KEY_B64 in production.')
-    return Fernet(key_bytes)
 
 cipher_suite = _load_cipher_suite()
 
