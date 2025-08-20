@@ -1479,6 +1479,131 @@ async def enhanced_placeholder_handler(update: Update, context: CallbackContext,
         else:
             await update.callback_query.edit_message_text(error_text)
 
+async def personal_reports_handler(update: Update, context: CallbackContext):
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            if update.message:
+                await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
+            else:
+                await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
+            return
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as total_transactions,
+                COALESCE(SUM(CASE WHEN type IN ('wallet_recharge','coupon_redeem','p2p_credit') THEN amount ELSE 0 END), 0) as total_in,
+                COALESCE(SUM(CASE WHEN type IN ('card_purchase','p2p_debit') THEN amount ELSE 0 END), 0) as total_out
+            FROM transactions WHERE from_user = ? OR to_user = ?
+        ''', (user['id'], user['id']))
+        summary = cursor.fetchone()
+        cursor.execute('''
+            SELECT type, amount, description, created_at
+            FROM transactions 
+            WHERE from_user = ? OR to_user = ?
+            ORDER BY created_at DESC LIMIT 5
+        ''', (user['id'], user['id']))
+        recent = cursor.fetchall()
+        conn.close()
+        total_in = (summary['total_in'] or 0)
+        total_out = (summary['total_out'] or 0)
+        net = total_in - total_out
+        text = f"""
+📊 تقاريري الشخصية
+
+🔹 الوارد: {total_in:,.2f} ريال
+🔸 الصادر: {total_out:,.2f} ريال
+⚖️ الصافي: {net:,.2f} ريال
+
+🕘 آخر المعاملات:
+"""
+        if recent:
+            for r in recent:
+                text += f"• {r['type']} - {r['amount']:,.2f} - {str(r['created_at'])[:16]}\n"
+        else:
+            text += "لا توجد معاملات حديثة."
+        keyboard = [[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]
+        if update.message:
+            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        else:
+            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    except Exception as e:
+        logger.error(f"Error in personal_reports_handler: {e}")
+        if update.message:
+            await update.message.reply_text("❌ حدث خطأ في التقارير الشخصية.")
+        else:
+            await update.callback_query.edit_message_text("❌ حدث خطأ في التقارير الشخصية.")
+
+async def promotions_handler(update: Update, context: CallbackContext):
+    try:
+        text = """
+🎁 العروض والخصومات
+
+لا توجد عروض متاحة حالياً.
+"""
+        kb = [[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]
+        if update.message:
+            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
+        else:
+            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
+    except Exception as e:
+        logger.error(f"Error in promotions_handler: {e}")
+
+async def my_notifications_handler(update: Update, context: CallbackContext):
+    try:
+        text = """
+🔔 إشعاراتي
+
+لا توجد إشعارات جديدة حالياً.
+"""
+        kb = [[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]
+        if update.message:
+            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
+        else:
+            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
+    except Exception as e:
+        logger.error(f"Error in my_notifications_handler: {e}")
+
+async def account_settings_handler(update: Update, context: CallbackContext):
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            if update.message:
+                await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
+            else:
+                await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
+            return
+        text = f"""
+⚙️ إعدادات الحساب
+
+👤 الاسم: {user['full_name']}
+📱 الهاتف: {user.get('phone','غير محدد')}
+👑 الدور: {user.get('role','customer')}
+"""
+        kb = [[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]
+        if update.message:
+            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
+        else:
+            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
+    except Exception as e:
+        logger.error(f"Error in account_settings_handler: {e}")
+
+async def my_ratings_handler(update: Update, context: CallbackContext):
+    try:
+        text = """
+⭐ تقييماتي
+
+لا توجد تقييمات متاحة حالياً.
+"""
+        kb = [[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]
+        if update.message:
+            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
+        else:
+            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
+    except Exception as e:
+        logger.error(f"Error in my_ratings_handler: {e}")
+
 async def help_handler(update: Update, context: CallbackContext):
     """Enhanced help and support"""
     try:
@@ -2474,29 +2599,29 @@ COMMAND_HANDLERS = {
     'send_balance': send_balance_handler,
     'search_networks': wifi_search_handler,
     'transfer_to_friend': send_balance_handler,
-    'personal_reports': lambda u, c: enhanced_placeholder_handler(u, c, "📊 تقاريري الشخصية", "عرض تقارير مفصلة عن نشاطك ومعاملاتك"),
-    'promotions': lambda u, c: enhanced_placeholder_handler(u, c, "🎁 العروض والخصومات", "عروض حصرية وخصومات على الكروت"),
-    'my_notifications': lambda u, c: enhanced_placeholder_handler(u, c, "🔔 إشعاراتي", "إدارة إشعاراتك وتنبيهاتك"),
-    'account_settings': lambda u, c: enhanced_placeholder_handler(u, c, "⚙️ إعدادات الحساب", "تعديل بيانات حسابك وإعداداتك"),
-    'my_ratings': lambda u, c: enhanced_placeholder_handler(u, c, "⭐ تقييماتي", "عرض وإدارة تقييماتك"),
+    'personal_reports': personal_reports_handler,
+    'promotions': promotions_handler,
+    'my_notifications': my_notifications_handler,
+    'account_settings': account_settings_handler,
+    'my_ratings': my_ratings_handler,
     'agent_panel': lambda u, c: enhanced_placeholder_handler(u, c, "💼 لوحة الوكيل", "لوحة تحكم خاصة بالوكلاء"),
     'my_commissions': lambda u, c: enhanced_placeholder_handler(u, c, "💰 عمولاتي", "عرض العمولات والأرباح"),
     'supplier_panel': lambda u, c: enhanced_placeholder_handler(u, c, "🏪 لوحة المزود", "لوحة تحكم خاصة بالمزودين"),
     'manage_networks': lambda u, c: supplier_manage_networks(u, c),
     'upload_cards': lambda u, c: enhanced_placeholder_handler(u, c, "📤 رفع كروت", "رفع وإدارة كروت الشحن"),
     'sales_reports': lambda u, c: enhanced_placeholder_handler(u, c, "📈 تقارير المبيعات", "تقارير مفصلة عن مبيعاتك"),
-    'buy_cards': lambda u, c: enhanced_placeholder_handler(u, c, "🛒 شراء كروت", "تصفح وشراء كروت الإنترنت"),
+    'buy_cards': buy_cards_handler,
     'help': help_handler,
-    'transaction_details': lambda u, c: enhanced_placeholder_handler(u, c, "📊 تفاصيل المعاملات", "عرض تفاصيل شاملة لجميع معاملاتك"),
-    'wallet_stats': lambda u, c: enhanced_placeholder_handler(u, c, "📈 إحصائيات مفصلة", "تحليلات وإحصائيات مفصلة لمحفظتك"),
-    'account_statement': lambda u, c: enhanced_placeholder_handler(u, c, "💳 كشف حساب", "كشف حساب شامل لفترة محددة"),
-    'deposit_balance': lambda u, c: enhanced_placeholder_handler(u, c, "💰 إيداع رصيد", "إيداع رصيد في محفظتك بطرق مختلفة"),
-    'wallet_settings': lambda u, c: enhanced_placeholder_handler(u, c, "⚙️ إعدادات المحفظة", "تخصيص إعدادات وأمان المحفظة"),
-    'contact_admin': lambda u, c: enhanced_placeholder_handler(u, c, "📞 التواصل مع الإدارة", "إرسال رسالة للدعم الفني"),
-    'account_status': lambda u, c: enhanced_placeholder_handler(u, c, "📊 حالة الحساب", "عرض حالة وتفاصيل حسابك"),
+    'transaction_details': transaction_details_handler,
+    'wallet_stats': wallet_stats_handler,
+    'account_statement': account_statement_handler,
+    'deposit_balance': wallet_settings_handler,
+    'wallet_settings': wallet_settings_handler,
+    'contact_admin': contact_admin_handler,
+    'account_status': account_status_handler,
     'advanced_search_transfer': search_user_for_transfer,
     'quick_transfer': quick_transfer_handler,
-    'transfer_history': lambda u, c: enhanced_placeholder_handler(u, c, "📋 سجل التحويلات", "عرض سجل جميع تحويلاتك"),
+    'transfer_history': transfer_history_handler,
     'search_by_wallet': lambda u, c: search_by_type_handler(u, c, "wallet"),
     'search_by_name': lambda u, c: search_by_type_handler(u, c, "name"),
     'search_by_phone': lambda u, c: search_by_type_handler(u, c, "phone"),
@@ -2511,8 +2636,8 @@ COMMAND_HANDLERS = {
     'supplier_manage_networks': lambda u, c: supplier_manage_networks(u, c),
     'add_new_network': lambda u, c: add_new_network_handler(u, c),
     'network_sales_reports': lambda u, c: enhanced_placeholder_handler(u, c, "📊 تقارير المبيعات", "عرض تقارير مفصلة عن مبيعات شبكاتك"),
-    'manage_stock': lambda u, c: enhanced_placeholder_handler(u, c, "📦 إدارة المخزون", "إدارة وتحديث مخزون شبكاتك"),
-    'profit_analysis': lambda u, c: enhanced_placeholder_handler(u, c, "💰 تحليل الأرباح", "تحليل وتقييم أرباح شبكاتك"),
+    'manage_stock': manage_stock_handler,
+    'profit_analysis': profit_analysis_handler,
 }
 
 from telegram.ext import MessageHandler, CallbackQueryHandler, filters
@@ -3067,16 +3192,22 @@ async def process_network_search(update: Update, context: CallbackContext, searc
                 MAX(cc.price) as max_price
             FROM networks n
             LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
-            WHERE n.is_active = 1 AND (
+            LEFT JOIN supplier_codes sc ON sc.supplier_id = n.supplier_id
+            WHERE n.is_active = 1 AND n.is_approved = 1 AND (
                 n.name LIKE ? OR 
                 n.location LIKE ? OR 
                 n.provider LIKE ? OR 
-                n.description LIKE ?
+                n.description LIKE ? OR
+                n.network_code LIKE ? OR
+                sc.supplier_code LIKE ?
             )
             GROUP BY n.id, n.name, n.provider, n.description, n.location
             ORDER BY n.name
             LIMIT 10
-        ''', (f"%{search_term}%", f"%{search_term}%", f"%{search_term}%", f"%{search_term}%"))
+        ''', (
+            f"%{search_term}%", f"%{search_term}%", f"%{search_term}%", f"%{search_term}%",
+            f"%{search_term}%", f"%{search_term}%"
+        ))
         
         search_results = cursor.fetchall()
         conn.close()

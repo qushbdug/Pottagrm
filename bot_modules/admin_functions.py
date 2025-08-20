@@ -764,7 +764,6 @@ async def backup_handler(update, context):
     except Exception as e:
         logger.error(f"Error in backup handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحميل إدارة النسخ الاحتياطي.")
-
 async def executive_reports_handler(update: Update, context: CallbackContext):
     """التقارير التنفيذية الشاملة"""
     try:
@@ -1557,7 +1556,6 @@ async def broadcast_message_handler(update: Update, context: CallbackContext):
         
         text = f"""
 📢 **إرسال رسالة جماعية** 📢
-
 {EMOJIS['admin']} مرحباً **{user['full_name']}**
 
 📋 **تعليمات الإرسال:**
@@ -2352,7 +2350,6 @@ async def backup_list_handler(update, context):
     
     keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة النسخ', callback_data='super_backup')]]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-
 async def backup_schedule_handler(update, context):
     """Handle backup scheduling"""
     query = update.callback_query
@@ -3149,7 +3146,6 @@ async def admin_add_network_handler(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in admin add network handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إضافة الشبكة.")
-
 async def admin_upload_cards_handler(update: Update, context: CallbackContext):
     """رفع كروت للمشرف الأعلى"""
     try:
@@ -3698,7 +3694,7 @@ async def admin_upload_category_handler(update: Update, context: CallbackContext
 
 📋 **طرق رفع الكروت:**
 
-1️⃣ **رفع كروت منفردة:**
+1️⃣ **رفع كرت منفرد:**
    • إدخال رقم كرت واحد في كل مرة
    • مناسب للكروت القليلة
 
@@ -3913,7 +3909,6 @@ async def admin_process_card_upload(update: Update, context: CallbackContext):
         # رسالة النتائج
         success_text = f"""
 🎉 **تم رفع الكروت بنجاح!** 🎉
-
 🌐 **الشبكة:** {category_info[2]}
 💳 **الفئة:** {category_info[0]}
 
@@ -4465,6 +4460,77 @@ async def accounting_system_handler(update: Update, context: CallbackContext):
         logger.error(f"Error in accounting system handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في النظام المحاسبي.")
 
+async def income_statement_handler(update: Update, context: CallbackContext):
+    """عرض قائمة الأرباح والخسائر وتوفير زر تنزيل"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        from bot_modules.accounting_integration import get_income_statement
+        data = get_income_statement()
+        text = f"""
+💰 قائمة الأرباح والخسائر
+
+📅 الفترة: {data.get('period', 'الحالي')}
+
+إجمالي الإيرادات: {data['totals']['total_revenue']:,.2f} ريال
+إجمالي المصروفات: {data['totals']['total_expenses']:,.2f} ريال
+صافي الدخل: {data['totals']['net_income']:,.2f} ريال
+"""
+        keyboard = [
+            [InlineKeyboardButton('📄 تنزيل Excel', callback_data='download_income_statement'),
+             InlineKeyboardButton('🔄 تحديث', callback_data='income_statement')],
+            [InlineKeyboardButton('📊 النظام المحاسبي', callback_data='accounting_system')]
+        ]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"Error in income statement handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في قائمة الأرباح والخسائر.")
+
+async def balance_sheet_handler(update: Update, context: CallbackContext):
+    """عرض الميزانية العمومية وتوفير زر تنزيل"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        from bot_modules.accounting_integration import get_balance_sheet
+        data = get_balance_sheet()
+        text = f"""
+🏛️ الميزانية العمومية
+
+📅 التاريخ: {data.get('as_of_date', 'اليوم')}
+
+إجمالي الأصول: {data['totals']['total_assets']:,.2f} ريال
+إجمالي الخصوم: {data['totals']['total_liabilities']:,.2f} ريال
+إجمالي حقوق الملكية: {data['totals']['total_equity']:,.2f} ريال
+"""
+        keyboard = [
+            [InlineKeyboardButton('📄 تنزيل Excel', callback_data='download_balance_sheet'),
+             InlineKeyboardButton('🔄 تحديث', callback_data='balance_sheet')],
+            [InlineKeyboardButton('📊 النظام المحاسبي', callback_data='accounting_system')]
+        ]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"Error in balance sheet handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في الميزانية العمومية.")
+
+async def general_ledger_handler(update: Update, context: CallbackContext):
+    """عرض ملخص دفتر الأستاذ العام وزر تنزيل"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        # عرض رسالة بسيطة مع زر تنزيل
+        text = (
+            "📚 دفتر الأستاذ العام\n\n"
+            "يمكنك تنزيل دفتر الأستاذ العام كملف Excel من الزر أدناه."
+        )
+        keyboard = [
+            [InlineKeyboardButton('📄 تنزيل Excel', callback_data='download_general_ledger')],
+            [InlineKeyboardButton('📊 النظام المحاسبي', callback_data='accounting_system')]
+        ]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"Error in general ledger handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في دفتر الأستاذ.")
+
 async def download_statements_handler(update: Update, context: CallbackContext):
     """معالج تنزيل كشوف الحسابات"""
     try:
@@ -4595,6 +4661,78 @@ async def download_trial_balance(update: Update, context: CallbackContext):
         logger.error(f"Error downloading trial balance: {e}")
         await query.edit_message_text(f"❌ خطأ في تنزيل ميزان المراجعة: {e}")
 
+async def download_income_statement(update: Update, context: CallbackContext):
+    """تنزيل قائمة الأرباح والخسائر كملف Excel"""
+    try:
+        query = update.callback_query
+        await query.answer("📄 جاري إنشاء ملف Excel...")
+        from bot_modules.accounting_integration import export_income_statement_to_excel
+        import os
+        filename = f"income_statement_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        filepath = export_income_statement_to_excel(filename=filename)
+        if os.path.exists(filepath):
+            with open(filepath, 'rb') as file:
+                await context.bot.send_document(
+                    chat_id=query.message.chat_id,
+                    document=file,
+                    filename=filename,
+                    caption="💰 قائمة الأرباح والخسائر\n\n✅ ملف Excel منسق وجاهز",
+                    parse_mode='Markdown'
+                )
+            os.remove(filepath)
+            await query.edit_message_text("✅ تم إرسال قائمة الأرباح والخسائر بنجاح!")
+    except Exception as e:
+        logger.error(f"Error downloading income statement: {e}")
+        await query.edit_message_text(f"❌ خطأ في تنزيل قائمة الأرباح والخسائر: {e}")
+
+async def download_balance_sheet(update: Update, context: CallbackContext):
+    """تنزيل الميزانية العمومية كملف Excel"""
+    try:
+        query = update.callback_query
+        await query.answer("📄 جاري إنشاء ملف Excel...")
+        from bot_modules.accounting_integration import export_balance_sheet_to_excel
+        import os
+        filename = f"balance_sheet_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        filepath = export_balance_sheet_to_excel(filename=filename)
+        if os.path.exists(filepath):
+            with open(filepath, 'rb') as file:
+                await context.bot.send_document(
+                    chat_id=query.message.chat_id,
+                    document=file,
+                    filename=filename,
+                    caption="🏛️ الميزانية العمومية\n\n✅ ملف Excel منسق وجاهز",
+                    parse_mode='Markdown'
+                )
+            os.remove(filepath)
+            await query.edit_message_text("✅ تم إرسال الميزانية العمومية بنجاح!")
+    except Exception as e:
+        logger.error(f"Error downloading balance sheet: {e}")
+        await query.edit_message_text(f"❌ خطأ في تنزيل الميزانية العمومية: {e}")
+
+async def download_general_ledger(update: Update, context: CallbackContext):
+    """تنزيل دفتر الأستاذ العام كملف Excel"""
+    try:
+        query = update.callback_query
+        await query.answer("📄 جاري إنشاء ملف Excel...")
+        from bot_modules.accounting_integration import export_general_ledger_to_excel
+        import os
+        filename = f"general_ledger_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        filepath = export_general_ledger_to_excel(filename=filename)
+        if os.path.exists(filepath):
+            with open(filepath, 'rb') as file:
+                await context.bot.send_document(
+                    chat_id=query.message.chat_id,
+                    document=file,
+                    filename=filename,
+                    caption="📚 دفتر الأستاذ العام\n\n✅ ملف Excel منسق وجاهز",
+                    parse_mode='Markdown'
+                )
+            os.remove(filepath)
+            await query.edit_message_text("✅ تم إرسال دفتر الأستاذ العام بنجاح!")
+    except Exception as e:
+        logger.error(f"Error downloading general ledger: {e}")
+        await query.edit_message_text(f"❌ خطأ في تنزيل دفتر الأستاذ: {e}")
+
 async def download_complete_package(update: Update, context: CallbackContext):
     """تنزيل الحزمة المحاسبية الكاملة"""
     try:
@@ -4671,7 +4809,6 @@ async def create_new_offer(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in create new offer: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إنشاء العرض.")
-
 async def process_offer_creation_step(update: Update, context: CallbackContext):
     """معالجة خطوات إنشاء العرض"""
     try:
@@ -5179,4 +5316,3 @@ async def admin_confirm_delete_network_handler(update: Update, context: Callback
     except Exception as e:
         logger.error(f"Error in confirm delete network: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في حذف الشبكة.")
-
