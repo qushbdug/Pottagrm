@@ -14,11 +14,58 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKe
 from telegram.ext import CallbackContext, ConversationHandler, MessageHandler, CallbackQueryHandler, filters
 
 # Import constants and utilities
-from bot_modules.config import *
-from bot_modules.utils import *
+# from bot_modules.config import *
+# from bot_modules.utils import *
 from bot_modules.database import get_db_connection
 
 logger = logging.getLogger(__name__)
+
+# Define constants locally for now
+EMOJIS = {
+    'success': '✅',
+    'error': '❌',
+    'warning': '⚠️',
+    'info': 'ℹ️',
+    'loading': '⏳',
+    'money': '💰',
+    'card': '🎫',
+    'network': '📶',
+    'user': '👤',
+    'admin': '👑',
+    'stats': '📊',
+    'home': '🏠',
+    'back': '↩️',
+    'cancel': '❌',
+    'confirm': '✅',
+    'search': '🔍',
+    'settings': '⚙️',
+    'wallet': '💳',
+    'transfer': '💸',
+    'purchase': '🛒',
+    'upload': '📤',
+    'download': '📥',
+    'phone': '📱',
+    'email': '📧',
+    'id': '🆔',
+    'time': '⏰',
+    'date': '📅',
+    'star': '⭐',
+    'fire': '🔥',
+    'new': '🆕',
+    'hot': '🔥',
+    'cool': '😎'
+}
+
+USER_ROLES = {
+    'customer': 'عميل',
+    'agent': 'وكيل',
+    'supplier': 'مزود',
+    'admin': 'مشرف',
+    'super_admin': 'مشرف أعلى'
+}
+
+# Conversation states
+GET_FULL_NAME, GET_PHONE, CHOOSE_ROLE = range(3)
 
 # Placeholder handler for incomplete features
 async def enhanced_placeholder_handler(update: Update, context: CallbackContext, title: str, description: str):

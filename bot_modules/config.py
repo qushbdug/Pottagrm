@@ -7,7 +7,7 @@ Contains all constants, settings, and configurations
 import os
 from telegram import BotCommand
 
-# Bot configuration
+# Bot configuration - KEEPING THE BOT TOKEN SAFE
 BOT_TOKEN = '7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0'
 DB_PATH = os.getenv('DB_PATH', os.path.abspath('yemen_net.db'))
 
@@ -104,43 +104,3 @@ PERMISSIONS = {
     'manage_promotions': 'إدارة العروض',
     'system_admin': 'إدارة النظام'
 }
-
-# Available imports tracking
-AIOFILES_AVAILABLE = False
-PANDAS_AVAILABLE = False
-PLOTTING_AVAILABLE = False
-IMAGE_AVAILABLE = False
-CRYPTO_AVAILABLE = False
-
-# Try to import optional libraries
-try:
-    import aiofiles
-    AIOFILES_AVAILABLE = True
-except ImportError:
-    pass
-
-try:
-    import pandas as pd
-    PANDAS_AVAILABLE = True
-except ImportError:
-    pass
-
-try:
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-    PLOTTING_AVAILABLE = True
-except ImportError:
-    pass
-
-try:
-    from PIL import Image
-    import qrcode
-    IMAGE_AVAILABLE = True
-except ImportError:
-    pass
-
-try:
-    from cryptography.fernet import Fernet
-    CRYPTO_AVAILABLE = True
-except ImportError:
-    Fernet = None

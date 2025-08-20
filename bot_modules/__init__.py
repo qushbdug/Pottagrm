@@ -7,12 +7,12 @@ __version__ = "2.1.0"
 __author__ = "AI Assistant"
 __license__ = "MIT"
 
-# Package imports
-from bot_modules.config import *
-from bot_modules.database import init_db, get_db_connection
-from bot_modules.utils import *
-from bot_modules.handlers import *
-from bot_modules.admin_functions import *
+# Package imports - Comment out problematic imports for now
+# from bot_modules.config import *
+# from bot_modules.database import init_db, get_db_connection
+# from bot_modules.utils import *
+# from bot_modules.handlers import *
+# from bot_modules.admin_functions import *
 
 __all__ = [
     'BOT_TOKEN', 'EMOJIS', 'USER_ROLES', 'PERMISSIONS',
