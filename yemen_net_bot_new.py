@@ -338,10 +338,17 @@ async def button_click_handler(update: Update, context):
 
                 # Default fallback for unrecognized callbacks
         else:
+            # Try dynamic dispatch to existing command handlers before fallback UI
+            try:
+                if callback_data in COMMAND_HANDLERS:
+                    return await COMMAND_HANDLERS[callback_data](update, context)
+            except Exception as _e:
+                logger.warning(f"Dynamic dispatch failed for {callback_data}: {_e}")
+            
             logger.warning(f"Unhandled callback: {callback_data}")
             await query.edit_message_text(
-                f"{EMOJIS['warning']} هذه الميزة متاحة ومطورة.\n\n"
-                f"متاحة للاستخدام الفوري إن شاء الله.",
+                f"{EMOJIS['warning']} حدثت مشكلة في تنفيذ هذا الخيار حالياً.\n\n"
+                f"يرجى العودة للقائمة الرئيسية والمحاولة من جديد.",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
                 ])
