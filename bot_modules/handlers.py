@@ -404,13 +404,13 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
             LEFT JOIN users u ON (
                 CASE 
                     WHEN t.type = 'credit' THEN NULL
-                    ELSE u.id = ?
+                    ELSE u.id = CASE WHEN t.from_user = ? THEN t.to_user ELSE t.from_user END
                 END
             )
             WHERE t.from_user = ? OR t.to_user = ?
             ORDER BY t.created_at DESC
             LIMIT 10
-        ''', (user['id'], user['id']))
+        ''', (user['id'], user['id'], user['id']))
         
         recent_transactions = cursor.fetchall()
         
