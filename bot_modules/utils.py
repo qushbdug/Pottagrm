@@ -700,3 +700,103 @@ def get_cards_stats_by_category(supplier_id):
     stats = cursor.fetchall()
     conn.close()
     return stats
+
+def get_supplier_total_cards(supplier_id):
+    """Get total number of cards for a supplier"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT COUNT(*) as total_cards
+            FROM cards c
+            JOIN card_categories cc ON c.category_id = cc.id
+            JOIN networks n ON cc.network_id = n.id
+            WHERE n.supplier_id = ?
+        ''', (supplier_id,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        return result['total_cards'] if result else 0
+    except Exception as e:
+        logger.error(f"Error getting supplier total cards: {e}")
+        return 0
+
+def get_user_total_sales(user_id):
+    """Get total sales for a user"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT SUM(amount) as total_sales
+            FROM transactions
+            WHERE from_user = ? AND type = 'debit'
+        ''', (user_id,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        return result['total_sales'] if result and result['total_sales'] else 0.0
+    except Exception as e:
+        logger.error(f"Error getting user total sales: {e}")
+        return 0.0
+
+def get_user_monthly_sales(user_id):
+    """Get monthly sales for a user"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT SUM(amount) as monthly_sales
+            FROM transactions
+            WHERE from_user = ? AND type = 'debit' 
+            AND created_at >= datetime('now', '-30 days')
+        ''', (user_id,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        return result['monthly_sales'] if result and result['monthly_sales'] else 0.0
+    except Exception as e:
+        logger.error(f"Error getting user monthly sales: {e}")
+        return 0.0
+
+def get_user_sold_cards(user_id):
+    """Get number of sold cards for a user"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT COUNT(*) as sold_cards
+            FROM cards c
+            JOIN card_categories cc ON c.category_id = cc.id
+            JOIN networks n ON cc.network_id = n.id
+            WHERE n.supplier_id = ? AND c.is_sold = 1
+        ''', (user_id,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        return result['sold_cards'] if result else 0
+    except Exception as e:
+        logger.error(f"Error getting user sold cards: {e}")
+        return 0
+
+def get_user_avg_sale_price(user_id):
+    """Get average sale price for a user"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT AVG(amount) as avg_price
+            FROM transactions
+            WHERE from_user = ? AND type = 'debit'
+        ''', (user_id,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        return result['avg_price'] if result and result['avg_price'] else 0.0
+    except Exception as e:
+        logger.error(f"Error getting user average sale price: {e}")
+        return 0.0

@@ -176,6 +176,54 @@ async def button_click_handler(update: Update, context: CallbackContext):
             confirmed = parts[2] == 'true'
             return await confirm_transfer_handler(update, context, confirmed)
         
+        # Personal reports and features
+        elif callback_data == 'personal_reports':
+            return await personal_reports_handler(update, context)
+        elif callback_data == 'promotions':
+            return await promotions_handler(update, context)
+        elif callback_data == 'my_notifications':
+            return await my_notifications_handler(update, context)
+        elif callback_data == 'account_settings':
+            return await account_settings_handler(update, context)
+        elif callback_data == 'transfer_history':
+            return await transfer_history_handler(update, context)
+        
+        # Wallet features
+        elif callback_data == 'transaction_details':
+            return await transaction_details_handler(update, context)
+        elif callback_data == 'wallet_stats':
+            return await wallet_stats_handler(update, context)
+        elif callback_data == 'account_statement':
+            return await account_statement_handler(update, context)
+        elif callback_data == 'deposit_balance':
+            return await deposit_balance_handler(update, context)
+        elif callback_data == 'wallet_settings':
+            return await wallet_settings_handler(update, context)
+        
+        # Agent and supplier features
+        elif callback_data == 'agent_panel':
+            return await agent_panel_handler(update, context)
+        elif callback_data == 'my_commissions':
+            return await my_commissions_handler(update, context)
+        elif callback_data == 'supplier_panel':
+            return await supplier_panel_handler(update, context)
+        elif callback_data == 'manage_networks':
+            return await manage_networks_handler(update, context)
+        elif callback_data == 'upload_cards':
+            return await upload_cards_handler(update, context)
+        elif callback_data == 'sales_reports':
+            return await sales_reports_handler(update, context)
+        elif callback_data == 'executive_reports':
+            return await executive_reports_handler(update, context)
+        elif callback_data == 'admin_wallet':
+            return await admin_wallet_handler(update, context)
+        elif callback_data == 'super_activate_suppliers':
+            return await super_activate_suppliers_handler(update, context)
+        
+        # Help and support
+        elif callback_data == 'help':
+            return await help_handler(update, context)
+        
         # Default case
         else:
             await query.edit_message_text(f"{EMOJIS['warning']} أمر غير معروف: {callback_data}")
