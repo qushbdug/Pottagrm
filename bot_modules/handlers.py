@@ -396,6 +396,7 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
         
         # Get recent transactions
         conn = get_db_connection()
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute('''
@@ -414,7 +415,7 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
         
         recent_transactions = cursor.fetchall()
         
-        # Get transaction summary
+        # Get transaction summary from wallet_transactions
         cursor.execute('''
             SELECT 
                 COUNT(*) as total_transactions,
@@ -460,7 +461,7 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
         
         if recent_transactions:
             for tx in recent_transactions[:5]:
-                tx_type = "➕" if tx['transaction_type'] == 'credit' else "➖"
+                tx_type = "➕" if tx['type'] == 'credit' else "➖"
                 description = tx['description'] or 'معاملة'
                 try:
                     amount = float(tx['amount']) if tx['amount'] is not None else 0.0
