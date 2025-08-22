@@ -1,218 +1,321 @@
 """
-Enhanced database manager with connection pooling and async support
+Enhanced database manager with connection pooling for Yemen Net Bot v2
 """
 
 import sqlite3
 import asyncio
 import logging
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, List, Dict, Any, Tuple
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
-from queue import Queue, Empty
-import threading
-import time
-
 from .exceptions import DatabaseError
+from .cache_manager import cache_manager
 
 logger = logging.getLogger(__name__)
 
-@dataclass
-class DatabaseConfig:
-    """Database configuration"""
-    database_path: str
-    max_connections: int = 10
-    connection_timeout: int = 30
-    check_same_thread: bool = False
-    enable_foreign_keys: bool = True
-    enable_wal_mode: bool = True
-    journal_mode: str = "WAL"
-    synchronous: str = "NORMAL"
-    cache_size: int = -64000  # 64MB
-    temp_store: str = "MEMORY"
-    mmap_size: int = 268435456  # 256MB
-
 class DatabaseConnection:
-    """Individual database connection wrapper"""
+    """Database connection wrapper with error handling"""
     
-    def __init__(self, config: DatabaseConfig):
-        self.config = config
-        self.connection: Optional[sqlite3.Connection] = None
-        self.last_used: float = time.time()
-        self.in_use: bool = False
-        self._lock = threading.Lock()
+    def __init__(self, connection: sqlite3.Connection):
+        """
+        Initialize database connection wrapper
+        
+        Args:
+            connection: SQLite connection object
+        """
+        self.connection = connection
+        self.connection.row_factory = sqlite3.Row
+        self._transaction_depth = 0
     
-    def connect(self) -> sqlite3.Connection:
+    def cursor(self):
+        """Get cursor from connection"""
+        return self.connection.cursor()
+    
+    def commit(self):
+        """Commit transaction"""
+        self.connection.commit()
+    
+    def rollback(self):
+        """Rollback transaction"""
+        self.connection.rollback()
+    
+    def close(self):
+        """Close connection"""
+        self.connection.close()
+    
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit"""
+        if exc_type is not None:
+            self.rollback()
+        else:
+            self.commit()
+        self.close()
+    
+    async def __aenter__(self):
+        """Async context manager entry"""
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit"""
+        if exc_type is not None:
+            self.rollback()
+        else:
+            self.commit()
+        self.close()
+
+class DatabaseManager:
+    """Advanced database manager with connection pooling and async support"""
+    
+    def __init__(self, db_path: str, max_connections: int = 10):
+        """
+        Initialize database manager
+        
+        Args:
+            db_path: Path to SQLite database file
+            max_connections: Maximum number of connections in pool
+        """
+        self.db_path = db_path
+        self.max_connections = max_connections
+        self._connection_pool: List[sqlite3.Connection] = []
+        self._available_connections: asyncio.Queue = asyncio.Queue()
+        self._lock = asyncio.Lock()
+        self._initialized = False
+        
+        # Performance monitoring
+        self._stats = {
+            "queries_executed": 0,
+            "transactions_committed": 0,
+            "transactions_rollbacked": 0,
+            "connection_errors": 0,
+            "query_errors": 0
+        }
+    
+    async def initialize(self):
+        """Initialize connection pool"""
+        if self._initialized:
+            return
+        
+        async with self._lock:
+            if self._initialized:
+                return
+            
+            try:
+                # Create initial connections
+                for _ in range(self.max_connections):
+                    conn = self._create_connection()
+                    if conn:
+                        self._connection_pool.append(conn)
+                        await self._available_connections.put(conn)
+                
+                self._initialized = True
+                logger.info(f"Database pool initialized with {len(self._connection_pool)} connections")
+                
+            except Exception as e:
+                logger.error(f"Failed to initialize database pool: {e}")
+                raise DatabaseError(f"Database initialization failed: {e}")
+    
+    async def cleanup(self):
+        """Cleanup all connections"""
+        if not self._initialized:
+            return
+        
+        async with self._lock:
+            # Close all connections in pool
+            for conn in self._connection_pool:
+                try:
+                    conn.close()
+                except Exception as e:
+                    logger.error(f"Error closing connection: {e}")
+            
+            self._connection_pool.clear()
+            self._initialized = False
+            logger.info("Database pool cleaned up")
+    
+    def _create_connection(self) -> Optional[sqlite3.Connection]:
         """Create new database connection"""
         try:
             conn = sqlite3.connect(
-                self.config.database_path,
-                timeout=self.config.connection_timeout,
-                check_same_thread=self.config.check_same_thread
+                self.db_path,
+                check_same_thread=False,
+                timeout=30.0
             )
             
             # Configure connection
-            conn.execute(f"PRAGMA journal_mode = {self.config.journal_mode}")
-            conn.execute(f"PRAGMA synchronous = {self.config.synchronous}")
-            conn.execute(f"PRAGMA cache_size = {self.config.cache_size}")
-            conn.execute(f"PRAGMA temp_store = {self.config.temp_store}")
-            conn.execute(f"PRAGMA mmap_size = {self.config.mmap_size}")
+            conn.execute("PRAGMA foreign_keys = ON")
+            conn.execute("PRAGMA journal_mode = WAL")
+            conn.execute("PRAGMA synchronous = NORMAL")
+            conn.execute("PRAGMA cache_size = 10000")
+            conn.execute("PRAGMA temp_store = MEMORY")
             
-            if self.config.enable_foreign_keys:
-                conn.execute("PRAGMA foreign_keys = ON")
-            
-            if self.config.enable_wal_mode:
-                conn.execute("PRAGMA wal_autocheckpoint = 1000")
-            
-            # Set row factory for dictionary-like access
-            conn.row_factory = sqlite3.Row
-            
-            self.connection = conn
             return conn
             
         except Exception as e:
             logger.error(f"Failed to create database connection: {e}")
-            raise DatabaseError(f"Connection failed: {e}")
+            self._stats["connection_errors"] += 1
+            return None
     
-    def get_connection(self) -> sqlite3.Connection:
-        """Get connection, creating if necessary"""
-        if self.connection is None:
-            self.connect()
-        return self.connection
-    
-    def close(self):
-        """Close the connection"""
-        if self.connection:
-            try:
-                self.connection.close()
-                self.connection = None
-            except Exception as e:
-                logger.error(f"Error closing connection: {e}")
-    
-    def is_expired(self, max_idle_time: int = 300) -> bool:
-        """Check if connection is expired"""
-        return time.time() - self.last_used > max_idle_time
-    
-    def mark_used(self):
-        """Mark connection as used"""
-        self.last_used = time.time()
-
-class DatabaseManager:
-    """
-    Database manager with connection pooling and async support
-    """
-    
-    def __init__(self, config: DatabaseConfig):
-        self.config = config
-        self.connection_pool: Queue = Queue(maxsize=config.max_connections)
-        self.active_connections: List[DatabaseConnection] = []
-        self._lock = threading.Lock()
-        self._initialized = False
-        
-        # Initialize connection pool
-        self._init_pool()
-    
-    def _init_pool(self):
-        """Initialize connection pool"""
-        try:
-            for _ in range(self.config.max_connections):
-                conn_wrapper = DatabaseConnection(self.config)
-                self.connection_pool.put(conn_wrapper)
-                self.active_connections.append(conn_wrapper)
-            
-            self._initialized = True
-            logger.info(f"Database pool initialized with {self.config.max_connections} connections")
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize database pool: {e}")
-            raise DatabaseError(f"Pool initialization failed: {e}")
-    
-    def get_connection(self) -> DatabaseConnection:
-        """Get connection from pool"""
+    async def get_connection(self) -> DatabaseConnection:
+        """Get database connection from pool"""
         if not self._initialized:
-            raise DatabaseError("Database pool not initialized")
+            await self.initialize()
         
         try:
             # Try to get connection from pool
-            conn_wrapper = self.connection_pool.get(timeout=5)
-            conn_wrapper.in_use = True
-            conn_wrapper.mark_used()
+            conn = await asyncio.wait_for(
+                self._available_connections.get(),
+                timeout=5.0
+            )
             
-            # Check if connection is expired
-            if conn_wrapper.is_expired():
-                conn_wrapper.close()
-                conn_wrapper.connect()
-            
-            return conn_wrapper
-            
-        except Empty:
-            raise DatabaseError("No available database connections")
+            # Check if connection is still valid
+            try:
+                conn.execute("SELECT 1")
+                return DatabaseConnection(conn)
+            except Exception:
+                # Connection is invalid, create new one
+                conn.close()
+                new_conn = self._create_connection()
+                if new_conn:
+                    return DatabaseConnection(new_conn)
+                else:
+                    raise DatabaseError("Failed to create valid database connection")
+                    
+        except asyncio.TimeoutError:
+            raise DatabaseError("Timeout waiting for database connection")
+        except Exception as e:
+            raise DatabaseError(f"Failed to get database connection: {e}")
     
-    def return_connection(self, conn_wrapper: DatabaseConnection):
+    async def return_connection(self, db_conn: DatabaseConnection):
         """Return connection to pool"""
         try:
-            conn_wrapper.in_use = False
-            conn_wrapper.mark_used()
-            self.connection_pool.put(conn_wrapper, timeout=1)
+            # Check if connection is still valid
+            db_conn.connection.execute("SELECT 1")
+            
+            # Reset connection state
+            db_conn.connection.rollback()
+            
+            # Return to pool
+            await self._available_connections.put(db_conn.connection)
+            
         except Exception as e:
             logger.error(f"Error returning connection to pool: {e}")
+            # Connection is invalid, close it and create new one
+            try:
+                db_conn.connection.close()
+            except:
+                pass
+            
+            new_conn = self._create_connection()
+            if new_conn:
+                await self._available_connections.put(new_conn)
     
     @asynccontextmanager
     async def get_db_context(self):
-        """Async context manager for database operations"""
-        conn_wrapper = None
+        """Get database context manager"""
+        db_conn = await self.get_connection()
         try:
-            conn_wrapper = self.get_connection()
-            yield conn_wrapper.get_connection()
+            yield db_conn
         finally:
-            if conn_wrapper:
-                self.return_connection(conn_wrapper)
+            await self.return_connection(db_conn)
     
     async def execute_query(self, query: str, params: tuple = ()) -> List[Dict[str, Any]]:
-        """Execute SELECT query asynchronously"""
-        def _execute():
-            with self.get_db_context() as conn:
-                cursor = conn.cursor()
+        """
+        Execute SELECT query
+        
+        Args:
+            query: SQL query string
+            params: Query parameters
+            
+        Returns:
+            List of result dictionaries
+        """
+        async with self.get_db_context() as db_conn:
+            try:
+                cursor = db_conn.cursor()
                 cursor.execute(query, params)
                 results = cursor.fetchall()
+                
+                # Convert to list of dictionaries
                 return [dict(row) for row in results]
-        
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _execute)
+                
+            except Exception as e:
+                logger.error(f"Query execution error: {e}")
+                self._stats["query_errors"] += 1
+                raise DatabaseError(f"Query execution failed: {e}")
+            finally:
+                self._stats["queries_executed"] += 1
     
     async def execute_update(self, query: str, params: tuple = ()) -> int:
-        """Execute INSERT/UPDATE/DELETE query asynchronously"""
-        def _execute():
-            with self.get_db_context() as conn:
-                cursor = conn.cursor()
+        """
+        Execute UPDATE/INSERT/DELETE query
+        
+        Args:
+            query: SQL query string
+            params: Query parameters
+            
+        Returns:
+            Number of affected rows
+        """
+        async with self.get_db_context() as db_conn:
+            try:
+                cursor = db_conn.cursor()
                 cursor.execute(query, params)
-                conn.commit()
-                return cursor.rowcount
-        
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _execute)
+                affected_rows = cursor.rowcount
+                
+                return affected_rows
+                
+            except Exception as e:
+                logger.error(f"Update execution error: {e}")
+                self._stats["query_errors"] += 1
+                raise DatabaseError(f"Update execution failed: {e}")
+            finally:
+                self._stats["queries_executed"] += 1
     
-    async def execute_many(self, query: str, params_list: List[tuple]) -> int:
-        """Execute multiple queries asynchronously"""
-        def _execute():
-            with self.get_db_context() as conn:
-                cursor = conn.cursor()
-                cursor.executemany(query, params_list)
-                conn.commit()
-                return cursor.rowcount
+    async def execute_transaction(self, queries: List[Tuple[str, tuple]]) -> bool:
+        """
+        Execute multiple queries in transaction
         
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _execute)
-    
-    async def execute_script(self, script: str) -> bool:
-        """Execute SQL script asynchronously"""
-        def _execute():
-            with self.get_db_context() as conn:
-                conn.executescript(script)
-                conn.commit()
+        Args:
+            queries: List of (query, params) tuples
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        async with self.get_db_context() as db_conn:
+            try:
+                cursor = db_conn.cursor()
+                
+                for query, params in queries:
+                    cursor.execute(query, params)
+                
+                db_conn.commit()
+                self._stats["transactions_committed"] += 1
                 return True
+                
+            except Exception as e:
+                logger.error(f"Transaction execution error: {e}")
+                db_conn.rollback()
+                self._stats["transactions_rollbacked"] += 1
+                self._stats["query_errors"] += 1
+                raise DatabaseError(f"Transaction execution failed: {e}")
+    
+    async def execute_scalar(self, query: str, params: tuple = ()) -> Any:
+        """
+        Execute query and return single value
         
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _execute)
+        Args:
+            query: SQL query string
+            params: Query parameters
+            
+        Returns:
+            Single result value
+        """
+        results = await self.execute_query(query, params)
+        if results and len(results) > 0:
+            return list(results[0].values())[0]
+        return None
     
     async def table_exists(self, table_name: str) -> bool:
         """Check if table exists"""
@@ -220,8 +323,8 @@ class DatabaseManager:
             SELECT name FROM sqlite_master 
             WHERE type='table' AND name=?
         """
-        result = await self.execute_query(query, (table_name,))
-        return len(result) > 0
+        result = await self.execute_scalar(query, (table_name,))
+        return result is not None
     
     async def get_table_info(self, table_name: str) -> List[Dict[str, Any]]:
         """Get table schema information"""
@@ -229,60 +332,46 @@ class DatabaseManager:
         return await self.execute_query(query, (table_name,))
     
     async def get_table_names(self) -> List[str]:
-        """Get all table names"""
+        """Get list of all table names"""
         query = "SELECT name FROM sqlite_master WHERE type='table'"
-        result = await self.execute_query(query)
-        return [row['name'] for row in result]
+        results = await self.execute_query(query)
+        return [row['name'] for row in results]
     
     async def check_integrity(self) -> Dict[str, Any]:
         """Check database integrity"""
         try:
-            integrity_result = await self.execute_query("PRAGMA integrity_check")
-            foreign_key_result = await self.execute_query("PRAGMA foreign_key_check")
-            
+            integrity_check = await self.execute_scalar("PRAGMA integrity_check")
             return {
-                'integrity': integrity_result[0]['integrity_check'] if integrity_result else 'unknown',
-                'foreign_keys': len(foreign_key_result) == 0,
-                'foreign_key_errors': foreign_key_result
+                "integrity": integrity_check == "ok",
+                "result": integrity_check
             }
         except Exception as e:
-            logger.error(f"Integrity check failed: {e}")
             return {
-                'integrity': 'error',
-                'foreign_keys': False,
-                'error': str(e)
+                "integrity": False,
+                "error": str(e)
             }
     
-    async def optimize(self):
-        """Optimize database"""
-        try:
-            await self.execute_query("PRAGMA optimize")
-            await self.execute_query("VACUUM")
-            logger.info("Database optimization completed")
-        except Exception as e:
-            logger.error(f"Database optimization failed: {e}")
-    
-    def close_all(self):
-        """Close all connections"""
-        for conn_wrapper in self.active_connections:
-            conn_wrapper.close()
-        
-        self.active_connections.clear()
-        self._initialized = False
-        logger.info("All database connections closed")
+    def get_stats(self) -> Dict[str, Any]:
+        """Get database statistics"""
+        return {
+            **self._stats,
+            "pool_size": len(self._connection_pool),
+            "available_connections": self._available_connections.qsize(),
+            "initialized": self._initialized
+        }
 
 # Global database manager instance
-db_manager: Optional[DatabaseManager] = None
+db_manager = DatabaseManager("yemen_net.db")
 
-def init_database_manager(config: DatabaseConfig) -> DatabaseManager:
-    """Initialize global database manager"""
-    global db_manager
-    if db_manager is None:
-        db_manager = DatabaseManager(config)
-    return db_manager
+# Convenience functions for backward compatibility
+async def get_db_connection():
+    """Get database connection (backward compatibility)"""
+    return await db_manager.get_connection()
 
-def get_database_manager() -> DatabaseManager:
-    """Get global database manager"""
-    if db_manager is None:
-        raise DatabaseError("Database manager not initialized")
-    return db_manager
+async def execute_query(query: str, params: tuple = ()) -> List[Dict[str, Any]]:
+    """Execute query (backward compatibility)"""
+    return await db_manager.execute_query(query, params)
+
+async def execute_update(query: str, params: tuple = ()) -> int:
+    """Execute update (backward compatibility)"""
+    return await db_manager.execute_update(query, params)

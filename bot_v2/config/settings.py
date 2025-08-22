@@ -1,384 +1,438 @@
 """
-Comprehensive Configuration System for Yemen Net Bot
+Configuration settings for Yemen Net Bot v2
 """
+
 import os
-import json
+import logging
+from typing import Dict, Any, Optional
 from pathlib import Path
-from typing import Dict, Any, Optional, List
-from dataclasses import dataclass, field
-from enum import Enum
 
-from ..core.exceptions import ConfigurationException, MissingConfiguration, InvalidConfiguration
+# Base directory
+BASE_DIR = Path(__file__).parent.parent.parent
 
+# Environment
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+DEBUG = ENVIRONMENT == "development"
 
-class LogLevel(Enum):
-    """Log level enumeration"""
-    DEBUG = "DEBUG"
-    INFO = "INFO"
-    WARNING = "WARNING"
-    ERROR = "ERROR"
-    CRITICAL = "CRITICAL"
+# Bot Configuration
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+BOT_NAME = "Yemen Net Bot v2"
+BOT_VERSION = "2.0.0"
+BOT_DESCRIPTION = "Enhanced Yemen Net Bot with modern architecture"
 
+# Database Configuration
+DB_PATH = os.getenv("DB_PATH", str(BASE_DIR / "yemen_net.db"))
+DB_MAX_CONNECTIONS = int(os.getenv("DB_MAX_CONNECTIONS", "10"))
+DB_CONNECTION_TIMEOUT = int(os.getenv("DB_CONNECTION_TIMEOUT", "30"))
+DB_ENABLE_WAL = os.getenv("DB_ENABLE_WAL", "true").lower() == "true"
 
-class Environment(Enum):
-    """Environment enumeration"""
-    DEVELOPMENT = "development"
-    STAGING = "staging"
-    PRODUCTION = "production"
+# Cache Configuration
+CACHE_MAX_SIZE = int(os.getenv("CACHE_MAX_SIZE", "1000"))
+CACHE_CLEANUP_INTERVAL = int(os.getenv("CACHE_CLEANUP_INTERVAL", "60"))
+CACHE_DEFAULT_TTL = int(os.getenv("CACHE_DEFAULT_TTL", "300"))
 
+# Rate Limiting Configuration
+RATE_LIMIT_MESSAGE = int(os.getenv("RATE_LIMIT_MESSAGE", "20"))
+RATE_LIMIT_BUTTON_CLICK = int(os.getenv("RATE_LIMIT_BUTTON_CLICK", "30"))
+RATE_LIMIT_PAYMENT = int(os.getenv("RATE_LIMIT_PAYMENT", "5"))
+RATE_LIMIT_ADMIN_ACTION = int(os.getenv("RATE_LIMIT_ADMIN_ACTION", "10"))
+RATE_LIMIT_FILE_UPLOAD = int(os.getenv("RATE_LIMIT_FILE_UPLOAD", "3"))
+RATE_LIMIT_API_CALL = int(os.getenv("RATE_LIMIT_API_CALL", "50"))
 
-@dataclass
-class DatabaseConfig:
-    """Database configuration"""
-    path: str = "yemen_net.db"
-    max_connections: int = 20
-    timeout: float = 30.0
-    backup_interval_hours: int = 24
-    optimize_interval_hours: int = 168  # 1 week
+# Security Configuration
+SECURITY_MAX_LOGIN_ATTEMPTS = int(os.getenv("SECURITY_MAX_LOGIN_ATTEMPTS", "3"))
+SECURITY_LOGIN_LOCKOUT_DURATION = int(os.getenv("SECURITY_LOGIN_LOCKOUT_DURATION", "300"))
+SECURITY_SESSION_TIMEOUT = int(os.getenv("SECURITY_SESSION_TIMEOUT", "3600"))
+SECURITY_PASSWORD_MIN_LENGTH = int(os.getenv("SECURITY_PASSWORD_MIN_LENGTH", "8"))
+
+# Logging Configuration
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO" if not DEBUG else "DEBUG")
+LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+LOG_FILE = BASE_DIR / "logs" / "bot.log"
+LOG_MAX_SIZE = int(os.getenv("LOG_MAX_SIZE", "10"))  # MB
+LOG_BACKUP_COUNT = int(os.getenv("LOG_BACKUP_COUNT", "5"))
+
+# Performance Configuration
+PERFORMANCE_MAX_WORKERS = int(os.getenv("PERFORMANCE_MAX_WORKERS", "4"))
+PERFORMANCE_REQUEST_TIMEOUT = int(os.getenv("PERFORMANCE_REQUEST_TIMEOUT", "30"))
+PERFORMANCE_CONNECTION_POOL_SIZE = int(os.getenv("PERFORMANCE_CONNECTION_POOL_SIZE", "10"))
+
+# Notification Configuration
+NOTIFICATION_ENABLED = os.getenv("NOTIFICATION_ENABLED", "true").lower() == "true"
+NOTIFICATION_TELEGRAM_ADMIN_ID = os.getenv("NOTIFICATION_TELEGRAM_ADMIN_ID", "")
+NOTIFICATION_EMAIL_ENABLED = os.getenv("NOTIFICATION_EMAIL_ENABLED", "false").lower() == "true"
+NOTIFICATION_EMAIL_SMTP_HOST = os.getenv("NOTIFICATION_EMAIL_SMTP_HOST", "")
+NOTIFICATION_EMAIL_SMTP_PORT = int(os.getenv("NOTIFICATION_EMAIL_SMTP_PORT", "587"))
+NOTIFICATION_EMAIL_USERNAME = os.getenv("NOTIFICATION_EMAIL_USERNAME", "")
+NOTIFICATION_EMAIL_PASSWORD = os.getenv("NOTIFICATION_EMAIL_PASSWORD", "")
+
+# Payment Configuration
+PAYMENT_ENABLED = os.getenv("PAYMENT_ENABLED", "true").lower() == "true"
+PAYMENT_MIN_AMOUNT = float(os.getenv("PAYMENT_MIN_AMOUNT", "1.0"))
+PAYMENT_MAX_AMOUNT = float(os.getenv("PAYMENT_MAX_AMOUNT", "999999.99"))
+PAYMENT_CURRENCY = os.getenv("PAYMENT_CURRENCY", "YER")
+PAYMENT_COMMISSION_RATE = float(os.getenv("PAYMENT_COMMISSION_RATE", "0.05"))  # 5%
+
+# File Upload Configuration
+FILE_UPLOAD_ENABLED = os.getenv("FILE_UPLOAD_ENABLED", "true").lower() == "true"
+FILE_UPLOAD_MAX_SIZE = int(os.getenv("FILE_UPLOAD_MAX_SIZE", "10"))  # MB
+FILE_UPLOAD_ALLOWED_TYPES = os.getenv("FILE_UPLOAD_ALLOWED_TYPES", "jpg,jpeg,png,pdf,doc,docx").split(",")
+FILE_UPLOAD_PATH = BASE_DIR / "uploads"
+
+# API Configuration
+API_ENABLED = os.getenv("API_ENABLED", "false").lower() == "true"
+API_HOST = os.getenv("API_HOST", "0.0.0.0")
+API_PORT = int(os.getenv("API_PORT", "8000"))
+API_DEBUG = DEBUG
+API_RELOAD = DEBUG
+
+# Monitoring Configuration
+MONITORING_ENABLED = os.getenv("MONITORING_ENABLED", "true").lower() == "true"
+MONITORING_HEALTH_CHECK_INTERVAL = int(os.getenv("MONITORING_HEALTH_CHECK_INTERVAL", "60"))
+MONITORING_METRICS_ENABLED = os.getenv("MONITORING_METRICS_ENABLED", "true").lower() == "true"
+MONITORING_ALERT_ENABLED = os.getenv("MONITORING_ALERT_ENABLED", "true").lower() == "true"
+
+# Backup Configuration
+BACKUP_ENABLED = os.getenv("BACKUP_ENABLED", "true").lower() == "true"
+BACKUP_INTERVAL_HOURS = int(os.getenv("BACKUP_INTERVAL_HOURS", "24"))
+BACKUP_RETENTION_DAYS = int(os.getenv("BACKUP_RETENTION_DAYS", "30"))
+BACKUP_PATH = BASE_DIR / "backups"
+
+# Feature Flags
+FEATURES = {
+    "wallet": os.getenv("FEATURE_WALLET", "true").lower() == "true",
+    "cards": os.getenv("FEATURE_CARDS", "true").lower() == "true",
+    "transactions": os.getenv("FEATURE_TRANSACTIONS", "true").lower() == "true",
+    "reports": os.getenv("FEATURE_REPORTS", "true").lower() == "true",
+    "commissions": os.getenv("FEATURE_COMMISSIONS", "true").lower() == "true",
+    "admin_panel": os.getenv("FEATURE_ADMIN_PANEL", "true").lower() == "true",
+    "supplier_panel": os.getenv("FEATURE_SUPPLIER_PANEL", "true").lower() == "true",
+    "agent_panel": os.getenv("FEATURE_AGENT_PANEL", "true").lower() == "true",
+}
+
+# Emojis and UI Configuration
+EMOJIS = {
+    "success": "✅",
+    "error": "❌",
+    "warning": "⚠️",
+    "info": "ℹ️",
+    "money": "💰",
+    "card": "💳",
+    "wallet": "👛",
+    "user": "👤",
+    "admin": "👨‍💼",
+    "supplier": "🏪",
+    "agent": "👨‍💻",
+    "settings": "⚙️",
+    "help": "❓",
+    "back": "⬅️",
+    "next": "➡️",
+    "home": "🏠",
+    "refresh": "🔄",
+    "download": "📥",
+    "upload": "📤",
+    "search": "🔍",
+    "filter": "🔧",
+    "sort": "📊",
+    "export": "📋",
+    "import": "📥",
+    "delete": "🗑️",
+    "edit": "✏️",
+    "add": "➕",
+    "remove": "➖",
+    "check": "☑️",
+    "uncheck": "⬜",
+    "star": "⭐",
+    "heart": "❤️",
+    "fire": "🔥",
+    "rocket": "🚀",
+    "trophy": "🏆",
+    "gift": "🎁",
+    "clock": "⏰",
+    "calendar": "📅",
+    "location": "📍",
+    "phone": "📞",
+    "email": "📧",
+    "link": "🔗",
+    "lock": "🔒",
+    "unlock": "🔓",
+    "shield": "🛡️",
+    "key": "🔑",
+    "gear": "⚙️",
+    "tools": "🛠️",
+    "database": "🗄️",
+    "server": "🖥️",
+    "network": "🌐",
+    "cloud": "☁️",
+    "mobile": "📱",
+    "computer": "💻",
+    "printer": "🖨️",
+    "camera": "📷",
+    "video": "🎥",
+    "audio": "🎵",
+    "file": "📄",
+    "folder": "📁",
+    "archive": "📦",
+    "package": "📦",
+    "box": "📦",
+    "bag": "👜",
+    "shopping": "🛒",
+    "cart": "🛒",
+    "receipt": "🧾",
+    "invoice": "🧾",
+    "contract": "📋",
+    "document": "📄",
+    "certificate": "📜",
+    "diploma": "🎓",
+    "book": "📚",
+    "newspaper": "📰",
+    "magazine": "📖",
+    "notebook": "📓",
+    "pen": "✒️",
+    "pencil": "✏️",
+    "marker": "🖍️",
+    "crayon": "🖍️",
+    "paint": "🎨",
+    "brush": "🖌️",
+    "palette": "🎨",
+    "canvas": "🖼️",
+    "frame": "🖼️",
+    "picture": "🖼️",
+    "photo": "📸",
+    "selfie": "🤳",
+    "group": "👥",
+    "team": "👨‍👩‍👧‍👦",
+    "family": "👨‍👩‍👧‍👦",
+    "couple": "👫",
+    "friends": "👭",
+    "business": "💼",
+    "meeting": "🤝",
+    "handshake": "🤝",
+    "agreement": "🤝",
+    "partnership": "🤝",
+    "collaboration": "🤝",
+    "support": "🆘",
+    "emergency": "🚨",
+    "alert": "🚨",
+    "warning": "⚠️",
+    "danger": "☠️",
+    "poison": "☠️",
+    "biohazard": "☣️",
+    "radioactive": "☢️",
+    "nuclear": "☢️",
+    "atomic": "☢️",
+    "military": "🎖️",
+    "police": "👮",
+    "firefighter": "👨‍🚒",
+    "ambulance": "🚑",
+    "hospital": "🏥",
+    "clinic": "🏥",
+    "pharmacy": "💊",
+    "medicine": "💊",
+    "pill": "💊",
+    "syringe": "💉",
+    "thermometer": "🌡️",
+    "stethoscope": "🩺",
+    "bandage": "🩹",
+    "plaster": "🩹",
+    "ointment": "🧴",
+    "cream": "🧴",
+    "lotion": "🧴",
+    "soap": "🧼",
+    "shampoo": "🧴",
+    "toothpaste": "🪥",
+    "toothbrush": "🪥",
+    "mirror": "🪞",
+    "comb": "🪮",
+    "scissors": "✂️",
+    "razor": "🪒",
+    "tweezers": "🔧",
+    "nail_clipper": "✂️",
+}
+
+# Quick Commands
+QUICK_COMMANDS = {
+    "start": "بدء استخدام البوت",
+    "help": "عرض المساعدة",
+    "status": "حالة النظام",
+    "wallet": "إدارة المحفظة",
+    "cards": "شراء البطاقات",
+    "transactions": "المعاملات",
+    "reports": "التقارير",
+    "settings": "الإعدادات",
+    "profile": "الملف الشخصي",
+    "support": "الدعم الفني"
+}
+
+# User Roles
+USER_ROLES = {
+    "user": "مستخدم عادي",
+    "agent": "وكيل مبيعات",
+    "supplier": "مورد بطاقات",
+    "admin": "مدير النظام",
+    "super_admin": "مدير عام"
+}
+
+# Permissions
+PERMISSIONS = {
+    "user": ["basic_operations", "view_profile", "manage_wallet", "view_transactions"],
+    "agent": ["user_permissions", "view_sales", "view_commissions", "manage_customers"],
+    "supplier": ["user_permissions", "manage_cards", "view_supplier_reports", "upload_cards"],
+    "admin": ["agent_permissions", "supplier_permissions", "manage_users", "system_admin", "financial_admin"],
+    "super_admin": ["admin_permissions", "activate_suppliers", "override_restrictions", "full_access"]
+}
+
+# Database Tables
+DATABASE_TABLES = [
+    "users",
+    "user_roles",
+    "permissions",
+    "wallets",
+    "transactions",
+    "cards",
+    "card_categories",
+    "networks",
+    "suppliers",
+    "agents",
+    "commissions",
+    "notifications",
+    "system_logs",
+    "audit_logs",
+    "backups",
+    "settings"
+]
+
+# Validation Rules
+VALIDATION_RULES = {
+    "phone_number": {
+        "pattern": r"^(\+?967|0)?[0-9]{9}$",
+        "message": "رقم الهاتف يجب أن يكون بصيغة صحيحة (مثال: +967XXXXXXXXX)"
+    },
+    "email": {
+        "pattern": r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$",
+        "message": "البريد الإلكتروني يجب أن يكون بصيغة صحيحة"
+    },
+    "amount": {
+        "min": 0.01,
+        "max": 999999.99,
+        "message": "المبلغ يجب أن يكون بين 0.01 و 999,999.99"
+    },
+    "card_number": {
+        "pattern": r"^[0-9]{16,19}$",
+        "message": "رقم البطاقة يجب أن يكون 16-19 رقم"
+    },
+    "username": {
+        "min_length": 3,
+        "max_length": 30,
+        "pattern": r"^[a-zA-Z0-9_]+$",
+        "message": "اسم المستخدم يجب أن يكون 3-30 حرف، أحرف وأرقام وشرطة سفلية فقط"
+    },
+    "password": {
+        "min_length": 8,
+        "max_length": 128,
+        "message": "كلمة المرور يجب أن تكون 8 أحرف على الأقل"
+    }
+}
+
+# Error Messages
+ERROR_MESSAGES = {
+    "database_error": "حدث خطأ في قاعدة البيانات. يرجى المحاولة مرة أخرى لاحقاً.",
+    "network_error": "حدث خطأ في الاتصال. يرجى التحقق من اتصال الإنترنت والمحاولة مرة أخرى.",
+    "permission_denied": "ليس لديك الصلاحية لتنفيذ هذا الإجراء.",
+    "validation_error": "البيانات المدخلة غير صحيحة. يرجى التحقق والمحاولة مرة أخرى.",
+    "rate_limit_exceeded": "تم تجاوز الحد المسموح من الطلبات. يرجى الانتظار قليلاً.",
+    "user_not_found": "المستخدم غير موجود.",
+    "insufficient_funds": "رصيد غير كافي.",
+    "card_not_found": "البطاقة غير موجودة.",
+    "card_already_sold": "البطاقة مباعة بالفعل.",
+    "invalid_amount": "مبلغ غير صحيح.",
+    "system_error": "حدث خطأ في النظام. يرجى المحاولة مرة أخرى أو التواصل مع الإدارة."
+}
+
+# Success Messages
+SUCCESS_MESSAGES = {
+    "operation_completed": "تم إنجاز العملية بنجاح.",
+    "user_created": "تم إنشاء المستخدم بنجاح.",
+    "user_updated": "تم تحديث بيانات المستخدم بنجاح.",
+    "transaction_completed": "تم إنجاز المعاملة بنجاح.",
+    "card_purchased": "تم شراء البطاقة بنجاح.",
+    "card_uploaded": "تم رفع البطاقة بنجاح.",
+    "payment_received": "تم استلام الدفع بنجاح.",
+    "withdrawal_completed": "تم إنجاز السحب بنجاح.",
+    "profile_updated": "تم تحديث الملف الشخصي بنجاح.",
+    "settings_saved": "تم حفظ الإعدادات بنجاح."
+}
+
+# System Messages
+SYSTEM_MESSAGES = {
+    "welcome": "مرحباً بك في بوت شبكة اليمن المحسن v2.0",
+    "maintenance": "النظام في حالة صيانة. يرجى المحاولة لاحقاً.",
+    "update_available": "يتوفر تحديث جديد للنظام.",
+    "backup_completed": "تم إنجاز النسخة الاحتياطية بنجاح.",
+    "system_restart": "سيتم إعادة تشغيل النظام خلال دقائق.",
+    "emergency_mode": "النظام في وضع الطوارئ. الوظائف محدودة."
+}
+
+def get_setting(key: str, default: Any = None) -> Any:
+    """Get configuration setting"""
+    return globals().get(key, default)
+
+def get_emoji(name: str) -> str:
+    """Get emoji by name"""
+    return EMOJIS.get(name, "")
+
+def is_feature_enabled(feature: str) -> bool:
+    """Check if feature is enabled"""
+    return FEATURES.get(feature, False)
+
+def get_error_message(error_type: str) -> str:
+    """Get error message by type"""
+    return ERROR_MESSAGES.get(error_type, "حدث خطأ غير متوقع.")
+
+def get_success_message(message_type: str) -> str:
+    """Get success message by type"""
+    return SUCCESS_MESSAGES.get(message_type, "تم إنجاز العملية بنجاح.")
+
+def get_system_message(message_type: str) -> str:
+    """Get system message by type"""
+    return SYSTEM_MESSAGES.get(message_type, "")
+
+def validate_configuration() -> bool:
+    """Validate configuration settings"""
+    required_settings = ["BOT_TOKEN"]
     
-    def __post_init__(self):
-        if self.max_connections < 1:
-            raise InvalidConfiguration("max_connections must be at least 1")
-        if self.timeout <= 0:
-            raise InvalidConfiguration("timeout must be positive")
-
-
-@dataclass
-class TelegramConfig:
-    """Telegram bot configuration"""
-    token: str
-    webhook_url: Optional[str] = None
-    webhook_port: int = 8443
-    webhook_path: str = "/webhook"
-    max_connections: int = 40
+    for setting in required_settings:
+        if not get_setting(setting):
+            logging.error(f"Required setting '{setting}' is missing")
+            return False
     
-    def __post_init__(self):
-        if not self.token:
-            raise MissingConfiguration("Telegram bot token is required")
-        if self.max_connections < 1 or self.max_connections > 100:
-            raise InvalidConfiguration("max_connections must be between 1 and 100")
+    return True
 
-
-@dataclass
-class SecurityConfig:
-    """Security configuration"""
-    enable_rate_limiting: bool = True
-    max_login_attempts: int = 3
-    login_cooldown_minutes: int = 15
-    session_timeout_hours: int = 24
-    require_phone_verification: bool = True
-    enable_2fa: bool = False
-    password_min_length: int = 8
-    jwt_secret_key: Optional[str] = None
-    jwt_expiry_hours: int = 24
+def setup_logging():
+    """Setup logging configuration"""
+    # Create logs directory if it doesn't exist
+    log_dir = Path(LOG_FILE).parent
+    log_dir.mkdir(parents=True, exist_ok=True)
     
-    def __post_init__(self):
-        if self.max_login_attempts < 1:
-            raise InvalidConfiguration("max_login_attempts must be at least 1")
-        if self.password_min_length < 4:
-            raise InvalidConfiguration("password_min_length must be at least 4")
-
-
-@dataclass
-class PaymentConfig:
-    """Payment system configuration"""
-    enable_payments: bool = True
-    min_transfer_amount: float = 10.0
-    max_transfer_amount: float = 100000.0
-    commission_rate: float = 0.02
-    auto_withdrawal_enabled: bool = False
-    withdrawal_min_amount: float = 100.0
-    withdrawal_fee: float = 5.0
-    supported_currencies: List[str] = field(default_factory=lambda: ["YER", "USD"])
-    
-    def __post_init__(self):
-        if self.min_transfer_amount < 0:
-            raise InvalidConfiguration("min_transfer_amount cannot be negative")
-        if self.max_transfer_amount <= self.min_transfer_amount:
-            raise InvalidConfiguration("max_transfer_amount must be greater than min_transfer_amount")
-        if self.commission_rate < 0 or self.commission_rate > 1:
-            raise InvalidConfiguration("commission_rate must be between 0 and 1")
-
-
-@dataclass
-class LoggingConfig:
-    """Logging configuration"""
-    level: LogLevel = LogLevel.INFO
-    log_to_file: bool = True
-    log_to_console: bool = True
-    log_directory: str = "logs"
-    max_file_size_mb: int = 10
-    backup_count: int = 5
-    log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s"
-    
-    def __post_init__(self):
-        if self.max_file_size_mb < 1:
-            raise InvalidConfiguration("max_file_size_mb must be at least 1")
-        if self.backup_count < 0:
-            raise InvalidConfiguration("backup_count cannot be negative")
-
-
-@dataclass
-class CacheConfig:
-    """Cache configuration"""
-    enable_caching: bool = True
-    default_ttl_seconds: int = 300
-    max_entries: int = 10000
-    cleanup_interval_minutes: int = 10
-    
-    def __post_init__(self):
-        if self.default_ttl_seconds < 1:
-            raise InvalidConfiguration("default_ttl_seconds must be at least 1")
-        if self.max_entries < 100:
-            raise InvalidConfiguration("max_entries must be at least 100")
-
-
-@dataclass
-class MonitoringConfig:
-    """Monitoring and metrics configuration"""
-    enable_monitoring: bool = True
-    metrics_collection_interval: int = 60
-    health_check_interval: int = 30
-    alert_thresholds: Dict[str, float] = field(default_factory=lambda: {
-        "cpu_usage": 80.0,
-        "memory_usage": 80.0,
-        "disk_usage": 85.0,
-        "error_rate": 5.0,
-        "response_time": 2.0
-    })
-    
-    def __post_init__(self):
-        for key, value in self.alert_thresholds.items():
-            if value < 0 or value > 100:
-                raise InvalidConfiguration(f"alert_thresholds.{key} must be between 0 and 100")
-
-
-@dataclass
-class BotConfig:
-    """Main bot configuration"""
-    environment: Environment = Environment.DEVELOPMENT
-    debug: bool = False
-    admin_user_ids: List[int] = field(default_factory=list)
-    maintenance_mode: bool = False
-    registration_enabled: bool = True
-    max_users: int = 10000
-    features_enabled: Dict[str, bool] = field(default_factory=lambda: {
-        "referral_system": True,
-        "commission_system": True,
-        "file_uploads": True,
-        "notifications": True,
-        "analytics": True,
-        "backup": True
-    })
-
-
-class Settings:
-    """Main settings class with validation and environment variable support"""
-    
-    def __init__(self, config_file: Optional[str] = None):
-        self.config_file = config_file or "config.json"
-        self._config_data = {}
-        
-        # Load configuration
-        self._load_config()
-        self._load_environment_variables()
-        self._validate_config()
-        
-        # Initialize configuration objects
-        self.database = DatabaseConfig(**self._get_section("database", {}))
-        self.telegram = TelegramConfig(**self._get_section("telegram", {}))
-        self.security = SecurityConfig(**self._get_section("security", {}))
-        self.payment = PaymentConfig(**self._get_section("payment", {}))
-        self.logging = LoggingConfig(**self._get_section("logging", {}))
-        self.cache = CacheConfig(**self._get_section("cache", {}))
-        self.monitoring = MonitoringConfig(**self._get_section("monitoring", {}))
-        self.bot = BotConfig(**self._get_section("bot", {}))
-        
-    def _load_config(self):
-        """Load configuration from file"""
-        config_path = Path(self.config_file)
-        
-        if config_path.exists():
-            try:
-                with open(config_path, 'r', encoding='utf-8') as f:
-                    self._config_data = json.load(f)
-            except json.JSONDecodeError as e:
-                raise InvalidConfiguration(f"Invalid JSON in config file: {e}")
-            except Exception as e:
-                raise ConfigurationException(f"Failed to load config file: {e}")
-        else:
-            # Create default config file
-            self._create_default_config()
-            
-    def _create_default_config(self):
-        """Create default configuration file"""
-        default_config = {
-            "telegram": {
-                "token": "YOUR_BOT_TOKEN_HERE"
-            },
-            "database": {
-                "path": "yemen_net.db",
-                "max_connections": 20
-            },
-            "security": {
-                "enable_rate_limiting": True,
-                "max_login_attempts": 3
-            },
-            "payment": {
-                "enable_payments": True,
-                "min_transfer_amount": 10.0
-            },
-            "logging": {
-                "level": "INFO",
-                "log_to_file": True
-            },
-            "bot": {
-                "environment": "development",
-                "debug": True
-            }
-        }
-        
-        try:
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(default_config, f, indent=2, ensure_ascii=False)
-            self._config_data = default_config
-        except Exception as e:
-            raise ConfigurationException(f"Failed to create default config: {e}")
-            
-    def _load_environment_variables(self):
-        """Load configuration from environment variables"""
-        env_mappings = {
-            # Telegram
-            "TELEGRAM_BOT_TOKEN": ("telegram", "token"),
-            "TELEGRAM_WEBHOOK_URL": ("telegram", "webhook_url"),
-            "TELEGRAM_WEBHOOK_PORT": ("telegram", "webhook_port"),
-            
-            # Database
-            "DATABASE_PATH": ("database", "path"),
-            "DATABASE_MAX_CONNECTIONS": ("database", "max_connections"),
-            "DATABASE_TIMEOUT": ("database", "timeout"),
-            
-            # Security
-            "SECURITY_ENABLE_RATE_LIMITING": ("security", "enable_rate_limiting"),
-            "SECURITY_MAX_LOGIN_ATTEMPTS": ("security", "max_login_attempts"),
-            "SECURITY_JWT_SECRET": ("security", "jwt_secret_key"),
-            
-            # Payment
-            "PAYMENT_ENABLE": ("payment", "enable_payments"),
-            "PAYMENT_MIN_AMOUNT": ("payment", "min_transfer_amount"),
-            "PAYMENT_MAX_AMOUNT": ("payment", "max_transfer_amount"),
-            "PAYMENT_COMMISSION_RATE": ("payment", "commission_rate"),
-            
-            # Logging
-            "LOG_LEVEL": ("logging", "level"),
-            "LOG_DIRECTORY": ("logging", "log_directory"),
-            
-            # Bot
-            "BOT_ENVIRONMENT": ("bot", "environment"),
-            "BOT_DEBUG": ("bot", "debug"),
-            "BOT_MAINTENANCE_MODE": ("bot", "maintenance_mode"),
-            "BOT_ADMIN_IDS": ("bot", "admin_user_ids")
-        }
-        
-        for env_var, (section, key) in env_mappings.items():
-            value = os.getenv(env_var)
-            if value is not None:
-                # Ensure section exists
-                if section not in self._config_data:
-                    self._config_data[section] = {}
-                    
-                # Type conversion
-                if key in ["max_connections", "webhook_port", "max_login_attempts"]:
-                    value = int(value)
-                elif key in ["timeout", "min_transfer_amount", "max_transfer_amount", "commission_rate"]:
-                    value = float(value)
-                elif key in ["enable_rate_limiting", "enable_payments", "debug", "maintenance_mode"]:
-                    value = value.lower() in ("true", "1", "yes", "on")
-                elif key == "admin_user_ids":
-                    value = [int(x.strip()) for x in value.split(",") if x.strip()]
-                    
-                self._config_data[section][key] = value
-                
-    def _validate_config(self):
-        """Validate configuration"""
-        required_settings = [
-            ("telegram", "token")
+    # Configure logging
+    logging.basicConfig(
+        level=getattr(logging, LOG_LEVEL),
+        format=LOG_FORMAT,
+        handlers=[
+            logging.FileHandler(LOG_FILE, encoding='utf-8'),
+            logging.StreamHandler()
         ]
-        
-        for section, key in required_settings:
-            if not self._get_nested_value(section, key):
-                raise MissingConfiguration(f"Required setting missing: {section}.{key}")
-                
-    def _get_section(self, section_name: str, default: Dict[str, Any]) -> Dict[str, Any]:
-        """Get configuration section with defaults"""
-        return self._config_data.get(section_name, default)
-        
-    def _get_nested_value(self, section: str, key: str, default: Any = None) -> Any:
-        """Get nested configuration value"""
-        return self._config_data.get(section, {}).get(key, default)
-        
-    def get(self, key: str, default: Any = None) -> Any:
-        """Get configuration value by dot notation"""
-        keys = key.split(".")
-        value = self._config_data
-        
-        for k in keys:
-            if isinstance(value, dict) and k in value:
-                value = value[k]
-            else:
-                return default
-                
-        return value
-        
-    def set(self, key: str, value: Any):
-        """Set configuration value by dot notation"""
-        keys = key.split(".")
-        config = self._config_data
-        
-        for k in keys[:-1]:
-            if k not in config:
-                config[k] = {}
-            config = config[k]
-            
-        config[keys[-1]] = value
-        
-    def save(self):
-        """Save current configuration to file"""
-        try:
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(self._config_data, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            raise ConfigurationException(f"Failed to save config: {e}")
-            
-    def reload(self):
-        """Reload configuration from file and environment"""
-        self.__init__(self.config_file)
-        
-    def get_summary(self) -> Dict[str, Any]:
-        """Get configuration summary for debugging"""
-        return {
-            "environment": self.bot.environment.value,
-            "debug": self.bot.debug,
-            "database_path": self.database.path,
-            "telegram_configured": bool(self.telegram.token and self.telegram.token != "YOUR_BOT_TOKEN_HERE"),
-            "features_enabled": self.bot.features_enabled,
-            "security_enabled": self.security.enable_rate_limiting,
-            "payment_enabled": self.payment.enable_payments,
-            "logging_level": self.logging.level.value,
-            "cache_enabled": self.cache.enable_caching,
-            "monitoring_enabled": self.monitoring.enable_monitoring
-        }
+    )
+    
+    # Set specific logger levels
+    logging.getLogger("telegram").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
 
+# Initialize logging
+setup_logging()
 
-# Global settings instance
-settings = Settings()
-
-# Convenience exports
-DATABASE_CONFIG = settings.database
-TELEGRAM_CONFIG = settings.telegram
-SECURITY_CONFIG = settings.security
-PAYMENT_CONFIG = settings.payment
-LOGGING_CONFIG = settings.logging
-CACHE_CONFIG = settings.cache
-MONITORING_CONFIG = settings.monitoring
-BOT_CONFIG = settings.bot
+# Validate configuration
+if not validate_configuration():
+    logging.error("Configuration validation failed. Please check your settings.")
+    raise ValueError("Invalid configuration")
