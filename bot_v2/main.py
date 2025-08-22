@@ -1,424 +1,637 @@
 #!/usr/bin/env python3
 """
-Pottagrm Enhanced Bot v2.0
-Main Entry Point - Completely Restructured
+Yemen Net Bot v2 - Enhanced Version
+Main entry point with improved architecture and error handling
 """
 
 import asyncio
 import logging
-import logging.config
 import signal
 import sys
 import time
-from typing import Optional, Dict, Any
 from pathlib import Path
+from typing import Optional
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
-from telegram import Update, BotCommand
+from telegram import Update, Bot
 from telegram.ext import (
-    Application, CommandHandler, MessageHandler, CallbackQueryHandler,
-    ConversationHandler, filters, CallbackContext
+    Application, 
+    CommandHandler, 
+    MessageHandler, 
+    CallbackQueryHandler,
+    ConversationHandler,
+    filters,
+    ContextTypes
 )
 
-# Import bot modules
-from bot_v2.config.settings import *
-from bot_v2.services.database_service import get_database_manager, close_database_manager
-from bot_v2.services.rate_limiter import get_rate_limiter, shutdown_rate_limiter
-from bot_v2.handlers.user_handlers import UserHandlers
-from bot_v2.handlers.admin_handlers import AdminHandlers
-from bot_v2.handlers.payment_handlers import PaymentHandlers
-from bot_v2.utils.logging_config import setup_logging
-from bot_v2.utils.health_monitor import HealthMonitor
-from bot_v2.utils.performance_monitor import PerformanceMonitor
-from bot_v2.utils.error_handler import ErrorHandler
-from bot_v2.utils.security_manager import SecurityManager
+# Import our modules
+from core.config import config, EMOJIS
+from core.exceptions import BotException, DatabaseException, ConfigurationException
+from services import (
+    db_manager, 
+    rate_limiter, 
+    cache_manager, 
+    notification_manager
+)
 
-# Setup logging
-setup_logging()
+# Configure logging
+logging.basicConfig(
+    level=getattr(logging, config.bot.log_level.upper()),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(config.bot.log_file, encoding='utf-8'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
 logger = logging.getLogger(__name__)
 
-class PottagrmBot:
-    """Main bot class with enhanced features"""
+class YemenNetBot:
+    """Enhanced Yemen Net Bot with improved architecture"""
     
     def __init__(self):
         self.application: Optional[Application] = None
-        self.database_manager = None
-        self.rate_limiter = None
-        self.health_monitor = None
-        self.performance_monitor = None
-        self.error_handler = None
-        self.security_manager = None
-        self.user_handlers = None
-        self.admin_handlers = None
-        self.payment_handlers = None
-        self.shutdown_event = asyncio.Event()
+        self.bot: Optional[Bot] = None
+        self.is_running = False
+        self.start_time = None
         
-        # Performance tracking
-        self.start_time = time.time()
-        self.total_requests = 0
-        self.successful_requests = 0
-        self.failed_requests = 0
+        # Validate configuration
+        self._validate_config()
         
-        # Signal handlers
-        signal.signal(signal.SIGINT, self._signal_handler)
-        signal.signal(signal.SIGTERM, self._signal_handler)
+        # Initialize services
+        self._init_services()
     
-    async def initialize(self):
-        """Initialize all bot components"""
+    def _validate_config(self):
+        """Validate bot configuration"""
         try:
-            logger.info("🚀 Initializing Pottagrm Enhanced Bot v2.0...")
+            errors = config.validate()
+            if errors:
+                error_msg = "Configuration validation failed:\n" + "\n".join(f"  - {error}" for error in errors)
+                raise ConfigurationException(error_msg)
             
-            # Initialize database
-            logger.info("📊 Initializing database...")
-            self.database_manager = get_database_manager()
+            logger.info("Configuration validated successfully")
+            
+        except Exception as e:
+            logger.error(f"Configuration validation failed: {e}")
+            raise ConfigurationException(f"Configuration error: {e}")
+    
+    def _init_services(self):
+        """Initialize all services"""
+        try:
+            logger.info("Initializing services...")
+            
+            # Check database health
+            db_health = db_manager.health_check()
+            if db_health['status'] != 'healthy':
+                logger.warning(f"Database health check: {db_health}")
+            else:
+                logger.info("Database health check passed")
+            
+            # Initialize cache
+            cache_stats = cache_manager.get_stats()
+            logger.info(f"Cache initialized: {cache_stats['entries_count']} entries")
             
             # Initialize rate limiter
-            logger.info("🛡️ Initializing rate limiter...")
-            self.rate_limiter = get_rate_limiter()
+            rate_stats = rate_limiter.get_system_stats()
+            logger.info(f"Rate limiter initialized: {rate_stats['total_users']} users tracked")
             
-            # Initialize security manager
-            logger.info("🔒 Initializing security manager...")
-            self.security_manager = SecurityManager()
+            # Initialize notification manager
+            notif_stats = notification_manager.get_stats()
+            logger.info(f"Notification manager initialized: {notif_stats['templates_count']} templates")
             
-            # Initialize error handler
-            logger.info("⚠️ Initializing error handler...")
-            self.error_handler = ErrorHandler()
-            
-            # Initialize health monitor
-            logger.info("💚 Initializing health monitor...")
-            self.health_monitor = HealthMonitor()
-            
-            # Initialize performance monitor
-            logger.info("📈 Initializing performance monitor...")
-            self.performance_monitor = PerformanceMonitor()
-            
-            # Initialize handlers
-            logger.info("🎯 Initializing handlers...")
-            self.user_handlers = UserHandlers(self.database_manager, self.rate_limiter)
-            self.admin_handlers = AdminHandlers(self.database_manager, self.rate_limiter)
-            self.payment_handlers = PaymentHandlers(self.database_manager, self.rate_limiter)
-            
-            # Initialize Telegram application
-            logger.info("📱 Initializing Telegram application...")
-            self.application = Application.builder().token(BOT_TOKEN).build()
-            
-            # Setup handlers
-            await self._setup_handlers()
-            
-            # Setup commands
-            await self._setup_commands()
-            
-            # Start monitoring
-            await self._start_monitoring()
-            
-            logger.info("✅ Bot initialization completed successfully!")
+            logger.info("All services initialized successfully")
             
         except Exception as e:
-            logger.error(f"❌ Bot initialization failed: {e}")
-            await self.shutdown()
-            raise
-    
-    async def _setup_handlers(self):
-        """Setup all bot handlers"""
-        try:
-            # Command handlers
-            self.application.add_handler(CommandHandler("start", self._rate_limited_handler(self.user_handlers.start_command)))
-            self.application.add_handler(CommandHandler("help", self._rate_limited_handler(self.user_handlers.help_command)))
-            self.application.add_handler(CommandHandler("wallet", self._rate_limited_handler(self.user_handlers.wallet_command)))
-            self.application.add_handler(CommandHandler("profile", self._rate_limited_handler(self.user_handlers.profile_command)))
-            self.application.add_handler(CommandHandler("admin", self._rate_limited_handler(self.admin_handlers.admin_command)))
-            self.application.add_handler(CommandHandler("status", self._rate_limited_handler(self.user_handlers.status_command)))
-            
-            # Message handlers
-            self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._rate_limited_handler(self.user_handlers.handle_text_message)))
-            
-            # Callback query handlers
-            self.application.add_handler(CallbackQueryHandler(self._rate_limited_handler(self._handle_callback_query)))
-            
-            # Error handler
-            self.application.add_error_handler(self._handle_error)
-            
-            logger.info("✅ Handlers setup completed")
-            
-        except Exception as e:
-            logger.error(f"❌ Handler setup failed: {e}")
-            raise
-    
-    async def _setup_commands(self):
-        """Setup bot commands"""
-        try:
-            commands = [
-                BotCommand("start", "بدء البوت"),
-                BotCommand("help", "المساعدة"),
-                BotCommand("wallet", "المحفظة"),
-                BotCommand("profile", "الملف الشخصي"),
-                BotCommand("admin", "لوحة الإدارة"),
-                BotCommand("status", "حالة الحساب")
-            ]
-            
-            await self.application.bot.set_my_commands(commands)
-            logger.info("✅ Bot commands setup completed")
-            
-        except Exception as e:
-            logger.error(f"❌ Command setup failed: {e}")
-            raise
-    
-    async def _start_monitoring(self):
-        """Start monitoring services"""
-        try:
-            # Start health monitoring
-            asyncio.create_task(self.health_monitor.start())
-            
-            # Start performance monitoring
-            asyncio.create_task(self.performance_monitor.start())
-            
-            logger.info("✅ Monitoring services started")
-            
-        except Exception as e:
-            logger.error(f"❌ Monitoring startup failed: {e}")
-            raise
-    
-    def _rate_limited_handler(self, handler_func):
-        """Decorator to add rate limiting to handlers"""
-        async def wrapper(update: Update, context: CallbackContext):
-            try:
-                # Get user info
-                user_id = update.effective_user.id if update.effective_user else None
-                ip_address = self._get_client_ip(context)
-                
-                # Check rate limit
-                is_allowed, rate_info = self.rate_limiter.is_allowed(
-                    user_id=user_id,
-                    ip_address=ip_address,
-                    endpoint=f"{handler_func.__name__}"
-                )
-                
-                if not is_allowed:
-                    await self._send_rate_limit_message(update, rate_info)
-                    return
-                
-                # Record request
-                self.rate_limiter.record_request(
-                    user_id=user_id,
-                    ip_address=ip_address,
-                    endpoint=f"{handler_func.__name__}"
-                )
-                
-                # Track performance
-                start_time = time.time()
-                self.total_requests += 1
-                
-                try:
-                    # Execute handler
-                    result = await handler_func(update, context)
-                    self.successful_requests += 1
-                    
-                    # Record performance
-                    execution_time = time.time() - start_time
-                    self.performance_monitor.record_request(
-                        handler=handler_func.__name__,
-                        execution_time=execution_time,
-                        success=True
-                    )
-                    
-                    return result
-                    
-                except Exception as e:
-                    self.failed_requests += 1
-                    
-                    # Record performance
-                    execution_time = time.time() - start_time
-                    self.performance_monitor.record_request(
-                        handler=handler_func.__name__,
-                        execution_time=execution_time,
-                        success=False
-                    )
-                    
-                    # Handle error
-                    await self.error_handler.handle_error(update, context, e)
-                    raise
-                
-            except Exception as e:
-                logger.error(f"Handler execution failed: {e}")
-                await self.error_handler.handle_error(update, context, e)
-        
-        return wrapper
-    
-    async def _handle_callback_query(self, update: Update, context: CallbackContext):
-        """Handle callback queries with routing"""
-        try:
-            query = update.callback_query
-            await query.answer()
-            
-            callback_data = query.data
-            
-            # Route to appropriate handler based on callback data
-            if callback_data.startswith('user_'):
-                return await self.user_handlers.handle_callback(update, context)
-            elif callback_data.startswith('admin_'):
-                return await self.admin_handlers.handle_callback(update, context)
-            elif callback_data.startswith('payment_'):
-                return await self.payment_handlers.handle_callback(update, context)
-            else:
-                # Default to user handler
-                return await self.user_handlers.handle_callback(update, context)
-                
-        except Exception as e:
-            logger.error(f"Callback query handling failed: {e}")
-            await self.error_handler.handle_error(update, context, e)
-    
-    async def _handle_error(self, update: Update, context: CallbackContext):
-        """Global error handler"""
-        try:
-            await self.error_handler.handle_error(update, context, sys.exc_info())
-        except Exception as e:
-            logger.error(f"Error in global error handler: {e}")
-    
-    async def _send_rate_limit_message(self, update: Update, rate_info: Dict[str, Any]):
-        """Send rate limit exceeded message"""
-        try:
-            if update.message:
-                await update.message.reply_text(
-                    f"⚠️ تم تجاوز حد الطلبات المسموح\n"
-                    f"يرجى الانتظار {rate_info.get('remaining_block', 0):.0f} ثانية"
-                )
-            elif update.callback_query:
-                await update.callback_query.answer(
-                    f"⚠️ تم تجاوز حد الطلبات المسموح",
-                    show_alert=True
-                )
-        except Exception as e:
-            logger.error(f"Failed to send rate limit message: {e}")
-    
-    def _get_client_ip(self, context: CallbackContext) -> Optional[str]:
-        """Get client IP address"""
-        try:
-            # This would need to be implemented based on your deployment
-            # For now, return None
-            return None
-        except Exception:
-            return None
+            logger.error(f"Service initialization failed: {e}")
+            raise BotException(f"Service initialization error: {e}")
     
     async def start(self):
         """Start the bot"""
         try:
-            logger.info("🚀 Starting bot...")
+            logger.info("Starting Yemen Net Bot v2...")
             
-            # Start the application
+            # Create application
+            self.application = Application.builder().token(config.bot.token).build()
+            self.bot = self.application.bot
+            
+            # Add handlers
+            self._add_handlers()
+            
+            # Add error handler
+            self.application.add_error_handler(self._error_handler)
+            
+            # Start the bot
             await self.application.initialize()
             await self.application.start()
             await self.application.updater.start_polling()
             
-            logger.info("✅ Bot started successfully!")
-            logger.info(f"🤖 Bot username: @{self.application.bot.username}")
-            logger.info(f"📊 Database: {self.database_manager.db_path}")
-            logger.info(f"🛡️ Rate limiting: {self.rate_limiter.config.max_requests} requests per {self.rate_limiter.config.window}s")
+            self.is_running = True
+            self.start_time = time.time()
             
-            # Keep running until shutdown
-            await self.shutdown_event.wait()
+            logger.info("Bot started successfully")
+            
+            # Send startup notification to admins
+            await self._send_startup_notification()
             
         except Exception as e:
-            logger.error(f"❌ Bot startup failed: {e}")
-            await self.shutdown()
-            raise
+            logger.error(f"Failed to start bot: {e}")
+            raise BotException(f"Bot startup failed: {e}")
     
-    async def shutdown(self):
-        """Shutdown the bot gracefully"""
+    def _add_handlers(self):
+        """Add all message and callback handlers"""
         try:
-            logger.info("🛑 Shutting down bot...")
+            # Basic command handlers
+            self.application.add_handler(CommandHandler("start", self._start_command))
+            self.application.add_handler(CommandHandler("help", self._help_command))
+            self.application.add_handler(CommandHandler("status", self._status_command))
+            self.application.add_handler(CommandHandler("admin", self._admin_command))
             
-            # Stop monitoring
-            if self.health_monitor:
-                await self.health_monitor.stop()
+            # Message handlers
+            self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message))
             
-            if self.performance_monitor:
-                await self.performance_monitor.stop()
+            # Callback query handlers
+            self.application.add_handler(CallbackQueryHandler(self._handle_callback))
             
-            # Stop application
+            logger.info("All handlers added successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to add handlers: {e}")
+            raise BotException(f"Handler setup failed: {e}")
+    
+    async def _start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /start command"""
+        try:
+            user = update.effective_user
+            user_id = user.id
+            
+            # Check rate limit
+            try:
+                await rate_limiter.check_rate_limit(user_id, "start_command")
+            except Exception as e:
+                await update.message.reply_text(
+                    f"{EMOJIS['warning']} يرجى الانتظار قليلاً قبل إرسال طلب آخر."
+                )
+                return
+            
+            # Welcome message
+            welcome_text = f"""
+{EMOJIS['party']} مرحباً بك في بوت يمن نت! {EMOJIS['party']}
+
+مرحباً {user.first_name}! أهلاً وسهلاً بك في البوت الأفضل لإدارة البطاقات والمدفوعات.
+
+{EMOJIS['info']} يمكنك استخدام الأوامر التالية:
+/help - عرض المساعدة
+/status - حالة حسابك
+/admin - لوحة الإدارة (للمديرين فقط)
+
+{EMOJIS['star']} استمتع بتجربتك معنا!
+            """.strip()
+            
+            await update.message.reply_text(welcome_text)
+            
+            # Send welcome notification
+            await notification_manager.send_template_notification(
+                'welcome',
+                user_id,
+                {'user_name': user.first_name}
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in start command: {e}")
+            await update.message.reply_text(
+                f"{EMOJIS['error']} حدث خطأ أثناء بدء البوت. يرجى المحاولة مرة أخرى."
+            )
+    
+    async def _help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /help command"""
+        try:
+            user = update.effective_user
+            user_id = user.id
+            
+            # Check rate limit
+            try:
+                await rate_limiter.check_rate_limit(user_id, "help_command")
+            except Exception as e:
+                await update.message.reply_text(
+                    f"{EMOJIS['warning']} يرجى الانتظار قليلاً قبل إرسال طلب آخر."
+                )
+                return
+            
+            help_text = f"""
+{EMOJIS['info']} دليل استخدام بوت يمن نت {EMOJIS['info']}
+
+{EMOJIS['check']} الأوامر الأساسية:
+/start - بدء استخدام البوت
+/help - عرض هذه المساعدة
+/status - عرض حالة حسابك
+
+{EMOJIS['check']} الميزات المتاحة:
+{EMOJIS['wallet']} إدارة المحفظة والرصيد
+{EMOJIS['card']} شراء وإدارة البطاقات
+{EMOJIS['transfer']} تحويل الأموال
+{EMOJIS['stats']} عرض الإحصائيات والتقارير
+{EMOJIS['settings']} إعدادات الحساب
+
+{EMOJIS['check']} للمديرين:
+/admin - لوحة الإدارة
+/analytics - التحليلات والإحصائيات
+
+{EMOJIS['support']} للحصول على المساعدة:
+تواصل مع فريق الدعم الفني
+            """.strip()
+            
+            await update.message.reply_text(help_text)
+            
+        except Exception as e:
+            logger.error(f"Error in help command: {e}")
+            await update.message.reply_text(
+                f"{EMOJIS['error']} حدث خطأ أثناء عرض المساعدة. يرجى المحاولة مرة أخرى."
+            )
+    
+    async def _status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /status command"""
+        try:
+            user = update.effective_user
+            user_id = user.id
+            
+            # Check rate limit
+            try:
+                await rate_limiter.check_rate_limit(user_id, "status_command")
+            except Exception as e:
+                await update.message.reply_text(
+                    f"{EMOJIS['warning']} يرجى الانتظار قليلاً قبل إرسال طلب آخر."
+                )
+                return
+            
+            # Get user status from database
+            try:
+                user_data = await self._get_user_status(user_id)
+                if user_data:
+                    status_text = f"""
+{EMOJIS['user']} حالة حسابك {EMOJIS['user']}
+
+{EMOJIS['info']} المعلومات الأساسية:
+الاسم: {user_data.get('full_name', 'غير محدد')}
+الدور: {user_data.get('role', 'مستخدم')}
+الحالة: {'نشط' if user_data.get('is_active') else 'غير نشط'}
+
+{EMOJIS['wallet']} المحفظة:
+الرصيد: {user_data.get('balance', 0):.2f} ريال
+آخر نشاط: {user_data.get('last_activity', 'غير محدد')}
+
+{EMOJIS['stats']} الإحصائيات:
+عدد المعاملات: {user_data.get('transaction_count', 0)}
+عدد البطاقات: {user_data.get('card_count', 0)}
+                    """.strip()
+                else:
+                    status_text = f"{EMOJIS['warning']} لم يتم العثور على بيانات المستخدم."
+                
+                await update.message.reply_text(status_text)
+                
+            except Exception as e:
+                logger.error(f"Error getting user status: {e}")
+                await update.message.reply_text(
+                    f"{EMOJIS['error']} حدث خطأ أثناء جلب حالة الحساب."
+                )
+            
+        except Exception as e:
+            logger.error(f"Error in status command: {e}")
+            await update.message.reply_text(
+                f"{EMOJIS['error']} حدث خطأ أثناء عرض الحالة. يرجى المحاولة مرة أخرى."
+            )
+    
+    async def _admin_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /admin command"""
+        try:
+            user = update.effective_user
+            user_id = user.id
+            
+            # Check if user is admin
+            if not config.is_admin(user_id):
+                await update.message.reply_text(
+                    f"{EMOJIS['error']} عذراً، هذا الأمر متاح للمديرين فقط."
+                )
+                return
+            
+            # Check rate limit
+            try:
+                await rate_limiter.check_rate_limit(user_id, "admin_command")
+            except Exception as e:
+                await update.message.reply_text(
+                    f"{EMOJIS['warning']} يرجى الانتظار قليلاً قبل إرسال طلب آخر."
+                )
+                return
+            
+            admin_text = f"""
+{EMOJIS['admin']} لوحة الإدارة {EMOJIS['admin']}
+
+مرحباً {user.first_name}! أنت تستخدم حساب المدير.
+
+{EMOJIS['check']} الميزات المتاحة:
+{EMOJIS['stats']} عرض إحصائيات النظام
+{EMOJIS['user']} إدارة المستخدمين
+{EMOJIS['settings']} إعدادات النظام
+{EMOJIS['notification']} إرسال إشعارات
+
+{EMOJIS['info']} استخدم الأزرار أدناه للوصول إلى الميزات المختلفة.
+            """.strip()
+            
+            await update.message.reply_text(admin_text)
+            
+        except Exception as e:
+            logger.error(f"Error in admin command: {e}")
+            await update.message.reply_text(
+                f"{EMOJIS['error']} حدث خطأ أثناء عرض لوحة الإدارة."
+            )
+    
+    async def _handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle text messages"""
+        try:
+            user = update.effective_user
+            user_id = user.id
+            message_text = update.message.text
+            
+            # Check rate limit
+            try:
+                await rate_limiter.check_rate_limit(user_id, "message")
+            except Exception as e:
+                await update.message.reply_text(
+                    f"{EMOJIS['warning']} يرجى الانتظار قليلاً قبل إرسال رسالة أخرى."
+                )
+                return
+            
+            # Process message based on content
+            if "مرحبا" in message_text or "أهلا" in message_text:
+                await update.message.reply_text(
+                    f"{EMOJIS['party']} أهلاً وسهلاً بك! كيف يمكنني مساعدتك؟"
+                )
+            elif "شكرا" in message_text or "مشكور" in message_text:
+                await update.message.reply_text(
+                    f"{EMOJIS['star']} شكراً لك! نحن سعداء بخدمتك."
+                )
+            else:
+                await update.message.reply_text(
+                    f"{EMOJIS['info']} استخدم الأمر /help لعرض المساعدة المتاحة."
+                )
+            
+        except Exception as e:
+            logger.error(f"Error handling message: {e}")
+            await update.message.reply_text(
+                f"{EMOJIS['error']} حدث خطأ أثناء معالجة الرسالة."
+            )
+    
+    async def _handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle callback queries from inline keyboards"""
+        try:
+            query = update.callback_query
+            user_id = query.from_user.id
+            callback_data = query.data
+            
+            # Check rate limit
+            try:
+                await rate_limiter.check_rate_limit(user_id, "callback")
+            except Exception as e:
+                await query.answer("يرجى الانتظار قليلاً قبل إرسال طلب آخر.")
+                return
+            
+            # Process callback data
+            if callback_data == "help":
+                await self._show_help_menu(query)
+            elif callback_data == "status":
+                await self._show_status_menu(query)
+            elif callback_data == "admin":
+                await self._show_admin_menu(query)
+            else:
+                await query.answer("ميزة قيد التطوير")
+            
+        except Exception as e:
+            logger.error(f"Error handling callback: {e}")
+            try:
+                await update.callback_query.answer("حدث خطأ أثناء معالجة الطلب.")
+            except:
+                pass
+    
+    async def _show_help_menu(self, query):
+        """Show help menu"""
+        help_text = f"""
+{EMOJIS['info']} قائمة المساعدة {EMOJIS['info']}
+
+اختر الموضوع الذي تريد معرفة المزيد عنه:
+
+{EMOJIS['wallet']} إدارة المحفظة
+{EMOJIS['card']} شراء البطاقات
+{EMOJIS['transfer']} التحويلات
+{EMOJIS['settings']} الإعدادات
+        """.strip()
+        
+        await query.edit_message_text(help_text)
+    
+    async def _show_status_menu(self, query):
+        """Show status menu"""
+        status_text = f"""
+{EMOJIS['stats']} حالة الحساب {EMOJIS['stats']}
+
+هنا يمكنك عرض:
+{EMOJIS['wallet']} رصيد المحفظة
+{EMOJIS['card']} البطاقات المملوكة
+{EMOJIS['transfer']} سجل التحويلات
+{EMOJIS['stats']} الإحصائيات
+        """.strip()
+        
+        await query.edit_message_text(status_text)
+    
+    async def _show_admin_menu(self, query):
+        """Show admin menu"""
+        user_id = query.from_user.id
+        
+        if not config.is_admin(user_id):
+            await query.answer("غير مصرح لك بالوصول إلى هذه القائمة.")
+            return
+        
+        admin_text = f"""
+{EMOJIS['admin']} لوحة الإدارة {EMOJIS['admin']}
+
+{EMOJIS['stats']} إحصائيات النظام
+{EMOJIS['user']} إدارة المستخدمين
+{EMOJIS['settings']} إعدادات النظام
+{EMOJIS['notification']} الإشعارات
+        """.strip()
+        
+        await query.edit_message_text(admin_text)
+    
+    async def _get_user_status(self, user_id: int) -> Optional[dict]:
+        """Get user status from database"""
+        try:
+            # Check cache first
+            cache_key = f"user_status_{user_id}"
+            cached_status = cache_manager.get(cache_key)
+            if cached_status:
+                return cached_status
+            
+            # Get from database
+            query = '''
+                SELECT u.*, 
+                       COUNT(DISTINCT t.id) as transaction_count,
+                       COUNT(DISTINCT c.id) as card_count
+                FROM users u
+                LEFT JOIN transactions t ON (u.id = t.from_user OR u.id = t.to_user)
+                LEFT JOIN cards c ON u.id = c.sold_to
+                WHERE u.id = ?
+                GROUP BY u.id
+            '''
+            
+            results = await db_manager.execute_query(query, (user_id,))
+            if results:
+                user_data = results[0]
+                
+                # Cache the result for 5 minutes
+                cache_manager.set(cache_key, user_data, 300)
+                
+                return user_data
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error getting user status: {e}")
+            return None
+    
+    async def _send_startup_notification(self):
+        """Send startup notification to admins"""
+        try:
+            startup_message = f"""
+{EMOJIS['rocket']} البوت يعمل الآن! {EMOJIS['rocket']}
+
+تم تشغيل بوت يمن نت بنجاح.
+الوقت: {time.strftime('%Y-%m-%d %H:%M:%S')}
+الإصدار: v2.0
+            """.strip()
+            
+            await notification_manager.send_admin_notification(
+                "تم تشغيل البوت",
+                startup_message
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to send startup notification: {e}")
+    
+    async def _error_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle errors in bot updates"""
+        try:
+            logger.error(f"Exception while handling an update: {context.error}")
+            
+            # Send error notification to admins
+            error_message = f"""
+{EMOJIS['error']} خطأ في البوت {EMOJIS['error']}
+
+حدث خطأ أثناء معالجة طلب:
+{context.error}
+
+التفاصيل:
+- المستخدم: {update.effective_user.id if update.effective_user else 'غير محدد'}
+- الوقت: {time.strftime('%Y-%m-%d %H:%M:%S')}
+            """.strip()
+            
+            await notification_manager.send_admin_notification(
+                "خطأ في البوت",
+                error_message
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in error handler: {e}")
+    
+    async def stop(self):
+        """Stop the bot"""
+        try:
+            logger.info("Stopping Yemen Net Bot...")
+            
             if self.application:
                 await self.application.updater.stop()
                 await self.application.stop()
                 await self.application.shutdown()
             
-            # Close services
-            if self.rate_limiter:
-                shutdown_rate_limiter()
+            # Stop services
+            rate_limiter.shutdown()
+            cache_manager.shutdown()
+            notification_manager.stop()
+            db_manager.close_all_connections()
             
-            if self.database_manager:
-                close_database_manager()
+            self.is_running = False
             
-            logger.info("✅ Bot shutdown completed")
+            logger.info("Bot stopped successfully")
             
         except Exception as e:
-            logger.error(f"❌ Bot shutdown failed: {e}")
-        finally:
-            # Force exit
-            sys.exit(0)
+            logger.error(f"Error stopping bot: {e}")
     
-    def _signal_handler(self, signum, frame):
-        """Handle shutdown signals"""
-        logger.info(f"📡 Received signal {signum}, initiating shutdown...")
-        asyncio.create_task(self.shutdown())
-    
-    def get_status(self) -> Dict[str, Any]:
-        """Get bot status information"""
-        uptime = time.time() - self.start_time
+    def get_status(self) -> dict:
+        """Get bot status"""
+        uptime = time.time() - self.start_time if self.start_time else 0
         
         return {
-            'status': 'running' if not self.shutdown_event.is_set() else 'shutting_down',
-            'uptime_seconds': uptime,
+            'is_running': self.is_running,
+            'uptime_seconds': int(uptime),
             'uptime_formatted': self._format_uptime(uptime),
-            'total_requests': self.total_requests,
-            'successful_requests': self.successful_requests,
-            'failed_requests': self.failed_requests,
-            'success_rate': (self.successful_requests / max(self.total_requests, 1)) * 100,
-            'database_status': self.database_manager.get_database_stats() if self.database_manager else None,
-            'rate_limiter_status': self.rate_limiter.get_statistics() if self.rate_limiter else None,
-            'health_status': self.health_monitor.get_status() if self.health_monitor else None,
-            'performance_status': self.performance_monitor.get_status() if self.performance_monitor else None
+            'start_time': self.start_time,
+            'database_health': db_manager.health_check(),
+            'cache_stats': cache_manager.get_stats(),
+            'rate_limiter_stats': rate_limiter.get_system_stats(),
+            'notification_stats': notification_manager.get_stats()
         }
     
     def _format_uptime(self, seconds: float) -> str:
         """Format uptime in human readable format"""
-        days = int(seconds // 86400)
-        hours = int((seconds % 86400) // 3600)
-        minutes = int((seconds % 3600) // 60)
-        seconds = int(seconds % 60)
-        
-        if days > 0:
-            return f"{days}d {hours}h {minutes}m {seconds}s"
-        elif hours > 0:
-            return f"{hours}h {minutes}m {seconds}s"
-        elif minutes > 0:
-            return f"{minutes}m {seconds}s"
+        if seconds < 60:
+            return f"{int(seconds)} ثانية"
+        elif seconds < 3600:
+            minutes = int(seconds // 60)
+            return f"{minutes} دقيقة"
+        elif seconds < 86400:
+            hours = int(seconds // 3600)
+            return f"{hours} ساعة"
         else:
-            return f"{seconds}s"
+            days = int(seconds // 86400)
+            return f"{days} يوم"
 
 async def main():
-    """Main entry point"""
-    bot = PottagrmBot()
+    """Main function"""
+    bot = None
     
     try:
-        # Initialize bot
-        await bot.initialize()
+        # Create bot instance
+        bot = YemenNetBot()
         
-        # Start bot
+        # Start the bot
         await bot.start()
         
+        # Keep running
+        while bot.is_running:
+            await asyncio.sleep(1)
+            
     except KeyboardInterrupt:
-        logger.info("📱 Keyboard interrupt received")
+        logger.info("Received shutdown signal")
     except Exception as e:
-        logger.error(f"❌ Bot execution failed: {e}")
-        raise
+        logger.error(f"Fatal error: {e}")
+        sys.exit(1)
     finally:
-        await bot.shutdown()
+        if bot:
+            await bot.stop()
+
+def signal_handler(signum, frame):
+    """Handle system signals"""
+    logger.info(f"Received signal {signum}, shutting down...")
+    sys.exit(0)
 
 if __name__ == "__main__":
+    # Set up signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
+    # Run the bot
     try:
-        # Run the bot
         asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user")
     except Exception as e:
-        logger.error(f"❌ Bot execution failed: {e}")
+        logger.error(f"Bot crashed: {e}")
         sys.exit(1)

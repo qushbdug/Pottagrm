@@ -1,529 +1,65 @@
-# Pottagrm Enhanced Bot v2.0 Requirements
-# Core Dependencies
+# Core dependencies
 python-telegram-bot>=20.7
 asyncio-mqtt>=0.16.1
-aiohttp>=3.9.1
-httpx>=0.25.2
 
-# Database and Storage
-sqlite3  # Built-in with Python
-aiosqlite>=0.19.0
-redis>=5.0.1
-pymongo>=4.6.0
+# Database
+sqlite3
 
-# Data Processing and Analysis
-pandas>=2.1.4
-numpy>=1.25.2
-scipy>=1.11.4
-
-# Machine Learning and AI (Optional)
-scikit-learn>=1.3.2
-tensorflow>=2.15.0
-torch>=2.1.2
-
-# Web Scraping and Parsing
-beautifulsoup4>=4.12.2
-lxml>=4.9.3
+# HTTP and networking
+httpx>=0.25.0
+aiohttp>=3.9.0
 requests>=2.31.0
-selenium>=4.15.2
 
-# Image Processing (Optional)
-Pillow>=10.1.0
-opencv-python>=4.8.1.78
-qrcode>=7.4.2
+# Data processing
+pandas>=2.1.0
+numpy>=1.24.0
 
-# Data Visualization (Optional)
-matplotlib>=3.8.2
-seaborn>=0.13.0
-plotly>=5.17.0
-
-# Security and Cryptography
-cryptography>=41.0.8
-bcrypt>=4.1.2
-PyJWT>=2.8.0
-passlib>=1.7.4
-
-# File Handling
-aiofiles>=23.2.1
-python-magic>=0.4.27
-pathlib2>=2.3.7
-
-# Configuration and Environment
+# Configuration and environment
 python-dotenv>=1.0.0
-pydantic>=2.5.0
-pydantic-settings>=2.1.0
+PyYAML>=6.0.1
 
-# Logging and Monitoring
-structlog>=23.2.0
-prometheus-client>=0.19.0
-psutil>=5.9.6
+# Security and cryptography
+cryptography>=41.0.0
+bcrypt>=4.0.0
 
-# Testing and Development
-pytest>=7.4.3
-pytest-asyncio>=0.21.1
-pytest-cov>=4.1.0
-black>=23.11.0
-flake8>=6.1.0
-mypy>=1.7.1
+# File handling
+aiofiles>=23.2.0
+Pillow>=10.0.0
 
-# Performance and Optimization
-uvloop>=0.19.0
-orjson>=3.9.10
+# Data visualization (optional)
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# QR code generation (optional)
+qrcode>=7.4.0
+
+# System monitoring
+psutil>=5.9.0
+
+# Logging and debugging
+colorlog>=6.7.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+
+# Development tools
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.5.0
+
+# Performance monitoring
+memory-profiler>=0.61.0
+
+# Backup and compression
+zipfile36>=0.1.3
+
+# Date and time handling
+python-dateutil>=2.8.0
+pytz>=2023.3
+
+# JSON handling
 ujson>=5.8.0
 
-# Networking and Communication
-websockets>=12.0
-aio-pika>=9.3.1
-pika>=1.3.2
-
-# Caching
-aioredis>=2.0.1
-diskcache>=5.6.3
-cachetools>=5.3.2
-
-# Background Tasks
-celery>=5.3.4
-APScheduler>=3.10.4
+# Async utilities
 asyncio-throttle>=1.0.2
-
-# API and Web Framework
-fastapi>=0.104.1
-uvicorn>=0.24.0
-starlette>=0.27.0
-
-# Database ORM (Optional)
-sqlalchemy>=2.0.23
-alembic>=1.13.1
-asyncpg>=0.29.0
-
-# Message Queuing
-kombu>=5.3.4
-pika>=1.3.2
-
-# Monitoring and Metrics
-prometheus-client>=0.19.0
-statsd>=4.0.1
-datadog>=0.44.0
-
-# Error Tracking
-sentry-sdk>=1.38.0
-rollbar>=0.16.3
-
-# Internationalization
-babel>=2.14.0
-pycountry>=23.12.11
-
-# Date and Time
-python-dateutil>=2.8.2
-pytz>=2023.3
-arrow>=1.3.0
-
-# Text Processing
-nltk>=3.8.1
-textblob>=0.17.1
-spacy>=3.7.2
-
-# Compression and Archiving
-zstandard>=0.22.0
-lz4>=4.3.2
-brotli>=1.1.0
-
-# Email and Notifications
-aiosmtplib>=3.0.1
-jinja2>=3.1.2
-premailer>=3.10.0
-
-# SMS and Voice (Optional)
-twilio>=8.10.0
-nexmo>=2.6.2
-
-# Payment Processing (Optional)
-stripe>=7.8.0
-paypalrestsdk>=1.13.1
-
-# Social Media Integration (Optional)
-tweepy>=4.14.0
-facebook-sdk>=3.1.0
-
-# Cloud Services (Optional)
-boto3>=1.34.0
-google-cloud-storage>=2.10.0
-azure-storage-blob>=12.19.0
-
-# Container and Deployment
-docker>=6.1.3
-kubernetes>=28.1.0
-
-# Development Tools
-ipython>=8.17.2
-jupyter>=1.0.0
-notebook>=7.0.6
-
-# Code Quality
-pre-commit>=3.5.0
-bandit>=1.7.5
-safety>=2.3.5
-
-# Documentation
-sphinx>=7.2.6
-mkdocs>=1.5.3
-mkdocs-material>=9.4.8
-
-# Performance Profiling
-py-spy>=0.3.14
-memory-profiler>=0.61.0
-line-profiler>=4.1.2
-
-# Database Migration
-alembic>=1.13.1
-yoyo-migrations>=8.2.0
-
-# Backup and Recovery
-boto3>=1.34.0
-paramiko>=3.4.0
-fabric>=3.2.0
-
-# System Integration
-psutil>=5.9.6
-pywin32>=306; sys_platform == "win32"
-pwd>=1.0.0; sys_platform != "win32"
-
-# Network Utilities
-netifaces>=0.11.0
-scapy>=2.5.0
-
-# Hardware Monitoring
-GPUtil>=1.4.0
-py-cpuinfo>=9.0.0
-
-# Environment Specific
-# For Windows
-pywin32>=306; sys_platform == "win32"
-
-# For macOS
-pyobjc-framework-Cocoa>=10.1; sys_platform == "darwin"
-
-# For Linux
-python-prctl>=1.8.1; sys_platform == "linux"
-
-# Development Environment
-# These packages are only needed during development
-pytest>=7.4.3; extra == "dev"
-pytest-asyncio>=0.21.1; extra == "dev"
-pytest-cov>=4.1.0; extra == "dev"
-black>=23.11.0; extra == "dev"
-flake8>=6.1.0; extra == "dev"
-mypy>=1.7.1; extra == "dev"
-pre-commit>=3.5.0; extra == "dev"
-
-# Testing Environment
-# These packages are only needed during testing
-pytest>=7.4.3; extra == "test"
-pytest-asyncio>=0.21.1; extra == "test"
-pytest-cov>=4.1.0; extra == "test"
-pytest-mock>=3.12.0; extra == "test"
-pytest-xdist>=3.5.0; extra == "test"
-factory-boy>=3.3.0; extra == "test"
-faker>=20.1.0; extra == "test"
-
-# Production Environment
-# These packages are only needed in production
-gunicorn>=21.2.0; extra == "prod"
-uvicorn>=0.24.0; extra == "prod"
-supervisor>=4.2.5; extra == "prod"
-
-# Optional Features
-# These packages enable additional features
-# AI/ML Features
-scikit-learn>=1.3.2; extra == "ai"
-tensorflow>=2.15.0; extra == "ai"
-torch>=2.1.2; extra == "ai"
-
-# Image Processing Features
-Pillow>=10.1.0; extra == "image"
-opencv-python>=4.8.1.78; extra == "image"
-qrcode>=7.4.2; extra == "image"
-
-# Data Visualization Features
-matplotlib>=3.8.2; extra == "viz"
-seaborn>=0.13.0; extra == "viz"
-plotly>=5.17.0; extra == "viz"
-
-# Payment Features
-stripe>=7.8.0; extra == "payment"
-paypalrestsdk>=1.13.1; extra == "payment"
-
-# Cloud Features
-boto3>=1.34.0; extra == "cloud"
-google-cloud-storage>=2.10.0; extra == "cloud"
-azure-storage-blob>=12.19.0; extra == "cloud"
-
-# Monitoring Features
-prometheus-client>=0.19.0; extra == "monitoring"
-statsd>=4.0.1; extra == "monitoring"
-datadog>=0.44.0; extra == "monitoring"
-
-# Security Features
-cryptography>=41.0.8; extra == "security"
-bcrypt>=4.1.2; extra == "security"
-PyJWT>=2.8.0; extra == "security"
-
-# Database Features
-aiosqlite>=0.19.0; extra == "database"
-redis>=5.0.1; extra == "database"
-pymongo>=4.6.0; extra == "database"
-
-# Web Features
-fastapi>=0.104.1; extra == "web"
-uvicorn>=0.24.0; extra == "web"
-jinja2>=3.1.2; extra == "web"
-
-# All Features
-# Install all optional features
-# pip install -e ".[all]"
-
-# Development Features
-# Install development dependencies
-# pip install -e ".[dev]"
-
-# Production Features
-# Install production dependencies
-# pip install -e ".[prod]"
-
-# Minimum Requirements
-# These are the minimum packages needed to run the bot
-python-telegram-bot>=20.7
-aiohttp>=3.9.1
-sqlite3  # Built-in
-python-dotenv>=1.0.0
-psutil>=5.9.6
-
-# Performance Requirements
-# These packages improve performance
-uvloop>=0.19.0; sys_platform != "win32"
-orjson>=3.9.10
-ujson>=5.8.0
-
-# Security Requirements
-# These packages improve security
-cryptography>=41.0.8
-bcrypt>=4.1.2
-PyJWT>=2.8.0
-
-# Monitoring Requirements
-# These packages enable monitoring
-prometheus-client>=0.19.0
-psutil>=5.9.6
-
-# Database Requirements
-# These packages enable advanced database features
-aiosqlite>=0.19.0
-redis>=5.0.1
-
-# Web Requirements
-# These packages enable web interface
-fastapi>=0.104.1
-uvicorn>=0.24.0
-
-# Testing Requirements
-# These packages enable testing
-pytest>=7.4.3
-pytest-asyncio>=0.21.1
-pytest-cov>=4.1.0
-
-# Development Requirements
-# These packages enable development
-black>=23.11.0
-flake8>=6.1.0
-mypy>=1.7.1
-pre-commit>=3.5.0
-
-# Documentation Requirements
-# These packages enable documentation
-sphinx>=7.2.6
-mkdocs>=1.5.3
-mkdocs-material>=9.4.8
-
-# Deployment Requirements
-# These packages enable deployment
-docker>=6.1.3
-gunicorn>=21.2.0
-supervisor>=4.2.5
-
-# Backup Requirements
-# These packages enable backup
-boto3>=1.34.0
-paramiko>=3.4.0
-
-# Monitoring Requirements
-# These packages enable monitoring
-prometheus-client>=0.19.0
-statsd>=4.0.1
-datadog>=0.44.0
-
-# Error Tracking Requirements
-# These packages enable error tracking
-sentry-sdk>=1.38.0
-rollbar>=0.16.3
-
-# Internationalization Requirements
-# These packages enable internationalization
-babel>=2.14.0
-pycountry>=23.12.11
-
-# Date and Time Requirements
-# These packages enable date and time handling
-python-dateutil>=2.8.2
-pytz>=2023.3
-arrow>=1.3.0
-
-# Text Processing Requirements
-# These packages enable text processing
-nltk>=3.8.1
-textblob>=0.17.1
-spacy>=3.7.2
-
-# Compression Requirements
-# These packages enable compression
-zstandard>=0.22.0
-lz4>=4.3.2
-brotli>=1.1.0
-
-# Email Requirements
-# These packages enable email
-aiosmtplib>=3.0.1
-jinja2>=3.1.2
-premailer>=3.10.0
-
-# SMS Requirements
-# These packages enable SMS
-twilio>=8.10.0
-nexmo>=2.6.2
-
-# Payment Requirements
-# These packages enable payments
-stripe>=7.8.0
-paypalrestsdk>=1.13.1
-
-# Social Media Requirements
-# These packages enable social media
-tweepy>=4.14.0
-facebook-sdk>=3.1.0
-
-# Cloud Requirements
-# These packages enable cloud services
-boto3>=1.34.0
-google-cloud-storage>=2.10.0
-azure-storage-blob>=12.19.0
-
-# Container Requirements
-# These packages enable containers
-docker>=6.1.3
-kubernetes>=28.1.0
-
-# Development Tools Requirements
-# These packages enable development tools
-ipython>=8.17.2
-jupyter>=1.0.0
-notebook>=7.0.6
-
-# Code Quality Requirements
-# These packages enable code quality
-pre-commit>=3.5.0
-bandit>=1.7.5
-safety>=2.3.5
-
-# Performance Profiling Requirements
-# These packages enable performance profiling
-py-spy>=0.3.14
-memory-profiler>=0.61.0
-line-profiler>=4.1.2
-
-# Database Migration Requirements
-# These packages enable database migration
-alembic>=1.13.1
-yoyo-migrations>=8.2.0
-
-# Backup and Recovery Requirements
-# These packages enable backup and recovery
-boto3>=1.34.0
-paramiko>=3.4.0
-fabric>=3.2.0
-
-# System Integration Requirements
-# These packages enable system integration
-psutil>=5.9.6
-pywin32>=306; sys_platform == "win32"
-pwd>=1.0.0; sys_platform != "win32"
-
-# Network Utilities Requirements
-# These packages enable network utilities
-netifaces>=0.11.0
-scapy>=2.5.0
-
-# Hardware Monitoring Requirements
-# These packages enable hardware monitoring
-GPUtil>=1.4.0
-py-cpuinfo>=9.0.0
-
-# Environment Specific Requirements
-# These packages are environment specific
-pywin32>=306; sys_platform == "win32"
-pyobjc-framework-Cocoa>=10.1; sys_platform == "darwin"
-python-prctl>=1.8.1; sys_platform == "linux"
-
-# All Requirements
-# Install all requirements
-# pip install -r requirements.txt
-
-# Development Requirements
-# Install development requirements
-# pip install -r requirements.txt[dev]
-
-# Testing Requirements
-# Install testing requirements
-# pip install -r requirements.txt[test]
-
-# Production Requirements
-# Install production requirements
-# pip install -r requirements.txt[prod]
-
-# AI Requirements
-# Install AI requirements
-# pip install -r requirements.txt[ai]
-
-# Image Requirements
-# Install image requirements
-# pip install -r requirements.txt[image]
-
-# Visualization Requirements
-# Install visualization requirements
-# pip install -r requirements.txt[viz]
-
-# Payment Requirements
-# Install payment requirements
-# pip install -r requirements.txt[payment]
-
-# Cloud Requirements
-# Install cloud requirements
-# pip install -r requirements.txt[cloud]
-
-# Monitoring Requirements
-# Install monitoring requirements
-# pip install -r requirements.txt[monitoring]
-
-# Security Requirements
-# Install security requirements
-# pip install -r requirements.txt[security]
-
-# Database Requirements
-# Install database requirements
-# pip install -r requirements.txt[database]
-
-# Web Requirements
-# Install web requirements
-# pip install -r requirements.txt[web]
-
-# All Features
-# Install all features
-# pip install -r requirements.txt[all]

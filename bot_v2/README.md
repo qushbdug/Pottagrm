@@ -1,76 +1,70 @@
-# 🚀 Pottagrm Enhanced Bot v2.0
+# Yemen Net Bot v2.0 🚀
 
-## 📋 نظرة عامة
-
-**Pottagrm Enhanced Bot** هو بوت تيليجرام متطور ومحسن بالكامل، مصمم لإدارة الشبكات والكروت والمحافظ الإلكترونية. تم إعادة هيكلته بالكامل من الإصدار 1.0 ليوفر أداءً أفضل وأماناً أعلى وقابلية للتوسع.
+بوت تيليجرام محسن ومتطور لإدارة البطاقات والمدفوعات مع هيكل برمجي متقدم وإدارة أخطاء محسنة.
 
 ## ✨ الميزات الرئيسية
 
-### 🔐 الأمان
-- **Rate Limiting متقدم** - حماية من الهجمات والاستخدام المفرط
-- **إدارة الصلاحيات** - نظام صلاحيات متدرج ومتقدم
-- **تشفير البيانات** - حماية شاملة لجميع البيانات الحساسة
-- **مراقبة الأمان** - كشف الأنشطة المشبوهة تلقائياً
+### 🔧 الهيكل المحسن
+- **هيكل معماري متقدم**: تقسيم واضح للمسؤوليات مع فصل الخدمات
+- **إدارة قاعدة البيانات المحسنة**: تجميع الاتصالات وتجميع الاستعلامات
+- **نظام تخزين مؤقت ذكي**: تحسين الأداء مع إدارة الذاكرة
+- **مدير معدل الطلبات**: منع الاستخدام المفرط وحماية النظام
 
-### 📊 قاعدة البيانات
-- **Connection Pooling** - إدارة محسنة لاتصالات قاعدة البيانات
-- **Query Optimization** - تحسين الاستعلامات والأداء
-- **Backup تلقائي** - نسخ احتياطية دورية مع التشفير
-- **Migration System** - نظام ترحيل البيانات المتقدم
+### 🛡️ الأمان والاستقرار
+- **معالجة أخطاء متقدمة**: استثناءات مخصصة ومعالجة شاملة للأخطاء
+- **نظام إشعارات متعدد القنوات**: تيليجرام، إيميل، رسائل نصية
+- **مراقبة صحة النظام**: فحص مستمر لقاعدة البيانات والخدمات
+- **نسخ احتياطية تلقائية**: حماية البيانات مع استرداد سريع
 
-### 🚀 الأداء
-- **Async Processing** - معالجة متوازية لجميع العمليات
-- **Caching System** - نظام تخزين مؤقت ذكي
-- **Performance Monitoring** - مراقبة شاملة للأداء
-- **Auto-scaling** - توسيع تلقائي حسب الطلب
+### 📊 المراقبة والأداء
+- **إحصائيات شاملة**: تتبع الأداء واستخدام الموارد
+- **سجلات مفصلة**: تسجيل شامل لجميع العمليات
+- **مراقبة الأداء**: تحليل سرعة الاستجابة واستخدام الذاكرة
+- **تنبيهات ذكية**: إشعارات فورية للمشاكل
 
-### 📱 واجهة المستخدم
-- **Multi-language Support** - دعم متعدد اللغات
-- **Responsive Design** - تصميم متجاوب لجميع الأجهزة
-- **Dark Mode** - الوضع المظلم
-- **Accessibility** - سهولة الوصول للمستخدمين
-
-## 🏗️ الهيكل الجديد
+## 🏗️ هيكل المشروع
 
 ```
 bot_v2/
-├── 📁 config/           # إعدادات البوت
-│   ├── settings.py      # الإعدادات الرئيسية
-│   └── constants.py     # الثوابت
-├── 📁 services/         # الخدمات الأساسية
-│   ├── database_service.py    # خدمة قاعدة البيانات
-│   ├── rate_limiter.py        # نظام Rate Limiting
-│   ├── cache_service.py       # خدمة التخزين المؤقت
-│   └── notification_service.py # خدمة الإشعارات
-├── 📁 handlers/         # معالجات الرسائل
-│   ├── user_handlers.py       # معالجات المستخدمين
-│   ├── admin_handlers.py      # معالجات الإدارة
-│   └── payment_handlers.py    # معالجات المدفوعات
-├── 📁 utils/            # الأدوات المساعدة
-│   ├── logging_config.py      # إعدادات التسجيل
-│   ├── health_monitor.py      # مراقب الصحة
-│   ├── performance_monitor.py # مراقب الأداء
-│   ├── error_handler.py       # معالج الأخطاء
-│   └── security_manager.py    # مدير الأمان
-├── 📁 models/           # نماذج البيانات
-│   ├── user.py          # نموذج المستخدم
-│   ├── network.py       # نموذج الشبكة
-│   └── transaction.py   # نموذج المعاملة
-├── 📁 tests/            # اختبارات الوحدة
-├── 📁 docs/             # الوثائق
-├── main.py              # نقطة البداية
-├── requirements.txt     # المتطلبات
-└── README.md           # هذا الملف
+├── core/                   # الوظائف الأساسية
+│   ├── __init__.py
+│   ├── config.py          # إدارة التكوين
+│   ├── exceptions.py      # الاستثناءات المخصصة
+│   └── bot_core.py        # الفئة الأساسية للبوت
+├── services/              # الخدمات
+│   ├── __init__.py
+│   ├── database_manager.py    # إدارة قاعدة البيانات
+│   ├── rate_limiter.py        # مدير معدل الطلبات
+│   ├── cache_manager.py       # مدير التخزين المؤقت
+│   └── notification_manager.py # مدير الإشعارات
+├── handlers/              # معالجات الرسائل
+│   ├── __init__.py
+│   ├── user_handlers.py   # معالجات المستخدمين
+│   ├── admin_handlers.py  # معالجات المديرين
+│   └── payment_handlers.py # معالجات المدفوعات
+├── utils/                 # الأدوات المساعدة
+│   ├── __init__.py
+│   ├── validators.py      # التحقق من صحة البيانات
+│   ├── helpers.py         # وظائف مساعدة
+│   └── decorators.py      # الديكورات
+├── models/                # نماذج البيانات
+│   ├── __init__.py
+│   ├── user.py           # نموذج المستخدم
+│   ├── transaction.py    # نموذج المعاملة
+│   └── card.py          # نموذج البطاقة
+├── main.py               # نقطة البداية الرئيسية
+├── requirements.txt      # المتطلبات
+└── README.md            # هذا الملف
 ```
 
 ## 🚀 التثبيت والتشغيل
 
 ### المتطلبات الأساسية
 - Python 3.8+
-- SQLite3
-- Telegram Bot Token
+- pip
+- قاعدة بيانات SQLite
 
-### التثبيت
+### خطوات التثبيت
 
 1. **استنساخ المشروع**
 ```bash
@@ -78,7 +72,7 @@ git clone <repository-url>
 cd bot_v2
 ```
 
-2. **إنشاء البيئة الافتراضية**
+2. **إنشاء بيئة افتراضية**
 ```bash
 python3 -m venv venv
 source venv/bin/activate  # Linux/Mac
@@ -88,20 +82,18 @@ venv\Scripts\activate     # Windows
 
 3. **تثبيت المتطلبات**
 ```bash
-# المتطلبات الأساسية فقط
 pip install -r requirements.txt
-
-# مع جميع الميزات
-pip install -r requirements.txt[all]
-
-# للتطوير
-pip install -r requirements.txt[dev]
 ```
 
-4. **إعداد البيئة**
+4. **إعداد التكوين**
 ```bash
-cp config/settings.example.py config/settings.py
-# تعديل الإعدادات في config/settings.py
+# نسخ ملف التكوين
+cp config.example.yaml config.yaml
+
+# تعديل المتغيرات البيئية
+export BOT_TOKEN="your_bot_token_here"
+export DB_PATH="yemen_net.db"
+export ADMIN_USER_IDS="123456789,987654321"
 ```
 
 5. **تشغيل البوت**
@@ -109,313 +101,195 @@ cp config/settings.example.py config/settings.py
 python main.py
 ```
 
-## ⚙️ الإعدادات
+## ⚙️ التكوين
 
-### إعدادات أساسية
-```python
-# في config/settings.py
-BOT_TOKEN = "your_bot_token_here"
-DB_PATH = "yemen_net.db"
-LOG_LEVEL = "INFO"
-```
+### المتغيرات البيئية
 
-### إعدادات متقدمة
-```python
-# Rate Limiting
-RATE_LIMIT_MAX_REQUESTS = 10
-RATE_LIMIT_WINDOW = 60
+| المتغير | الوصف | القيمة الافتراضية |
+|---------|--------|-------------------|
+| `BOT_TOKEN` | توكن البوت من BotFather | مطلوب |
+| `DB_PATH` | مسار قاعدة البيانات | `yemen_net.db` |
+| `ADMIN_USER_IDS` | قائمة معرفات المديرين | فارغ |
+| `BOT_LOG_LEVEL` | مستوى السجلات | `INFO` |
 
-# Database
-DB_MAX_CONNECTIONS = 10
-DB_TIMEOUT = 30.0
+### ملف التكوين (config.yaml)
 
-# Security
-MAX_LOGIN_ATTEMPTS = 3
-SESSION_TIMEOUT = 3600
+```yaml
+bot:
+  token: "your_bot_token"
+  log_level: "INFO"
+  log_file: "bot.log"
+  rate_limit_per_user: 10
+  rate_limit_per_minute: 60
+
+database:
+  path: "yemen_net.db"
+  max_connections: 10
+  timeout: 30.0
+
+payment:
+  min_transfer_amount: 1.0
+  max_transfer_amount: 10000.0
+  transfer_fee_percent: 0.5
+
+notification:
+  enable_telegram: true
+  enable_email: false
+  enable_sms: false
 ```
 
 ## 🔧 الاستخدام
 
 ### الأوامر الأساسية
-- `/start` - بدء البوت
-- `/help` - المساعدة
-- `/wallet` - عرض المحفظة
-- `/profile` - الملف الشخصي
-- `/admin` - لوحة الإدارة
 
-### للمطورين
+- `/start` - بدء استخدام البوت
+- `/help` - عرض المساعدة
+- `/status` - عرض حالة الحساب
+- `/admin` - لوحة الإدارة (للمديرين)
 
-#### إضافة معالج جديد
-```python
-# في handlers/user_handlers.py
-class UserHandlers:
-    async def new_command(self, update: Update, context: CallbackContext):
-        """معالج أمر جديد"""
-        await update.message.reply_text("أمر جديد!")
-```
+### الميزات المتاحة
 
-#### إضافة خدمة جديدة
-```python
-# في services/new_service.py
-class NewService:
-    def __init__(self):
-        self.name = "New Service"
-    
-    async def process(self, data):
-        """معالجة البيانات"""
-        return processed_data
-```
+#### 👤 المستخدمون العاديون
+- عرض وإدارة المحفظة
+- شراء البطاقات
+- تحويل الأموال
+- عرض سجل المعاملات
+- إعدادات الحساب
 
-## 📊 المراقبة والمراجعة
+#### 👑 المديرون
+- إدارة المستخدمين
+- مراقبة النظام
+- التقارير والإحصائيات
+- إرسال إشعارات
+- إعدادات النظام
 
-### مراقبة الأداء
+#### 🏪 الموردون
+- إدارة الشبكات
+- رفع البطاقات
+- تقارير المبيعات
+- إدارة العمولات
+
+## 📊 المراقبة والصيانة
+
+### فحص صحة النظام
 ```bash
-# عرض إحصائيات البوت
-curl http://localhost:8000/status
+# فحص قاعدة البيانات
+python -c "from services.database_manager import db_manager; print(db_manager.health_check())"
 
-# عرض إحصائيات قاعدة البيانات
-curl http://localhost:8000/db/stats
+# فحص التخزين المؤقت
+python -c "from services.cache_manager import cache_manager; print(cache_manager.get_stats())"
 
-# عرض إحصائيات Rate Limiting
-curl http://localhost:8000/rate-limit/stats
+# فحص معدل الطلبات
+python -c "from services.rate_limiter import rate_limiter; print(rate_limiter.get_system_stats())"
 ```
 
-### السجلات
+### النسخ الاحتياطية
 ```bash
-# عرض السجلات في الوقت الفعلي
-tail -f bot_v2.log
+# نسخ احتياطي لقاعدة البيانات
+python -c "from services.database_manager import db_manager; db_manager.backup_database('backup.db')"
 
-# البحث في السجلات
-grep "ERROR" bot_v2.log
-grep "WARNING" bot_v2.log
+# نسخ احتياطي للتخزين المؤقت
+python -c "from services.cache_manager import cache_manager; cache_manager.persist_to_disk('cache_backup.json')"
 ```
 
-## 🧪 الاختبار
-
-### تشغيل الاختبارات
+### تحسين الأداء
 ```bash
-# جميع الاختبارات
-pytest
+# تحسين قاعدة البيانات
+python -c "from services.database_manager import db_manager; db_manager.optimize_database()"
 
-# اختبارات محددة
-pytest tests/test_handlers.py
-
-# مع التغطية
-pytest --cov=bot_v2
-```
-
-### اختبار الأداء
-```bash
-# اختبار قاعدة البيانات
-python -m pytest tests/test_performance.py
-
-# اختبار Rate Limiting
-python -m pytest tests/test_rate_limiter.py
-```
-
-## 🚀 النشر
-
-### Docker
-```bash
-# بناء الصورة
-docker build -t pottagrm-bot .
-
-# تشغيل الحاوية
-docker run -d --name pottagrm-bot pottagrm-bot
-```
-
-### Systemd Service
-```ini
-# /etc/systemd/system/pottagrm-bot.service
-[Unit]
-Description=Pottagrm Enhanced Bot
-After=network.target
-
-[Service]
-Type=simple
-User=bot
-WorkingDirectory=/path/to/bot_v2
-ExecStart=/path/to/venv/bin/python main.py
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
-
-## 🔒 الأمان
-
-### أفضل الممارسات
-1. **تغيير Token البوت** بانتظام
-2. **تحديث المتطلبات** دورياً
-3. **مراقبة السجلات** للأنشطة المشبوهة
-4. **نسخ احتياطية** دورية للبيانات
-5. **تقييد الوصول** للخوادم
-
-### إعدادات الأمان
-```python
-# في config/settings.py
-SECURITY_FEATURES = {
-    'rate_limiting': True,
-    'input_validation': True,
-    'sql_injection_protection': True,
-    'xss_protection': True,
-    'encryption': True,
-    'audit_logging': True
-}
-```
-
-## 📈 الأداء
-
-### التحسينات المطبقة
-- **Connection Pooling** لقاعدة البيانات
-- **Async Processing** لجميع العمليات
-- **Caching** للبيانات المتكررة
-- **Query Optimization** للاستعلامات
-- **Background Tasks** للمهام الثقيلة
-
-### مراقبة الأداء
-```python
-# عرض إحصائيات الأداء
-performance_stats = bot.performance_monitor.get_status()
-print(f"Average Response Time: {performance_stats['avg_response_time']}s")
-print(f"Requests per Second: {performance_stats['requests_per_second']}")
+# تنظيف التخزين المؤقت
+python -c "from services.cache_manager import cache_manager; cache_manager.clear()"
 ```
 
 ## 🐛 استكشاف الأخطاء
 
-### الأخطاء الشائعة
+### المشاكل الشائعة
 
-#### خطأ في قاعدة البيانات
+1. **خطأ في الاتصال بقاعدة البيانات**
+   - تأكد من وجود ملف قاعدة البيانات
+   - تحقق من الصلاحيات
+   - فحص صحة قاعدة البيانات
+
+2. **مشاكل في معدل الطلبات**
+   - انتظار انتهاء فترة الحظر
+   - إعادة تعيين حدود المستخدم
+   - فحص إعدادات معدل الطلبات
+
+3. **مشاكل في الإشعارات**
+   - التحقق من إعدادات SMTP
+   - فحص معرفات المستخدمين
+   - مراجعة سجلات الأخطاء
+
+### السجلات
+
 ```bash
-# فحص حالة قاعدة البيانات
-python -c "from bot_v2.services.database_service import get_database_manager; db = get_database_manager(); print(db.get_database_stats())"
+# عرض السجلات في الوقت الفعلي
+tail -f bot.log
+
+# البحث عن أخطاء
+grep "ERROR" bot.log
+
+# البحث عن تحذيرات
+grep "WARNING" bot.log
 ```
 
-#### خطأ في Rate Limiting
-```bash
-# فحص حالة Rate Limiter
-python -c "from bot_v2.services.rate_limiter import get_rate_limiter; rl = get_rate_limiter(); print(rl.get_statistics())"
-```
+## 🔒 الأمان
 
-#### خطأ في الاتصال
-```bash
-# فحص اتصال Telegram
-curl "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getMe"
-```
+### ميزات الأمان
+- **معدل الطلبات**: منع الهجمات والاستخدام المفرط
+- **التحقق من الصلاحيات**: فحص الأدوار والصلاحيات
+- **تشفير البيانات**: حماية المعلومات الحساسة
+- **مراقبة النشاط**: تتبع الأنشطة المشبوهة
 
-### إعادة التشغيل
-```bash
-# إيقاف البوت
-pkill -f "python main.py"
+### أفضل الممارسات
+- تحديث التوكن بانتظام
+- استخدام بيئات افتراضية
+- مراقبة السجلات باستمرار
+- نسخ احتياطية منتظمة
 
-# إعادة التشغيل
-python main.py
-```
+## 📈 التطوير المستقبلي
 
-## 📚 الوثائق
+### الميزات المخططة
+- [ ] واجهة ويب للإدارة
+- [ ] دعم العملات المشفرة
+- [ ] نظام تقييم المستخدمين
+- [ ] تكامل مع خدمات خارجية
+- [ ] نظام المكافآت والولاء
+- [ ] تحليلات متقدمة
 
-### الوثائق التقنية
-- [API Documentation](docs/api.md)
-- [Database Schema](docs/database.md)
-- [Security Guide](docs/security.md)
-- [Deployment Guide](docs/deployment.md)
-
-### أمثلة الكود
-- [Handler Examples](examples/handlers.md)
-- [Service Examples](examples/services.md)
-- [Database Examples](examples/database.md)
-
-## 🤝 المساهمة
-
-### كيفية المساهمة
+### المساهمة
+نرحب بمساهماتكم! يرجى:
 1. Fork المشروع
-2. إنشاء branch جديد (`git checkout -b feature/amazing-feature`)
-3. Commit التغييرات (`git commit -m 'Add amazing feature'`)
-4. Push إلى Branch (`git push origin feature/amazing-feature`)
-5. فتح Pull Request
-
-### معايير الكود
-- استخدام Black للتنسيق
-- استخدام Flake8 للتحقق من الجودة
-- استخدام MyPy للتحقق من الأنواع
-- كتابة اختبارات للوظائف الجديدة
-
-## 📄 الترخيص
-
-هذا المشروع مرخص تحت رخصة MIT. راجع ملف [LICENSE](LICENSE) للتفاصيل.
+2. إنشاء فرع للميزة الجديدة
+3. إجراء التغييرات
+4. إرسال Pull Request
 
 ## 📞 الدعم
 
-### قنوات الدعم
-- **Telegram**: @admin_username
-- **Email**: support@example.com
-- **Phone**: +967123456789
-- **Website**: https://example.com
+### طرق التواصل
+- **GitHub Issues**: للإبلاغ عن الأخطاء
+- **Discord**: للمناقشات والدعم
+- **Email**: للاستفسارات العامة
 
-### التقارير
-- **Bug Reports**: [GitHub Issues](https://github.com/username/repo/issues)
-- **Feature Requests**: [GitHub Discussions](https://github.com/username/repo/discussions)
-- **Security Issues**: security@example.com
+### الموارد المفيدة
+- [وثائق python-telegram-bot](https://python-telegram-bot.readthedocs.io/)
+- [دليل SQLite](https://www.sqlite.org/docs.html)
+- [أفضل ممارسات Python](https://docs.python-guide.org/)
 
-## 🔄 التحديثات
+## 📄 الترخيص
 
-### الإصدار 2.0.0 (الحالي)
-- ✅ إعادة هيكلة كاملة للكود
-- ✅ نظام Rate Limiting متقدم
-- ✅ Connection Pooling لقاعدة البيانات
-- ✅ نظام مراقبة شامل
-- ✅ معالجة أخطاء محسنة
-- ✅ نظام أمان متقدم
-
-### الإصدار 2.1.0 (قادم)
-- 🔄 دعم متعدد اللغات
-- 🔄 واجهة ويب للإدارة
-- 🔄 نظام AI للكشف عن الاحتيال
-- 🔄 دعم Blockchain
-- 🔄 تطبيق موبايل
-
-## 📊 الإحصائيات
-
-### الأداء الحالي
-- **Response Time**: < 1 ثانية
-- **Database Queries**: < 0.1 ثانية
-- **Memory Usage**: < 100 MB
-- **CPU Usage**: < 20%
-- **Uptime**: 99.9%
-
-### المقارنة مع الإصدار السابق
-| الميزة | v1.0 | v2.0 | التحسن |
-|--------|------|------|--------|
-| Response Time | 3s | 1s | 300% |
-| Memory Usage | 500MB | 100MB | 500% |
-| Error Rate | 15% | 2% | 750% |
-| Database Speed | 0.5s | 0.1s | 500% |
-
-## 🎯 خارطة الطريق
-
-### المرحلة 1 (مكتملة) ✅
-- [x] إعادة هيكلة الكود
-- [x] نظام Rate Limiting
-- [x] Connection Pooling
-- [x] نظام المراقبة
-
-### المرحلة 2 (قيد التطوير) 🔄
-- [ ] دعم متعدد اللغات
-- [ ] واجهة ويب
-- [ ] نظام AI
-- [ ] دعم Blockchain
-
-### المرحلة 3 (مخططة) 📋
-- [ ] تطبيق موبايل
-- [ ] دعم Cloud
-- [ ] Auto-scaling
-- [ ] Microservices
+هذا المشروع مرخص تحت رخصة MIT. راجع ملف `LICENSE` للتفاصيل.
 
 ## 🙏 الشكر والتقدير
 
-شكر خاص لجميع المساهمين والمطورين الذين ساعدوا في تطوير هذا المشروع.
+- فريق python-telegram-bot
+- مجتمع Python العربي
+- جميع المساهمين والمطورين
 
 ---
 
-**Pottagrm Enhanced Bot v2.0** - صنع بـ ❤️ للعالم العربي
+**ملاحظة**: هذا البوت مصمم للاستخدام التجاري والتعليمي. يرجى الالتزام بقوانين بلدك عند الاستخدام.
+
+**الإصدار**: 2.0.0  
+**آخر تحديث**: ديسمبر 2024  
+**المطور**: فريق يمن نت
