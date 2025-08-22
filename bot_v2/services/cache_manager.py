@@ -1,454 +1,428 @@
 """
-Cache manager for improving bot performance
+Enhanced Cache Manager for Yemen Net Bot v2
+Implements TTL, LRU eviction, and comprehensive monitoring
 """
 
 import time
 import asyncio
 import logging
 import threading
-from typing import Dict, Any, Optional, Union, Callable
+from typing import Dict, Any, Optional, List, Tuple, Union, Callable
 from dataclasses import dataclass, field
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
+from functools import wraps
 import json
 import hashlib
 import pickle
 
 from ..core.exceptions import BotException
-
-logger = logging.getLogger(__name__)
+from ..core.config import config
 
 @dataclass
-class CacheEntry:
-    """Cache entry with metadata"""
+class CacheItem:
+    """Cache item with metadata"""
+    key: str
     value: Any
     created_at: float
-    expires_at: Optional[float]
+    accessed_at: float
     access_count: int = 0
-    last_accessed: float = field(default_factory=time.time)
+    ttl: Optional[int] = None
     size_bytes: int = 0
+    tags: List[str] = field(default_factory=list)
+
+@dataclass
+class CacheStats:
+    """Cache performance statistics"""
+    total_items: int = 0
+    total_size_bytes: int = 0
+    hits: int = 0
+    misses: int = 0
+    evictions: int = 0
+    expired_items: int = 0
+    hit_rate: float = 0.0
+    avg_item_size: float = 0.0
+    memory_usage_mb: float = 0.0
+    last_cleanup: float = 0.0
 
 class CacheManager:
-    """Advanced cache manager with multiple strategies"""
+    """Enhanced cache manager with TTL, LRU, and monitoring"""
     
     def __init__(self, max_size_mb: int = 100, default_ttl: int = 300):
         self.max_size_bytes = max_size_mb * 1024 * 1024
         self.default_ttl = default_ttl
-        self.current_size_bytes = 0
+        self.logger = logging.getLogger('CacheManager')
+        self.stats = CacheStats()
         
         # Cache storage
-        self.memory_cache: OrderedDict[str, CacheEntry] = OrderedDict()
-        self.disk_cache_path = "cache/"
+        self.cache: OrderedDict[str, CacheItem] = OrderedDict()
+        self.tags_index: Dict[str, List[str]] = defaultdict(list)
         
-        # Statistics
-        self.stats = {
-            'hits': 0,
-            'misses': 0,
-            'evictions': 0,
-            'size_evictions': 0,
-            'expiry_evictions': 0
-        }
-        
-        # Thread safety
+        # Threading
         self.lock = threading.RLock()
         
-        # Background cleanup
-        self._cleanup_task = None
+        # Start cleanup task
         self._start_cleanup_task()
         
-        # Initialize disk cache
-        self._init_disk_cache()
-    
-    def _init_disk_cache(self):
-        """Initialize disk cache directory"""
-        try:
-            import os
-            os.makedirs(self.disk_cache_path, exist_ok=True)
-            logger.info(f"Disk cache initialized at {self.disk_cache_path}")
-        except Exception as e:
-            logger.warning(f"Failed to initialize disk cache: {e}")
+        self.logger.info(f"Cache manager initialized with {max_size_mb}MB limit")
     
     def _start_cleanup_task(self):
         """Start background cleanup task"""
-        async def cleanup_loop():
+        def cleanup_loop():
             while True:
                 try:
-                    await asyncio.sleep(60)  # Clean every minute
-                    self._cleanup_expired()
-                    self._cleanup_size()
+                    time.sleep(60)  # Cleanup every minute
+                    self._cleanup_expired_items()
+                    self._enforce_size_limit()
                 except Exception as e:
-                    logger.error(f"Cache cleanup error: {e}")
+                    self.logger.error(f"Cleanup task error: {e}")
         
-        try:
-            loop = asyncio.get_event_loop()
-            self._cleanup_task = loop.create_task(cleanup_loop())
-        except RuntimeError:
-            # No event loop, skip cleanup task
-            pass
-    
-    def _generate_key(self, *args, **kwargs) -> str:
-        """Generate cache key from arguments"""
-        # Create a string representation
-        key_data = str(args) + str(sorted(kwargs.items()))
-        
-        # Generate hash
-        key_hash = hashlib.md5(key_data.encode()).hexdigest()
-        return f"cache_{key_hash}"
+        cleanup_thread = threading.Thread(target=cleanup_loop, daemon=True)
+        cleanup_thread.start()
+        self.logger.info("Cache cleanup task started")
     
     def _calculate_size(self, value: Any) -> int:
-        """Calculate approximate size of value in bytes"""
+        """Calculate approximate size of a value in bytes"""
         try:
-            # Try to serialize to get size
-            serialized = pickle.dumps(value)
-            return len(serialized)
+            if isinstance(value, (str, bytes)):
+                return len(value)
+            elif isinstance(value, (int, float)):
+                return 8
+            elif isinstance(value, (list, tuple)):
+                return sum(self._calculate_size(item) for item in value)
+            elif isinstance(value, dict):
+                return sum(self._calculate_size(k) + self._calculate_size(v) for k, v in value.items())
+            else:
+                # Try to serialize to JSON for size estimation
+                return len(json.dumps(value, default=str).encode('utf-8'))
         except Exception:
-            # Fallback to string representation
-            return len(str(value).encode())
+            return 1024  # Default size if calculation fails
     
-    def _can_fit(self, size_bytes: int) -> bool:
-        """Check if item can fit in cache"""
-        return self.current_size_bytes + size_bytes <= self.max_size_bytes
-    
-    def _evict_lru(self, required_size: int):
-        """Evict least recently used items to make space"""
-        with self.lock:
-            while self.current_size_bytes + required_size > self.max_size_bytes and self.memory_cache:
-                # Remove oldest item
-                key, entry = self.memory_cache.popitem(last=False)
-                self.current_size_bytes -= entry.size_bytes
-                self.stats['size_evictions'] += 1
-                logger.debug(f"Evicted cache entry {key} due to size constraints")
-    
-    def _cleanup_expired(self):
-        """Remove expired cache entries"""
+    def _cleanup_expired_items(self):
+        """Remove expired cache items"""
         current_time = time.time()
         expired_keys = []
         
         with self.lock:
-            for key, entry in self.memory_cache.items():
-                if entry.expires_at and current_time > entry.expires_at:
+            for key, item in self.cache.items():
+                if item.ttl and (current_time - item.created_at) > item.ttl:
                     expired_keys.append(key)
             
             for key in expired_keys:
-                entry = self.memory_cache.pop(key)
-                self.current_size_bytes -= entry.size_bytes
-                self.stats['expiry_evictions'] += 1
+                self._remove_item(key)
+                self.stats.expired_items += 1
             
             if expired_keys:
-                logger.debug(f"Cleaned up {len(expired_keys)} expired cache entries")
+                self.logger.debug(f"Cleaned up {len(expired_keys)} expired items")
     
-    def _cleanup_size(self):
-        """Clean up cache if it exceeds size limit"""
-        if self.current_size_bytes > self.max_size_bytes:
-            # Remove oldest 20% of entries
-            target_size = int(self.max_size_bytes * 0.8)
-            removed_count = 0
+    def _enforce_size_limit(self):
+        """Enforce maximum cache size using LRU eviction"""
+        while self.stats.total_size_bytes > self.max_size_bytes and self.cache:
+            # Remove least recently used item
+            key, item = self.cache.popitem(last=False)
+            self._remove_item(key)
+            self.stats.evictions += 1
+            
+            self.logger.debug(f"Evicted item {key} due to size limit")
+    
+    def _remove_item(self, key: str):
+        """Remove item from cache and update statistics"""
+        if key in self.cache:
+            item = self.cache[key]
+            
+            # Remove from tags index
+            for tag in item.tags:
+                if tag in self.tags_index and key in self.tags_index[tag]:
+                    self.tags_index[tag].remove(key)
+                    if not self.tags_index[tag]:
+                        del self.tags_index[tag]
+            
+            # Update statistics
+            self.stats.total_items -= 1
+            self.stats.total_size_bytes -= item.size_bytes
+            
+            # Remove from cache
+            del self.cache[key]
+    
+    def _update_access_stats(self, key: str):
+        """Update access statistics for a cache item"""
+        if key in self.cache:
+            item = self.cache[key]
+            item.accessed_at = time.time()
+            item.access_count += 1
+            
+            # Move to end (most recently used)
+            self.cache.move_to_end(key)
+    
+    def set(self, key: str, value: Any, ttl: Optional[int] = None, tags: List[str] = None) -> bool:
+        """Set a value in cache"""
+        try:
+            current_time = time.time()
+            ttl = ttl or self.default_ttl
+            tags = tags or []
+            
+            # Calculate size
+            size_bytes = self._calculate_size(value)
+            
+            # Check if we need to make space
+            if self.stats.total_size_bytes + size_bytes > self.max_size_bytes:
+                self._enforce_size_limit()
+            
+            # Create cache item
+            item = CacheItem(
+                key=key,
+                value=value,
+                created_at=current_time,
+                accessed_at=current_time,
+                ttl=ttl,
+                size_bytes=size_bytes,
+                tags=tags
+            )
             
             with self.lock:
-                while self.current_size_bytes > target_size and self.memory_cache:
-                    key, entry = self.memory_cache.popitem(last=False)
-                    self.current_size_bytes -= entry.size_bytes
-                    removed_count += 1
-                    self.stats['size_evictions'] += 1
+                # Remove existing item if it exists
+                if key in self.cache:
+                    self._remove_item(key)
                 
-                if removed_count > 0:
-                    logger.info(f"Cleaned up {removed_count} cache entries due to size limit")
+                # Add new item
+                self.cache[key] = item
+                self.stats.total_items += 1
+                self.stats.total_size_bytes += size_bytes
+                
+                # Update tags index
+                for tag in tags:
+                    if tag not in self.tags_index:
+                        self.tags_index[tag] = []
+                    if key not in self.tags_index[tag]:
+                        self.tags_index[tag].append(key)
+                
+                # Update average item size
+                self.stats.avg_item_size = self.stats.total_size_bytes / self.stats.total_items
+                self.stats.memory_usage_mb = self.stats.total_size_bytes / (1024 * 1024)
+                
+                self.logger.debug(f"Cached item {key} (size: {size_bytes} bytes, TTL: {ttl}s)")
+                return True
+                
+        except Exception as e:
+            self.logger.error(f"Failed to cache item {key}: {e}")
+            return False
     
     def get(self, key: str, default: Any = None) -> Any:
-        """Get value from cache"""
-        with self.lock:
-            if key in self.memory_cache:
-                entry = self.memory_cache[key]
-                
-                # Check if expired
-                if entry.expires_at and time.time() > entry.expires_at:
-                    del self.memory_cache[key]
-                    self.current_size_bytes -= entry.size_bytes
-                    self.stats['misses'] += 1
-                    return default
-                
-                # Update access statistics
-                entry.access_count += 1
-                entry.last_accessed = time.time()
-                
-                # Move to end (most recently used)
-                self.memory_cache.move_to_end(key)
-                
-                self.stats['hits'] += 1
-                return entry.value
-            else:
-                self.stats['misses'] += 1
-                return default
-    
-    def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
-        """Set value in cache"""
+        """Get a value from cache"""
         try:
-            size_bytes = self._calculate_size(value)
-            ttl = ttl or self.default_ttl
+            current_time = time.time()
             
             with self.lock:
-                # Check if we can fit this item
-                if not self._can_fit(size_bytes):
-                    self._evict_lru(size_bytes)
-                
-                # Create cache entry
-                entry = CacheEntry(
-                    value=value,
-                    created_at=time.time(),
-                    expires_at=time.time() + ttl if ttl > 0 else None,
-                    size_bytes=size_bytes
-                )
-                
-                # Remove existing entry if it exists
-                if key in self.memory_cache:
-                    old_entry = self.memory_cache[key]
-                    self.current_size_bytes -= old_entry.size_bytes
-                
-                # Add new entry
-                self.memory_cache[key] = entry
-                self.current_size_bytes += size_bytes
-                
-                # Move to end (most recently used)
-                self.memory_cache.move_to_end(key)
-                
-                logger.debug(f"Cached item {key} (size: {size_bytes} bytes, TTL: {ttl}s)")
-                return True
-                
+                if key in self.cache:
+                    item = self.cache[key]
+                    
+                    # Check if item is expired
+                    if item.ttl and (current_time - item.created_at) > item.ttl:
+                        self._remove_item(key)
+                        self.stats.misses += 1
+                        return default
+                    
+                    # Update access statistics
+                    self._update_access_stats(key)
+                    self.stats.hits += 1
+                    
+                    # Update hit rate
+                    total_requests = self.stats.hits + self.stats.misses
+                    self.stats.hit_rate = self.stats.hits / total_requests if total_requests > 0 else 0.0
+                    
+                    return item.value
+                else:
+                    self.stats.misses += 1
+                    return default
+                    
         except Exception as e:
-            logger.error(f"Failed to cache item {key}: {e}")
-            return False
+            self.logger.error(f"Failed to get cached item {key}: {e}")
+            self.stats.misses += 1
+            return default
     
     def delete(self, key: str) -> bool:
-        """Delete item from cache"""
-        with self.lock:
-            if key in self.memory_cache:
-                entry = self.memory_cache.pop(key)
-                self.current_size_bytes -= entry.size_bytes
-                logger.debug(f"Deleted cache entry {key}")
-                return True
+        """Delete a value from cache"""
+        try:
+            with self.lock:
+                if key in self.cache:
+                    self._remove_item(key)
+                    self.logger.debug(f"Deleted cached item {key}")
+                    return True
+                return False
+        except Exception as e:
+            self.logger.error(f"Failed to delete cached item {key}: {e}")
             return False
+    
+    def delete_by_tag(self, tag: str) -> int:
+        """Delete all items with a specific tag"""
+        try:
+            deleted_count = 0
+            
+            with self.lock:
+                if tag in self.tags_index:
+                    keys_to_delete = self.tags_index[tag].copy()
+                    
+                    for key in keys_to_delete:
+                        if self.delete(key):
+                            deleted_count += 1
+                    
+                    self.logger.info(f"Deleted {deleted_count} items with tag '{tag}'")
+                
+                return deleted_count
+                
+        except Exception as e:
+            self.logger.error(f"Failed to delete items by tag '{tag}': {e}")
+            return 0
     
     def clear(self):
-        """Clear all cache entries"""
-        with self.lock:
-            self.memory_cache.clear()
-            self.current_size_bytes = 0
-            logger.info("Cache cleared")
+        """Clear all cache items"""
+        try:
+            with self.lock:
+                self.cache.clear()
+                self.tags_index.clear()
+                
+                # Reset statistics
+                self.stats.total_items = 0
+                self.stats.total_size_bytes = 0
+                self.stats.hits = 0
+                self.stats.misses = 0
+                self.stats.evictions = 0
+                self.stats.expired_items = 0
+                self.stats.hit_rate = 0.0
+                self.stats.avg_item_size = 0.0
+                self.stats.memory_usage_mb = 0.0
+                
+                self.logger.info("Cache cleared")
+                
+        except Exception as e:
+            self.logger.error(f"Failed to clear cache: {e}")
     
     def exists(self, key: str) -> bool:
-        """Check if key exists in cache"""
-        with self.lock:
-            if key in self.memory_cache:
-                entry = self.memory_cache[key]
-                # Check if expired
-                if entry.expires_at and time.time() > entry.expires_at:
-                    del self.memory_cache[key]
-                    self.current_size_bytes -= entry.size_bytes
-                    return False
-                return True
+        """Check if a key exists in cache"""
+        try:
+            with self.lock:
+                if key in self.cache:
+                    item = self.cache[key]
+                    
+                    # Check if item is expired
+                    current_time = time.time()
+                    if item.ttl and (current_time - item.created_at) > item.ttl:
+                        self._remove_item(key)
+                        return False
+                    
+                    return True
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Failed to check existence of key {key}: {e}")
             return False
     
-    def get_or_set(self, key: str, default_func: Callable, ttl: Optional[int] = None) -> Any:
-        """Get value from cache or set default if not exists"""
-        value = self.get(key)
-        if value is None:
-            value = default_func()
-            self.set(key, value, ttl)
-        return value
-    
-    def mget(self, keys: list) -> Dict[str, Any]:
-        """Get multiple values from cache"""
-        result = {}
-        for key in keys:
-            value = self.get(key)
-            if value is not None:
-                result[key] = value
-        return result
-    
-    def mset(self, data: Dict[str, Any], ttl: Optional[int] = None) -> bool:
-        """Set multiple values in cache"""
+    def get_ttl(self, key: str) -> Optional[int]:
+        """Get remaining TTL for a key"""
         try:
-            for key, value in data.items():
-                self.set(key, value, ttl)
-            return True
+            with self.lock:
+                if key in self.cache:
+                    item = self.cache[key]
+                    if item.ttl:
+                        current_time = time.time()
+                        remaining = item.ttl - (current_time - item.created_at)
+                        return max(0, int(remaining))
+                return None
+                
         except Exception as e:
-            logger.error(f"Failed to set multiple cache items: {e}")
+            self.logger.error(f"Failed to get TTL for key {key}: {e}")
+            return None
+    
+    def extend_ttl(self, key: str, additional_seconds: int) -> bool:
+        """Extend TTL for a key"""
+        try:
+            with self.lock:
+                if key in self.cache:
+                    item = self.cache[key]
+                    if item.ttl:
+                        item.ttl += additional_seconds
+                        self.logger.debug(f"Extended TTL for {key} by {additional_seconds}s")
+                        return True
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Failed to extend TTL for key {key}: {e}")
             return False
-    
-    def increment(self, key: str, amount: int = 1) -> Optional[int]:
-        """Increment numeric value in cache"""
-        try:
-            current_value = self.get(key, 0)
-            if isinstance(current_value, (int, float)):
-                new_value = current_value + amount
-                self.set(key, new_value)
-                return new_value
-            return None
-        except Exception as e:
-            logger.error(f"Failed to increment cache key {key}: {e}")
-            return None
-    
-    def decrement(self, key: str, amount: int = 1) -> Optional[int]:
-        """Decrement numeric value in cache"""
-        return self.increment(key, -amount)
     
     def get_stats(self) -> Dict[str, Any]:
         """Get cache statistics"""
         with self.lock:
-            hit_rate = 0
-            if self.stats['hits'] + self.stats['misses'] > 0:
-                hit_rate = self.stats['hits'] / (self.stats['hits'] + self.stats['misses'])
-            
             return {
-                **self.stats,
-                'hit_rate': round(hit_rate, 3),
-                'current_size_bytes': self.current_size_bytes,
-                'current_size_mb': round(self.current_size_bytes / (1024 * 1024), 2),
+                'total_items': self.stats.total_items,
+                'total_size_bytes': self.stats.total_size_bytes,
+                'total_size_mb': round(self.stats.total_size_bytes / (1024 * 1024), 2),
                 'max_size_mb': round(self.max_size_bytes / (1024 * 1024), 2),
-                'entries_count': len(self.memory_cache),
-                'utilization_percent': round((self.current_size_bytes / self.max_size_bytes) * 100, 2)
+                'hits': self.stats.hits,
+                'misses': self.stats.misses,
+                'evictions': self.stats.evictions,
+                'expired_items': self.stats.expired_items,
+                'hit_rate': round(self.stats.hit_rate * 100, 2),
+                'avg_item_size': round(self.stats.avg_item_size, 2),
+                'memory_usage_mb': round(self.stats.memory_usage_mb, 2),
+                'tags_count': len(self.tags_index),
+                'last_cleanup': self.stats.last_cleanup
             }
     
-    def get_keys(self, pattern: str = "*") -> list:
-        """Get cache keys matching pattern"""
-        with self.lock:
-            if pattern == "*":
-                return list(self.memory_cache.keys())
-            
-            # Simple pattern matching
-            import fnmatch
-            return [key for key in self.memory_cache.keys() if fnmatch.fnmatch(key, pattern)]
-    
-    def persist_to_disk(self, filename: str = None) -> bool:
-        """Persist cache to disk"""
+    def get_keys_by_tag(self, tag: str) -> List[str]:
+        """Get all keys with a specific tag"""
         try:
-            if not filename:
-                filename = f"cache_backup_{int(time.time())}.json"
-            
-            filepath = f"{self.disk_cache_path}{filename}"
-            
             with self.lock:
-                # Prepare data for serialization
-                cache_data = {}
-                for key, entry in self.memory_cache.items():
-                    # Skip expired entries
-                    if entry.expires_at and time.time() > entry.expires_at:
-                        continue
+                return self.tags_index.get(tag, []).copy()
+        except Exception as e:
+            self.logger.error(f"Failed to get keys by tag '{tag}': {e}")
+            return []
+    
+    def get_cache_info(self, key: str) -> Optional[Dict[str, Any]]:
+        """Get detailed information about a cache item"""
+        try:
+            with self.lock:
+                if key in self.cache:
+                    item = self.cache[key]
+                    current_time = time.time()
                     
-                    try:
-                        # Try to serialize value
-                        serialized_value = pickle.dumps(entry.value)
-                        cache_data[key] = {
-                            'value': serialized_value.hex(),
-                            'created_at': entry.created_at,
-                            'expires_at': entry.expires_at,
-                            'access_count': entry.access_count,
-                            'size_bytes': entry.size_bytes
-                        }
-                    except Exception as e:
-                        logger.warning(f"Failed to serialize cache value for key {key}: {e}")
-                        continue
-            
-            # Save to file
-            with open(filepath, 'w') as f:
-                json.dump(cache_data, f, indent=2)
-            
-            logger.info(f"Cache persisted to {filepath}")
-            return True
-            
+                    return {
+                        'key': key,
+                        'created_at': item.created_at,
+                        'accessed_at': item.accessed_at,
+                        'access_count': item.access_count,
+                        'ttl': item.ttl,
+                        'remaining_ttl': self.get_ttl(key),
+                        'size_bytes': item.size_bytes,
+                        'tags': item.tags.copy(),
+                        'is_expired': item.ttl and (current_time - item.created_at) > item.ttl
+                    }
+                return None
+                
         except Exception as e:
-            logger.error(f"Failed to persist cache: {e}")
-            return False
-    
-    def load_from_disk(self, filename: str) -> bool:
-        """Load cache from disk"""
-        try:
-            filepath = f"{self.disk_cache_path}{filename}"
-            
-            with open(filepath, 'r') as f:
-                cache_data = json.load(f)
-            
-            with self.lock:
-                loaded_count = 0
-                for key, data in cache_data.items():
-                    try:
-                        # Deserialize value
-                        serialized_value = bytes.fromhex(data['value'])
-                        value = pickle.loads(serialized_value)
-                        
-                        # Create cache entry
-                        entry = CacheEntry(
-                            value=value,
-                            created_at=data['created_at'],
-                            expires_at=data['expires_at'],
-                            access_count=data['access_count'],
-                            size_bytes=data['size_bytes']
-                        )
-                        
-                        # Check if expired
-                        if entry.expires_at and time.time() > entry.expires_at:
-                            continue
-                        
-                        # Add to cache
-                        self.memory_cache[key] = entry
-                        self.current_size_bytes += entry.size_bytes
-                        loaded_count += 1
-                        
-                    except Exception as e:
-                        logger.warning(f"Failed to deserialize cache value for key {key}: {e}")
-                        continue
-            
-            logger.info(f"Loaded {loaded_count} cache entries from {filepath}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to load cache from disk: {e}")
-            return False
-    
-    def shutdown(self):
-        """Shutdown cache manager"""
-        if self._cleanup_task:
-            self._cleanup_task.cancel()
-        
-        # Persist cache before shutdown
-        self.persist_to_disk("shutdown_cache.json")
-        
-        # Clear memory cache
-        self.clear()
-        
-        logger.info("Cache manager shutdown complete")
+            self.logger.error(f"Failed to get cache info for key {key}: {e}")
+            return None
 
-# Global cache manager instance
-cache_manager = CacheManager()
-
-# Decorator for caching function results
-def cached(ttl: Optional[int] = None, key_prefix: str = ""):
-    """Decorator to cache function results"""
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            # Generate cache key
-            cache_key = f"{key_prefix}{func.__name__}_{hash(str(args) + str(sorted(kwargs.items()))}"
-            
-            # Try to get from cache
-            cached_result = cache_manager.get(cache_key)
-            if cached_result is not None:
-                return cached_result
-            
-            # Execute function and cache result
-            result = func(*args, **kwargs)
-            cache_manager.set(cache_key, result, ttl)
-            
-            return result
-        
-        return wrapper
-    return decorator
-
-# Async version of cached decorator
-def async_cached(ttl: Optional[int] = None, key_prefix: str = ""):
-    """Async decorator to cache function results"""
-    def decorator(func):
+def cached(ttl: Optional[int] = None, tags: List[str] = None, key_prefix: str = ""):
+    """Decorator for caching function results"""
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
         async def wrapper(*args, **kwargs):
+            # Get cache manager instance
+            cache_manager = getattr(config, 'cache_manager', None)
+            if not cache_manager:
+                return await func(*args, **kwargs)
+            
             # Generate cache key
-            cache_key = f"{key_prefix}{func.__name__}_{hash(str(args) + str(sorted(kwargs.items()))}"
+            key_parts = [key_prefix, func.__name__]
+            
+            # Add args and kwargs to key
+            if args:
+                key_parts.append(str(args))
+            if kwargs:
+                # Sort kwargs for consistent key generation
+                sorted_kwargs = sorted(kwargs.items())
+                key_parts.append(str(sorted_kwargs))
+            
+            cache_key = hashlib.md5("|".join(key_parts).encode()).hexdigest()
             
             # Try to get from cache
             cached_result = cache_manager.get(cache_key)
@@ -457,9 +431,15 @@ def async_cached(ttl: Optional[int] = None, key_prefix: str = ""):
             
             # Execute function and cache result
             result = await func(*args, **kwargs)
-            cache_manager.set(cache_key, result, ttl)
+            cache_manager.set(cache_key, result, ttl=ttl, tags=tags)
             
             return result
         
         return wrapper
     return decorator
+
+# Global cache manager instance
+cache_manager = CacheManager(
+    max_size_mb=config.CACHE_TTL if hasattr(config, 'CACHE_TTL') else 100,
+    default_ttl=config.CACHE_TTL if hasattr(config, 'CACHE_TTL') else 300
+)

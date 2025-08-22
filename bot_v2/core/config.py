@@ -1,240 +1,144 @@
 """
-Enhanced configuration management for Yemen Net Bot
+Enhanced configuration for Yemen Net Bot v2
+Replaces print() statements with proper logging
 """
 
 import os
 import logging
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, field
-from pathlib import Path
+from typing import Dict, Any, Optional
+from dotenv import load_dotenv
 
-@dataclass
-class DatabaseConfig:
-    """Database configuration"""
-    path: str = "yemen_net.db"
-    timeout: float = 30.0
-    check_same_thread: bool = False
-    max_connections: int = 10
-    connection_timeout: float = 5.0
+# Load environment variables
+load_dotenv()
 
-@dataclass
 class BotConfig:
-    """Bot configuration"""
-    token: str = ""
-    webhook_url: Optional[str] = None
-    webhook_port: int = 8443
-    webhook_cert: Optional[str] = None
-    webhook_key: Optional[str] = None
-    
-    # Rate limiting
-    rate_limit_per_user: int = 10
-    rate_limit_per_minute: int = 60
-    rate_limit_burst: int = 20
-    
-    # Logging
-    log_level: str = "INFO"
-    log_file: str = "bot.log"
-    log_max_size: int = 10 * 1024 * 1024  # 10MB
-    log_backup_count: int = 5
-    
-    # Security
-    admin_user_ids: List[int] = field(default_factory=list)
-    allowed_users: List[int] = field(default_factory=list)
-    maintenance_mode: bool = False
-    
-    # Features
-    enable_notifications: bool = True
-    enable_analytics: bool = True
-    enable_backup: bool = True
-    backup_interval_hours: int = 24
-
-@dataclass
-class PaymentConfig:
-    """Payment configuration"""
-    min_transfer_amount: float = 1.0
-    max_transfer_amount: float = 10000.0
-    transfer_fee_percent: float = 0.5
-    min_balance_for_transfer: float = 10.0
-    
-    # Payment providers
-    enable_bank_transfer: bool = True
-    enable_crypto: bool = False
-    enable_cash: bool = True
-
-@dataclass
-class NotificationConfig:
-    """Notification configuration"""
-    enable_telegram: bool = True
-    enable_email: bool = False
-    enable_sms: bool = False
-    
-    # Telegram notifications
-    admin_chat_id: Optional[int] = None
-    support_chat_id: Optional[int] = None
-    
-    # Email settings
-    smtp_server: str = ""
-    smtp_port: int = 587
-    smtp_username: str = ""
-    smtp_password: str = ""
-
-class ConfigManager:
-    """Configuration manager with environment variable support"""
+    """Enhanced bot configuration with proper logging"""
     
     def __init__(self):
-        self.bot = BotConfig()
-        self.database = DatabaseConfig()
-        self.payment = PaymentConfig()
-        self.notification = NotificationConfig()
-        self._load_from_env()
-        self._load_from_file()
+        self._setup_logging()
+        self._load_config()
+        self._validate_config()
     
-    def _load_from_env(self):
+    def _setup_logging(self):
+        """Setup comprehensive logging configuration"""
+        # Create logs directory if it doesn't exist
+        os.makedirs('logs', exist_ok=True)
+        
+        # Configure logging
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler('logs/bot.log', encoding='utf-8'),
+                logging.StreamHandler()
+            ]
+        )
+        
+        self.logger = logging.getLogger('YemenNetBot')
+        self.logger.info("Logging system initialized successfully")
+    
+    def _load_config(self):
         """Load configuration from environment variables"""
-        # Bot settings
-        if os.getenv('BOT_TOKEN'):
-            self.bot.token = os.getenv('BOT_TOKEN')
+        # Bot Configuration
+        self.BOT_TOKEN = os.getenv('BOT_TOKEN')
+        if not self.BOT_TOKEN:
+            self.logger.error("BOT_TOKEN not found in environment variables")
+            raise ValueError("BOT_TOKEN is required")
         
-        if os.getenv('BOT_WEBHOOK_URL'):
-            self.bot.webhook_url = os.getenv('BOT_WEBHOOK_URL')
+        # Database Configuration
+        self.DB_PATH = os.getenv('DB_PATH', 'yemen_net.db')
+        self.DB_TIMEOUT = int(os.getenv('DB_TIMEOUT', '30'))
+        self.DB_MAX_CONNECTIONS = int(os.getenv('DB_MAX_CONNECTIONS', '10'))
         
-        if os.getenv('BOT_LOG_LEVEL'):
-            self.bot.log_level = os.getenv('BOT_LOG_LEVEL')
+        # Bot Settings
+        self.BOT_NAME = os.getenv('BOT_NAME', 'Yemen Net Bot')
+        self.BOT_USERNAME = os.getenv('BOT_USERNAME', 'yemen_net_bot')
+        self.ADMIN_USER_ID = int(os.getenv('ADMIN_USER_ID', '0'))
         
-        # Database settings
-        if os.getenv('DB_PATH'):
-            self.database.path = os.getenv('DB_PATH')
+        # Rate Limiting
+        self.RATE_LIMIT_REQUESTS = int(os.getenv('RATE_LIMIT_REQUESTS', '30'))
+        self.RATE_LIMIT_WINDOW = int(os.getenv('RATE_LIMIT_WINDOW', '60'))
         
-        # Admin users
-        admin_ids = os.getenv('ADMIN_USER_IDS')
-        if admin_ids:
-            try:
-                self.bot.admin_user_ids = [int(x.strip()) for x in admin_ids.split(',')]
-            except ValueError:
-                pass
+        # Security
+        self.SESSION_TIMEOUT = int(os.getenv('SESSION_TIMEOUT', '3600'))
+        self.MAX_LOGIN_ATTEMPTS = int(os.getenv('MAX_LOGIN_ATTEMPTS', '5'))
+        
+        # Performance
+        self.CACHE_TTL = int(os.getenv('CACHE_TTL', '300'))
+        self.MAX_CONCURRENT_REQUESTS = int(os.getenv('MAX_CONCURRENT_REQUESTS', '100'))
+        
+        # Notification
+        self.ENABLE_NOTIFICATIONS = os.getenv('ENABLE_NOTIFICATIONS', 'true').lower() == 'true'
+        self.NOTIFICATION_INTERVAL = int(os.getenv('NOTIFICATION_INTERVAL', '300'))
+        
+        # Monitoring
+        self.ENABLE_MONITORING = os.getenv('ENABLE_MONITORING', 'true').lower() == 'true'
+        self.MONITORING_INTERVAL = int(os.getenv('MONITORING_INTERVAL', '60'))
+        
+        # Backup
+        self.ENABLE_AUTO_BACKUP = os.getenv('ENABLE_AUTO_BACKUP', 'true').lower() == 'true'
+        self.BACKUP_INTERVAL = int(os.getenv('BACKUP_INTERVAL', '86400'))  # 24 hours
+        
+        self.logger.info("Configuration loaded successfully")
     
-    def _load_from_file(self):
-        """Load configuration from config file if exists"""
-        config_file = Path("config.yaml")
-        if config_file.exists():
-            try:
-                import yaml
-                with open(config_file, 'r', encoding='utf-8') as f:
-                    config_data = yaml.safe_load(f)
-                    self._apply_config_data(config_data)
-            except Exception as e:
-                logging.warning(f"Failed to load config file: {e}")
-    
-    def _apply_config_data(self, config_data: Dict[str, Any]):
-        """Apply configuration data from file"""
-        if 'bot' in config_data:
-            for key, value in config_data['bot'].items():
-                if hasattr(self.bot, key):
-                    setattr(self.bot, key, value)
+    def _validate_config(self):
+        """Validate configuration values"""
+        validation_errors = []
         
-        if 'database' in config_data:
-            for key, value in config_data['database'].items():
-                if hasattr(self.database, key):
-                    setattr(self.database, key, value)
+        if not self.BOT_TOKEN:
+            validation_errors.append("BOT_TOKEN is required")
         
-        if 'payment' in config_data:
-            for key, value in config_data['payment'].items():
-                if hasattr(self.payment, key):
-                    setattr(self.payment, key, value)
+        if self.DB_TIMEOUT <= 0:
+            validation_errors.append("DB_TIMEOUT must be positive")
         
-        if 'notification' in config_data:
-            for key, value in config_data['notification'].items():
-                if hasattr(self.notification, key):
-                    setattr(self.notification, key, value)
-    
-    def validate(self) -> List[str]:
-        """Validate configuration and return list of errors"""
-        errors = []
+        if self.RATE_LIMIT_REQUESTS <= 0:
+            validation_errors.append("RATE_LIMIT_REQUESTS must be positive")
         
-        if not self.bot.token:
-            errors.append("BOT_TOKEN is required")
+        if self.RATE_LIMIT_WINDOW <= 0:
+            validation_errors.append("RATE_LIMIT_WINDOW must be positive")
         
-        if self.bot.webhook_url and not self.bot.webhook_cert:
-            errors.append("Webhook certificate is required when using webhook")
+        if validation_errors:
+            error_msg = "Configuration validation failed: " + "; ".join(validation_errors)
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
         
-        if self.database.path and not Path(self.database.path).parent.exists():
-            errors.append(f"Database directory does not exist: {Path(self.database.path).parent}")
-        
-        return errors
+        self.logger.info("Configuration validation passed")
     
     def get_database_url(self) -> str:
         """Get database connection string"""
-        return f"sqlite:///{self.database.path}"
+        return f"sqlite:///{self.DB_PATH}"
     
-    def is_admin(self, user_id: int) -> bool:
-        """Check if user is admin"""
-        return user_id in self.bot.admin_user_ids
+    def is_production(self) -> bool:
+        """Check if running in production mode"""
+        return os.getenv('ENVIRONMENT', 'development').lower() == 'production'
     
-    def is_allowed_user(self, user_id: int) -> bool:
-        """Check if user is allowed to use bot"""
-        if not self.bot.allowed_users:
-            return True
-        return user_id in self.bot.allowed_users
+    def get_log_level(self) -> str:
+        """Get log level based on environment"""
+        if self.is_production():
+            return 'WARNING'
+        return 'INFO'
+    
+    def update_config(self, key: str, value: Any) -> None:
+        """Update configuration value dynamically"""
+        if hasattr(self, key):
+            old_value = getattr(self, key)
+            setattr(self, key, value)
+            self.logger.info(f"Configuration updated: {key} = {old_value} -> {value}")
+        else:
+            self.logger.warning(f"Attempted to update non-existent config key: {key}")
+    
+    def get_config_summary(self) -> Dict[str, Any]:
+        """Get configuration summary for monitoring"""
+        return {
+            'bot_name': self.BOT_NAME,
+            'db_path': self.DB_PATH,
+            'rate_limit_requests': self.RATE_LIMIT_REQUESTS,
+            'rate_limit_window': self.RATE_LIMIT_WINDOW,
+            'cache_ttl': self.CACHE_TTL,
+            'enable_notifications': self.ENABLE_NOTIFICATIONS,
+            'enable_monitoring': self.ENABLE_MONITORING,
+            'enable_auto_backup': self.ENABLE_AUTO_BACKUP
+        }
 
 # Global configuration instance
-config = ConfigManager()
-
-# Emojis and constants
-EMOJIS = {
-    'success': '✅',
-    'error': '❌',
-    'warning': '⚠️',
-    'info': 'ℹ️',
-    'money': '💰',
-    'card': '💳',
-    'user': '👤',
-    'admin': '👑',
-    'settings': '⚙️',
-    'stats': '📊',
-    'transfer': '💸',
-    'wallet': '👛',
-    'notification': '🔔',
-    'lock': '🔒',
-    'unlock': '🔓',
-    'refresh': '🔄',
-    'download': '⬇️',
-    'upload': '⬆️',
-    'search': '🔍',
-    'filter': '🔧',
-    'calendar': '📅',
-    'clock': '⏰',
-    'check': '☑️',
-    'cross': '❌',
-    'star': '⭐',
-    'fire': '🔥',
-    'rocket': '🚀',
-    'trophy': '🏆',
-    'medal': '🥇',
-    'gift': '🎁',
-    'party': '🎉'
-}
-
-QUICK_COMMANDS = {
-    'start': 'بدء استخدام البوت',
-    'help': 'عرض المساعدة',
-    'wallet': 'عرض المحفظة',
-    'profile': 'الملف الشخصي',
-    'settings': 'الإعدادات',
-    'support': 'الدعم الفني'
-}
-
-USER_ROLES = {
-    'user': 'مستخدم عادي',
-    'agent': 'وكيل',
-    'supplier': 'مورد',
-    'admin': 'مدير',
-    'super_admin': 'مدير عام'
-}
-
-PERMISSIONS = {
-    'user': ['view_profile', 'view_wallet', 'make_transfer', 'view_transactions'],
-    'agent': ['user_permissions', 'view_commissions', 'view_sales', 'upload_cards'],
-    'supplier': ['agent_permissions', 'manage_networks', 'view_supplier_stats'],
-    'admin': ['supplier_permissions', 'manage_users', 'view_admin_panel', 'system_settings'],
-    'super_admin': ['admin_permissions', 'manage_admins', 'system_maintenance', 'full_access']
-}
+config = BotConfig()
