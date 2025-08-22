@@ -1,460 +1,331 @@
 """
-Enhanced Rate Limiter for Yemen Net Bot v2
-Implements sophisticated rate limiting with caching and monitoring
+Advanced Rate Limiting Service with Sliding Window Algorithm
 """
-
 import time
-import asyncio
-import logging
-from typing import Dict, List, Optional, Tuple, Any
-from dataclasses import dataclass, field
-from collections import defaultdict, deque
-from functools import wraps
 import threading
+from collections import defaultdict, deque
+from typing import Dict, Optional, Tuple, Any
+from dataclasses import dataclass
+from functools import wraps
 
-from ..core.exceptions import RateLimitException
-from ..core.config import config
+from ..core.exceptions import RateLimitException, RateLimitExceeded
+from ..core.logger import logger
 
-@dataclass
-class RateLimitRule:
-    """Rate limiting rule configuration"""
-    name: str
-    max_requests: int
-    window_seconds: int
-    burst_size: int = 0
-    penalty_seconds: int = 0
-    user_specific: bool = True
-    global_limit: bool = False
-    priority: int = 1
 
 @dataclass
-class RateLimitStats:
-    """Rate limiting statistics"""
-    total_requests: int = 0
-    allowed_requests: int = 0
-    blocked_requests: int = 0
-    rate_limited_users: int = 0
-    current_active_users: int = 0
-    peak_requests_per_second: float = 0.0
-    avg_requests_per_second: float = 0.0
-    last_reset: float = 0.0
+class RateLimitConfig:
+    """Rate limit configuration"""
+    requests_per_window: int
+    window_size_seconds: int
+    burst_limit: Optional[int] = None
+    cooldown_seconds: Optional[int] = None
+
+
+class SlidingWindowCounter:
+    """Sliding window rate limiter using timestamp-based counting"""
+    
+    def __init__(self, requests_per_window: int, window_size_seconds: int):
+        self.requests_per_window = requests_per_window
+        self.window_size_seconds = window_size_seconds
+        self.requests = deque()
+        self.lock = threading.Lock()
+        
+    def is_allowed(self) -> Tuple[bool, float]:
+        """Check if request is allowed, return (allowed, reset_time)"""
+        current_time = time.time()
+        
+        with self.lock:
+            # Remove old requests outside the window
+            while self.requests and self.requests[0] <= current_time - self.window_size_seconds:
+                self.requests.popleft()
+                
+            # Check if we can accept this request
+            if len(self.requests) < self.requests_per_window:
+                self.requests.append(current_time)
+                return True, current_time + self.window_size_seconds
+            else:
+                # Calculate when the oldest request will expire
+                oldest_request = self.requests[0]
+                reset_time = oldest_request + self.window_size_seconds
+                return False, reset_time
+                
+    def get_remaining(self) -> int:
+        """Get remaining requests in current window"""
+        current_time = time.time()
+        
+        with self.lock:
+            # Remove old requests
+            while self.requests and self.requests[0] <= current_time - self.window_size_seconds:
+                self.requests.popleft()
+                
+            return max(0, self.requests_per_window - len(self.requests))
+
 
 class RateLimiter:
-    """Enhanced rate limiter with multiple strategies and monitoring"""
+    """Advanced rate limiting service with multiple strategies"""
     
     def __init__(self):
-        self.config = config
-        self.logger = logging.getLogger('RateLimiter')
-        self.stats = RateLimitStats()
+        self.user_limiters: Dict[int, Dict[str, SlidingWindowCounter]] = defaultdict(dict)
+        self.global_limiters: Dict[str, SlidingWindowCounter] = {}
+        self.blocked_users: Dict[int, float] = {}  # user_id -> unblock_time
+        self.blocked_ips: Dict[str, float] = {}  # ip -> unblock_time
+        self.lock = threading.Lock()
         
-        # Rate limiting storage
-        self.user_requests: Dict[int, deque] = defaultdict(lambda: deque())
-        self.global_requests: deque = deque()
-        self.user_penalties: Dict[int, float] = {}
-        self.global_penalty_until: float = 0.0
+        # Default rate limit configurations
+        self.configs = {
+            'default': RateLimitConfig(60, 60),  # 60 requests per minute
+            'login': RateLimitConfig(5, 300),    # 5 login attempts per 5 minutes
+            'message': RateLimitConfig(30, 60),  # 30 messages per minute
+            'payment': RateLimitConfig(10, 300), # 10 payments per 5 minutes
+            'admin': RateLimitConfig(120, 60),   # 120 requests per minute for admins
+            'api': RateLimitConfig(1000, 3600),  # 1000 API calls per hour
+            'download': RateLimitConfig(5, 60),  # 5 downloads per minute
+            'upload': RateLimitConfig(3, 300),   # 3 uploads per 5 minutes
+        }
         
-        # Rules configuration
-        self.rules: List[RateLimitRule] = self._setup_default_rules()
+        # Start cleanup thread
+        self._start_cleanup_thread()
         
-        # Threading
-        self.lock = threading.RLock()
-        
-        # Start cleanup task
-        self._start_cleanup_task()
-    
-    def _setup_default_rules(self) -> List[RateLimitRule]:
-        """Setup default rate limiting rules"""
-        return [
-            # General user rate limiting
-            RateLimitRule(
-                name="user_general",
-                max_requests=30,
-                window_seconds=60,
-                burst_size=5,
-                penalty_seconds=300,
-                user_specific=True,
-                priority=1
-            ),
-            
-            # Message rate limiting
-            RateLimitRule(
-                name="user_messages",
-                max_requests=100,
-                window_seconds=300,
-                burst_size=20,
-                penalty_seconds=600,
-                user_specific=True,
-                priority=2
-            ),
-            
-            # Button clicks rate limiting
-            RateLimitRule(
-                name="user_buttons",
-                max_requests=50,
-                window_seconds=60,
-                burst_size=10,
-                penalty_seconds=180,
-                user_specific=True,
-                priority=2
-            ),
-            
-            # Admin operations rate limiting
-            RateLimitRule(
-                name="admin_operations",
-                max_requests=200,
-                window_seconds=300,
-                burst_size=50,
-                penalty_seconds=900,
-                user_specific=True,
-                priority=3
-            ),
-            
-            # Global rate limiting
-            RateLimitRule(
-                name="global_limit",
-                max_requests=1000,
-                window_seconds=60,
-                burst_size=200,
-                penalty_seconds=1800,
-                user_specific=False,
-                global_limit=True,
-                priority=4
-            ),
-            
-            # Payment operations rate limiting
-            RateLimitRule(
-                name="payment_operations",
-                max_requests=10,
-                window_seconds=300,
-                burst_size=2,
-                penalty_seconds=1800,
-                user_specific=True,
-                priority=5
-            ),
-            
-            # File upload rate limiting
-            RateLimitRule(
-                name="file_uploads",
-                max_requests=5,
-                window_seconds=300,
-                burst_size=1,
-                penalty_seconds=3600,
-                user_specific=True,
-                priority=5
-            )
-        ]
-    
-    def _start_cleanup_task(self):
-        """Start background cleanup task"""
-        def cleanup_loop():
+    def _start_cleanup_thread(self):
+        """Start background thread to clean up expired entries"""
+        def cleanup_worker():
             while True:
                 try:
+                    self._cleanup_expired()
                     time.sleep(60)  # Cleanup every minute
-                    self._cleanup_expired_requests()
                 except Exception as e:
-                    self.logger.error(f"Cleanup task error: {e}")
-        
-        cleanup_thread = threading.Thread(target=cleanup_loop, daemon=True)
+                    logger.error("Rate limiter cleanup error", e)
+                    time.sleep(30)
+                    
+        cleanup_thread = threading.Thread(
+            target=cleanup_worker,
+            daemon=True,
+            name="RateLimiterCleanup"
+        )
         cleanup_thread.start()
-        self.logger.info("Rate limiter cleanup task started")
-    
-    def _cleanup_expired_requests(self):
-        """Clean up expired request records"""
+        
+    def _cleanup_expired(self):
+        """Remove expired blocked users and IPs"""
         current_time = time.time()
         
         with self.lock:
-            # Clean user requests
-            for user_id in list(self.user_requests.keys()):
-                user_queue = self.user_requests[user_id]
-                while user_queue and current_time - user_queue[0] > max(rule.window_seconds for rule in self.rules):
-                    user_queue.popleft()
+            # Clean up blocked users
+            expired_users = [
+                user_id for user_id, unblock_time in self.blocked_users.items()
+                if current_time >= unblock_time
+            ]
+            for user_id in expired_users:
+                del self.blocked_users[user_id]
+                logger.info(f"Unblocked user {user_id}")
                 
-                # Remove empty user queues
-                if not user_queue:
-                    del self.user_requests[user_id]
-            
-            # Clean global requests
-            while self.global_requests and current_time - self.global_requests[0] > max(rule.window_seconds for rule in self.rules):
-                self.global_requests.popleft()
-            
-            # Clean expired penalties
-            expired_penalties = [user_id for user_id, penalty_until in self.user_penalties.items() 
-                               if current_time > penalty_until]
-            for user_id in expired_penalties:
-                del self.user_penalties[user_id]
-            
-            # Clean global penalty
-            if current_time > self.global_penalty_until:
-                self.global_penalty_until = 0.0
-            
-            # Update stats
-            self.stats.current_active_users = len(self.user_requests)
-            self.stats.last_reset = current_time
-    
-    def add_rule(self, rule: RateLimitRule):
-        """Add a new rate limiting rule"""
-        with self.lock:
-            # Remove existing rule with same name
-            self.rules = [r for r in self.rules if r.name != rule.name]
-            self.rules.append(rule)
-            
-            # Sort by priority
-            self.rules.sort(key=lambda r: r.priority)
-            
-            self.logger.info(f"Added rate limiting rule: {rule.name}")
-    
-    def remove_rule(self, rule_name: str):
-        """Remove a rate limiting rule"""
-        with self.lock:
-            original_count = len(self.rules)
-            self.rules = [r for r in self.rules if r.name != rule_name]
-            
-            if len(self.rules) < original_count:
-                self.logger.info(f"Removed rate limiting rule: {rule_name}")
-            else:
-                self.logger.warning(f"Rate limiting rule not found: {rule_name}")
-    
-    def is_rate_limited(self, user_id: int, rule_name: str = None) -> Tuple[bool, Optional[str], int]:
-        """
-        Check if user is rate limited
-        Returns: (is_limited, reason, retry_after)
-        """
-        current_time = time.time()
-        
-        with self.lock:
-            # Check if user is under penalty
-            if user_id in self.user_penalties:
-                penalty_until = self.user_penalties[user_id]
-                if current_time < penalty_until:
-                    retry_after = int(penalty_until - current_time)
-                    return True, f"User under penalty for {rule_name or 'violation'}", retry_after
-            
-            # Check global penalty
-            if current_time < self.global_penalty_until:
-                retry_after = int(self.global_penalty_until - current_time)
-                return True, "Global rate limit exceeded", retry_after
-            
-            # Find applicable rules
-            applicable_rules = []
-            if rule_name:
-                applicable_rules = [r for r in self.rules if r.name == rule_name]
-            else:
-                applicable_rules = [r for r in self.rules if r.user_specific]
-            
-            for rule in applicable_rules:
-                if rule.user_specific:
-                    # Check user-specific rule
-                    user_queue = self.user_requests[user_id]
-                    
-                    # Remove expired requests
-                    while user_queue and current_time - user_queue[0] > rule.window_seconds:
-                        user_queue.popleft()
-                    
-                    # Check if limit exceeded
-                    if len(user_queue) >= rule.max_requests:
-                        retry_after = int(rule.window_seconds - (current_time - user_queue[0]))
-                        
-                        # Apply penalty if configured
-                        if rule.penalty_seconds > 0:
-                            penalty_until = current_time + rule.penalty_seconds
-                            self.user_penalties[user_id] = penalty_until
-                            self.stats.rate_limited_users += 1
-                        
-                        return True, f"Rate limit exceeded for {rule.name}", retry_after
+            # Clean up blocked IPs
+            expired_ips = [
+                ip for ip, unblock_time in self.blocked_ips.items()
+                if current_time >= unblock_time
+            ]
+            for ip in expired_ips:
+                del self.blocked_ips[ip]
+                logger.info(f"Unblocked IP {ip}")
                 
-                elif rule.global_limit:
-                    # Check global rule
-                    global_queue = self.global_requests
-                    
-                    # Remove expired requests
-                    while global_queue and current_time - global_queue[0] > rule.window_seconds:
-                        global_queue.popleft()
-                    
-                    # Check if limit exceeded
-                    if len(global_queue) >= rule.max_requests:
-                        retry_after = int(rule.window_seconds - (current_time - global_queue[0]))
+            # Clean up old user limiters (keep only active ones)
+            for user_id in list(self.user_limiters.keys()):
+                user_limiters = self.user_limiters[user_id]
+                active_limiters = {}
+                
+                for action, limiter in user_limiters.items():
+                    if limiter.get_remaining() < limiter.requests_per_window:
+                        active_limiters[action] = limiter
                         
-                        # Apply global penalty
-                        if rule.penalty_seconds > 0:
-                            self.global_penalty_until = current_time + rule.penalty_seconds
-                        
-                        return True, f"Global rate limit exceeded for {rule.name}", retry_after
-            
-            return False, None, 0
-    
-    def record_request(self, user_id: int, rule_name: str = None):
-        """Record a user request"""
-        current_time = time.time()
-        
-        with self.lock:
-            # Record user request
-            user_queue = self.user_requests[user_id]
-            user_queue.append(current_time)
-            
-            # Record global request
-            self.global_requests.append(current_time)
-            
-            # Update stats
-            self.stats.total_requests += 1
-            self.stats.allowed_requests += 1
-            
-            # Calculate current requests per second
-            current_rps = len([req for req in user_queue if current_time - req <= 1.0])
-            if current_rps > self.stats.peak_requests_per_second:
-                self.stats.peak_requests_per_second = current_rps
-            
-            # Update average RPS
-            total_time = max(1.0, current_time - self.stats.last_reset)
-            self.stats.avg_requests_per_second = self.stats.total_requests / total_time
-    
-    def block_request(self, user_id: int, rule_name: str = None):
-        """Record a blocked request"""
-        with self.lock:
-            self.stats.total_requests += 1
-            self.stats.blocked_requests += 1
-    
-    def get_user_stats(self, user_id: int) -> Dict[str, Any]:
-        """Get rate limiting statistics for a specific user"""
-        current_time = time.time()
-        
-        with self.lock:
-            user_queue = self.user_requests.get(user_id, deque())
-            
-            # Calculate requests per rule
-            rule_stats = {}
-            for rule in self.rules:
-                if rule.user_specific:
-                    rule_requests = [req for req in user_queue if current_time - req <= rule.window_seconds]
-                    rule_stats[rule.name] = {
-                        'current_requests': len(rule_requests),
-                        'max_requests': rule.max_requests,
-                        'window_seconds': rule.window_seconds,
-                        'remaining_requests': max(0, rule.max_requests - len(rule_requests)),
-                        'time_to_reset': max(0, rule.window_seconds - (current_time - rule_requests[0])) if rule_requests else 0
-                    }
-            
-            # Check penalty status
-            penalty_info = None
-            if user_id in self.user_penalties:
-                penalty_until = self.user_penalties[user_id]
-                if current_time < penalty_until:
-                    penalty_info = {
-                        'is_penalized': True,
-                        'penalty_until': penalty_until,
-                        'remaining_penalty': int(penalty_until - current_time),
-                        'reason': 'Rate limit violation'
-                    }
+                if active_limiters:
+                    self.user_limiters[user_id] = active_limiters
                 else:
-                    penalty_info = {'is_penalized': False}
+                    del self.user_limiters[user_id]
+                    
+    def _get_config(self, action: str, user_role: str = 'user') -> RateLimitConfig:
+        """Get rate limit configuration for action and user role"""
+        if user_role == 'admin' and action != 'login':
+            return self.configs.get('admin', self.configs['default'])
+        return self.configs.get(action, self.configs['default'])
+        
+    def check_rate_limit(self, user_id: int, action: str, user_role: str = 'user', 
+                        ip_address: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Check if user can perform action
+        Returns dict with: allowed, remaining, reset_time, reason
+        """
+        current_time = time.time()
+        
+        # Check if user is blocked
+        if user_id in self.blocked_users:
+            if current_time < self.blocked_users[user_id]:
+                return {
+                    'allowed': False,
+                    'remaining': 0,
+                    'reset_time': self.blocked_users[user_id],
+                    'reason': 'user_blocked'
+                }
             else:
-                penalty_info = {'is_penalized': False}
+                del self.blocked_users[user_id]
+                
+        # Check if IP is blocked
+        if ip_address and ip_address in self.blocked_ips:
+            if current_time < self.blocked_ips[ip_address]:
+                return {
+                    'allowed': False,
+                    'remaining': 0,
+                    'reset_time': self.blocked_ips[ip_address],
+                    'reason': 'ip_blocked'
+                }
+            else:
+                del self.blocked_ips[ip_address]
+                
+        # Get rate limit configuration
+        config = self._get_config(action, user_role)
+        
+        # Get or create limiter for this user and action
+        if user_id not in self.user_limiters:
+            self.user_limiters[user_id] = {}
             
-            return {
-                'user_id': user_id,
-                'total_requests': len(user_queue),
-                'rule_stats': rule_stats,
-                'penalty_info': penalty_info,
-                'last_request': user_queue[-1] if user_queue else None
-            }
-    
+        if action not in self.user_limiters[user_id]:
+            self.user_limiters[user_id][action] = SlidingWindowCounter(
+                config.requests_per_window,
+                config.window_size_seconds
+            )
+            
+        limiter = self.user_limiters[user_id][action]
+        allowed, reset_time = limiter.is_allowed()
+        remaining = limiter.get_remaining()
+        
+        if not allowed:
+            logger.log_security_event(
+                "rate_limit_exceeded",
+                user_id,
+                f"Action: {action}, IP: {ip_address}"
+            )
+            
+        return {
+            'allowed': allowed,
+            'remaining': remaining,
+            'reset_time': reset_time,
+            'reason': 'rate_limit_exceeded' if not allowed else None
+        }
+        
+    def block_user(self, user_id: int, duration_seconds: int, reason: str):
+        """Block user for specified duration"""
+        unblock_time = time.time() + duration_seconds
+        self.blocked_users[user_id] = unblock_time
+        
+        logger.log_security_event(
+            "user_blocked",
+            user_id,
+            f"Duration: {duration_seconds}s, Reason: {reason}"
+        )
+        
+    def block_ip(self, ip_address: str, duration_seconds: int, reason: str):
+        """Block IP address for specified duration"""
+        unblock_time = time.time() + duration_seconds
+        self.blocked_ips[ip_address] = unblock_time
+        
+        logger.log_security_event(
+            "ip_blocked",
+            None,
+            f"IP: {ip_address}, Duration: {duration_seconds}s, Reason: {reason}"
+        )
+        
+    def unblock_user(self, user_id: int):
+        """Manually unblock user"""
+        if user_id in self.blocked_users:
+            del self.blocked_users[user_id]
+            logger.log_security_event("user_unblocked", user_id)
+            
+    def unblock_ip(self, ip_address: str):
+        """Manually unblock IP"""
+        if ip_address in self.blocked_ips:
+            del self.blocked_ips[ip_address]
+            logger.log_security_event("ip_unblocked", None, f"IP: {ip_address}")
+            
+    def reset_user_limits(self, user_id: int, action: Optional[str] = None):
+        """Reset rate limits for user"""
+        if user_id in self.user_limiters:
+            if action:
+                if action in self.user_limiters[user_id]:
+                    del self.user_limiters[user_id][action]
+            else:
+                del self.user_limiters[user_id]
+                
+        logger.log_security_event(
+            "rate_limit_reset",
+            user_id,
+            f"Action: {action or 'all'}"
+        )
+        
+    def get_user_status(self, user_id: int) -> Dict[str, Any]:
+        """Get detailed status for user"""
+        current_time = time.time()
+        
+        status = {
+            'user_id': user_id,
+            'is_blocked': user_id in self.blocked_users,
+            'blocked_until': self.blocked_users.get(user_id),
+            'active_limits': {}
+        }
+        
+        if user_id in self.user_limiters:
+            for action, limiter in self.user_limiters[user_id].items():
+                status['active_limits'][action] = {
+                    'remaining': limiter.get_remaining(),
+                    'total': limiter.requests_per_window,
+                    'window_size': limiter.window_size_seconds
+                }
+                
+        return status
+        
     def get_global_stats(self) -> Dict[str, Any]:
         """Get global rate limiting statistics"""
-        current_time = time.time()
-        
-        with self.lock:
-            return {
-                'total_requests': self.stats.total_requests,
-                'allowed_requests': self.stats.allowed_requests,
-                'blocked_requests': self.stats.blocked_requests,
-                'rate_limited_users': self.stats.rate_limited_users,
-                'current_active_users': self.stats.current_active_users,
-                'peak_requests_per_second': self.stats.peak_requests_per_second,
-                'avg_requests_per_second': round(self.stats.avg_requests_per_second, 2),
-                'global_penalty_active': current_time < self.global_penalty_until,
-                'global_penalty_until': self.global_penalty_until if self.global_penalty_until > 0 else None,
-                'total_users_tracked': len(self.user_requests),
-                'total_penalties_active': len([p for p in self.user_penalties.values() if p > current_time])
+        return {
+            'active_users': len(self.user_limiters),
+            'blocked_users': len(self.blocked_users),
+            'blocked_ips': len(self.blocked_ips),
+            'rate_limit_configs': {
+                action: {
+                    'requests_per_window': config.requests_per_window,
+                    'window_size_seconds': config.window_size_seconds
+                }
+                for action, config in self.configs.items()
             }
-    
-    def reset_user_limits(self, user_id: int):
-        """Reset rate limits for a specific user"""
-        with self.lock:
-            if user_id in self.user_requests:
-                del self.user_requests[user_id]
-            
-            if user_id in self.user_penalties:
-                del self.user_penalties[user_id]
-            
-            self.logger.info(f"Reset rate limits for user {user_id}")
-    
-    def reset_all_limits(self):
-        """Reset all rate limits"""
-        with self.lock:
-            self.user_requests.clear()
-            self.user_penalties.clear()
-            self.global_requests.clear()
-            self.global_penalty_until = 0.0
-            
-            # Reset stats
-            self.stats = RateLimitStats()
-            
-            self.logger.info("All rate limits reset")
-    
-    def update_rule(self, rule_name: str, **kwargs):
-        """Update an existing rate limiting rule"""
-        with self.lock:
-            for rule in self.rules:
-                if rule.name == rule_name:
-                    for key, value in kwargs.items():
-                        if hasattr(rule, key):
-                            setattr(rule, key, value)
-                    
-                    self.logger.info(f"Updated rate limiting rule: {rule_name}")
-                    return
-            
-            self.logger.warning(f"Rate limiting rule not found: {rule_name}")
+        }
 
-def rate_limit(rule_name: str = None, user_id_param: str = 'user_id'):
+
+def rate_limit(action: str, user_role: str = 'user'):
     """Decorator for rate limiting functions"""
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            # Get rate limiter instance
-            rate_limiter = getattr(config, 'rate_limiter', None)
-            if not rate_limiter:
-                return await func(*args, **kwargs)
-            
-            # Extract user ID from function parameters
+            # Extract user_id from function arguments
             user_id = None
-            if user_id_param in kwargs:
-                user_id = kwargs[user_id_param]
-            else:
-                # Try to find user_id in args (assuming it's the first parameter after self)
-                if len(args) > 1:
-                    user_id = args[1]  # Assuming user_id is the second parameter
             
-            if user_id is None:
-                # If we can't determine user_id, allow the request
-                return await func(*args, **kwargs)
-            
-            # Check rate limit
-            is_limited, reason, retry_after = rate_limiter.is_rate_limited(user_id, rule_name)
-            
-            if is_limited:
-                rate_limiter.block_request(user_id, rule_name)
-                raise RateLimitException(
-                    message=f"Rate limit exceeded: {reason}",
-                    user_id=user_id,
-                    limit_type=rule_name or "general",
-                    retry_after=retry_after
-                )
-            
-            # Record request and proceed
-            rate_limiter.record_request(user_id, rule_name)
+            # Try to get user_id from various argument patterns
+            if args and hasattr(args[0], 'effective_user'):
+                user_id = args[0].effective_user.id
+            elif 'update' in kwargs and hasattr(kwargs['update'], 'effective_user'):
+                user_id = kwargs['update'].effective_user.id
+            elif 'user_id' in kwargs:
+                user_id = kwargs['user_id']
+                
+            if user_id:
+                result = rate_limiter.check_rate_limit(user_id, action, user_role)
+                
+                if not result['allowed']:
+                    logger.warning(f"Rate limit exceeded for user {user_id} on action {action}")
+                    raise RateLimitExceeded(
+                        f"Rate limit exceeded for action {action}. "
+                        f"Try again after {result['reset_time'] - time.time():.0f} seconds"
+                    )
+                    
             return await func(*args, **kwargs)
-        
         return wrapper
     return decorator
+
 
 # Global rate limiter instance
 rate_limiter = RateLimiter()

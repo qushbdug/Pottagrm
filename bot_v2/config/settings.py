@@ -1,880 +1,384 @@
-#!/usr/bin/env python3
 """
-Enhanced Bot Configuration Settings
-Version 2.0 - Completely Restructured
+Comprehensive Configuration System for Yemen Net Bot
 """
-
 import os
-from typing import Dict, List, Any
-from dataclasses import dataclass
-
-# Bot Configuration
-BOT_TOKEN = "7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQRAjSa0"
-BOT_NAME = "Pottagrm Enhanced Bot"
-BOT_VERSION = "2.0.0"
-
-# Database Configuration
-DB_PATH = "yemen_net.db"
-DB_TIMEOUT = 30.0
-DB_MAX_CONNECTIONS = 10
-DB_POOL_TIMEOUT = 60
-
-# Rate Limiting
-RATE_LIMIT_MAX_REQUESTS = 10
-RATE_LIMIT_WINDOW = 60  # seconds
-ADMIN_RATE_LIMIT = 50
-SUPER_ADMIN_RATE_LIMIT = 100
-
-# Security Settings
-MAX_LOGIN_ATTEMPTS = 3
-SESSION_TIMEOUT = 3600  # 1 hour
-PASSWORD_MIN_LENGTH = 8
-API_REQUEST_TIMEOUT = 30
-
-# Performance Settings
-CACHE_TTL = 300  # 5 minutes
-MAX_CACHE_SIZE = 1000
-ASYNC_WORKERS = 4
-BATCH_SIZE = 100
-
-# Logging Configuration
-LOG_LEVEL = "INFO"
-LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-LOG_FILE = "bot_v2.log"
-LOG_MAX_SIZE = 10 * 1024 * 1024  # 10MB
-LOG_BACKUP_COUNT = 5
-
-# Feature Flags
-ENABLE_ANALYTICS = True
-ENABLE_NOTIFICATIONS = True
-ENABLE_AUTO_BACKUP = True
-ENABLE_PERFORMANCE_MONITORING = True
-
-# External Services
-TELEGRAM_API_URL = "https://api.telegram.org"
-PAYMENT_GATEWAY_URL = "https://payment.example.com"
-SMS_SERVICE_URL = "https://sms.example.com"
-
-# Emojis for UI
-EMOJIS = {
-    'success': '✅',
-    'error': '❌',
-    'warning': '⚠️',
-    'info': 'ℹ️',
-    'fire': '🔥',
-    'money': '💰',
-    'card': '💳',
-    'network': '🌐',
-    'user': '👤',
-    'admin': '👑',
-    'settings': '⚙️',
-    'help': '❓',
-    'cancel': '🚫',
-    'back': '⬅️',
-    'next': '➡️',
-    'home': '🏠',
-    'search': '🔍',
-    'download': '📥',
-    'upload': '📤',
-    'chart': '📊',
-    'clock': '⏰',
-    'star': '⭐',
-    'gift': '🎁',
-    'shield': '🛡️',
-    'lock': '🔒',
-    'unlock': '🔓'
-}
-
-# User Roles and Permissions
-USER_ROLES = {
-    'customer': 'عميل',
-    'agent': 'وكيل',
-    'supplier': 'مزود',
-    'admin': 'مدير',
-    'super_admin': 'مدير عام'
-}
-
-PERMISSIONS = {
-    'customer': ['view_balance', 'make_transfers', 'view_transactions'],
-    'agent': ['view_balance', 'make_transfers', 'view_transactions', 'view_commissions', 'agent_panel'],
-    'supplier': ['view_balance', 'make_transfers', 'view_transactions', 'manage_networks', 'upload_cards', 'view_sales'],
-    'admin': ['view_balance', 'make_transfers', 'view_transactions', 'admin_panel', 'manage_users', 'view_reports'],
-    'super_admin': ['view_balance', 'make_transfers', 'view_transactions', 'admin_panel', 'manage_users', 'view_reports', 'super_admin_panel', 'manage_admins']
-}
-
-# Quick Commands
-QUICK_COMMANDS = {
-    'start': 'بدء البوت',
-    'wallet': 'عرض المحفظة',
-    'help': 'المساعدة',
-    'admin': 'لوحة الإدارة',
-    'profile': 'الملف الشخصي',
-    'balance': 'الرصيد',
-    'transfer': 'تحويل رصيد',
-    'reports': 'التقارير',
-    'settings': 'الإعدادات'
-}
-
-# Database Schema Version
-DB_SCHEMA_VERSION = "2.0.0"
-
-# API Endpoints
-API_ENDPOINTS = {
-    'telegram_webhook': '/webhook',
-    'health_check': '/health',
-    'metrics': '/metrics',
-    'admin_api': '/admin'
-}
-
-# Notification Settings
-NOTIFICATION_TYPES = ['sms', 'email', 'telegram', 'push']
-DEFAULT_NOTIFICATION_CHANNEL = 'telegram'
-
-# Payment Settings
-PAYMENT_METHODS = ['balance', 'bank_transfer', 'mobile_money', 'crypto']
-MIN_TRANSFER_AMOUNT = 100.0
-MAX_TRANSFER_AMOUNT = 100000.0
-
-# Network Settings
-NETWORK_TYPES = ['mobile', 'home', 'business', 'gaming', 'enterprise']
-NETWORK_STATUSES = ['active', 'inactive', 'maintenance', 'suspended']
-
-# Card Settings
-CARD_STATUSES = ['available', 'sold', 'reserved', 'expired', 'invalid']
-CARD_CATEGORIES = ['internet', 'gaming', 'entertainment', 'business', 'premium']
-
-# Commission Settings
-DEFAULT_COMMISSION_RATE = 0.05  # 5%
-MAX_COMMISSION_RATE = 0.20  # 20%
-MIN_COMMISSION_RATE = 0.01  # 1%
-
-# Backup Settings
-BACKUP_INTERVAL = 86400  # 24 hours
-BACKUP_RETENTION_DAYS = 30
-BACKUP_COMPRESSION = True
-
-# Monitoring Settings
-HEALTH_CHECK_INTERVAL = 300  # 5 minutes
-PERFORMANCE_METRICS_INTERVAL = 60  # 1 minute
-ERROR_REPORTING_ENABLED = True
-
-# Development Settings
-DEBUG_MODE = False
-TESTING_MODE = False
-LOG_SQL_QUERIES = False
-ENABLE_PROFILING = False
-
-# Environment Detection
-ENVIRONMENT = os.getenv('BOT_ENV', 'production')
-IS_PRODUCTION = ENVIRONMENT == 'production'
-IS_DEVELOPMENT = ENVIRONMENT == 'development'
-IS_TESTING = ENVIRONMENT == 'testing'
-
-# Feature Configuration
-FEATURES = {
-    'advanced_wallet': True,
-    'multi_currency': False,
-    'real_time_notifications': True,
-    'advanced_analytics': True,
-    'api_access': False,
-    'webhook_support': False,
-    'multi_language': False,
-    'dark_mode': False
-}
-
-# Cache Configuration
-CACHE_CONFIG = {
-    'user_data': {'ttl': 300, 'max_size': 1000},
-    'network_data': {'ttl': 600, 'max_size': 500},
-    'card_data': {'ttl': 180, 'max_size': 2000},
-    'transaction_data': {'ttl': 900, 'max_size': 500},
-    'admin_data': {'ttl': 60, 'max_size': 100}
-}
-
-# Error Messages
-ERROR_MESSAGES = {
-    'database_connection': 'خطأ في الاتصال بقاعدة البيانات',
-    'user_not_found': 'المستخدم غير موجود',
-    'insufficient_balance': 'رصيد غير كافي',
-    'invalid_amount': 'مبلغ غير صحيح',
-    'permission_denied': 'ليس لديك صلاحية لهذه العملية',
-    'network_error': 'خطأ في الشبكة',
-    'timeout_error': 'انتهت مهلة العملية',
-    'validation_error': 'بيانات غير صحيحة',
-    'system_error': 'خطأ في النظام',
-    'maintenance_mode': 'النظام في صيانة'
-}
-
-# Success Messages
-SUCCESS_MESSAGES = {
-    'operation_completed': 'تمت العملية بنجاح',
-    'data_saved': 'تم حفظ البيانات',
-    'transfer_completed': 'تم التحويل بنجاح',
-    'profile_updated': 'تم تحديث الملف الشخصي',
-    'password_changed': 'تم تغيير كلمة المرور',
-    'notification_sent': 'تم إرسال الإشعار',
-    'backup_created': 'تم إنشاء النسخة الاحتياطية'
-}
-
-# Validation Rules
-VALIDATION_RULES = {
-    'phone_number': r'^\+?[1-9]\d{1,14}$',
-    'email': r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
-    'wallet_number': r'^[A-Z0-9]{8,16}$',
-    'password': r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$',
-    'amount': r'^\d+(\.\d{1,2})?$',
-    'network_code': r'^[A-Z0-9]{4,8}$'
-}
-
-# Time Zones
-DEFAULT_TIMEZONE = 'Asia/Aden'
-SUPPORTED_TIMEZONES = ['Asia/Aden', 'Asia/Riyadh', 'UTC']
-
-# Language Settings
-DEFAULT_LANGUAGE = 'ar'
-SUPPORTED_LANGUAGES = ['ar', 'en']
-LANGUAGE_NAMES = {
-    'ar': 'العربية',
-    'en': 'English'
-}
-
-# File Upload Limits
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
-ALLOWED_FILE_TYPES = ['jpg', 'jpeg', 'png', 'pdf', 'doc', 'docx']
-MAX_FILES_PER_UPLOAD = 5
-
-# Session Management
-SESSION_CONFIG = {
-    'max_sessions_per_user': 3,
-    'session_timeout': 3600,
-    'extend_on_activity': True,
-    'force_logout_on_password_change': True
-}
-
-# Audit Logging
-AUDIT_LOG_ENABLED = True
-AUDIT_LOG_LEVELS = ['info', 'warning', 'error', 'critical']
-AUDIT_LOG_RETENTION_DAYS = 365
-
-# Performance Thresholds
-PERFORMANCE_THRESHOLDS = {
-    'max_response_time': 5.0,  # seconds
-    'max_memory_usage': 512,   # MB
-    'max_cpu_usage': 80.0,     # percentage
-    'max_database_connections': 20,
-    'max_concurrent_requests': 100
-}
-
-# Security Thresholds
-SECURITY_THRESHOLDS = {
-    'max_failed_logins': 5,
-    'max_suspicious_activities': 10,
-    'max_api_requests_per_minute': 60,
-    'max_file_uploads_per_hour': 50
-}
-
-# Maintenance Windows
-MAINTENANCE_WINDOWS = [
-    {'day': 'sunday', 'start': '02:00', 'end': '04:00'},
-    {'day': 'wednesday', 'start': '03:00', 'end': '05:00'}
-]
-
-# Auto-scaling Settings
-AUTO_SCALING = {
-    'enabled': False,
-    'min_instances': 1,
-    'max_instances': 5,
-    'scale_up_threshold': 80,
-    'scale_down_threshold': 20
-}
-
-# Health Check Configuration
-HEALTH_CHECK_CONFIG = {
-    'database': True,
-    'external_apis': True,
-    'file_system': True,
-    'memory_usage': True,
-    'cpu_usage': True,
-    'disk_space': True
-}
-
-# Metrics Collection
-METRICS_CONFIG = {
-    'enabled': True,
-    'collection_interval': 60,
-    'retention_days': 30,
-    'export_formats': ['json', 'csv', 'prometheus']
-}
-
-# External Integrations
-EXTERNAL_INTEGRATIONS = {
-    'sms_gateway': {
-        'enabled': False,
-        'provider': 'twilio',
-        'api_key': None,
-        'api_secret': None
-    },
-    'email_service': {
-        'enabled': False,
-        'provider': 'sendgrid',
-        'api_key': None,
-        'smtp_config': None
-    },
-    'payment_gateway': {
-        'enabled': False,
-        'provider': 'stripe',
-        'api_key': None,
-        'webhook_secret': None
-    }
-}
-
-# Development Tools
-DEV_TOOLS = {
-    'sql_logging': False,
-    'query_profiling': False,
-    'memory_profiling': False,
-    'performance_monitoring': False,
-    'debug_endpoints': False
-}
-
-# Testing Configuration
-TESTING_CONFIG = {
-    'use_test_database': True,
-    'mock_external_services': True,
-    'test_data_seed': True,
-    'coverage_reporting': False
-}
-
-# Documentation
-DOCUMENTATION = {
-    'api_docs': True,
-    'user_manual': True,
-    'admin_guide': True,
-    'developer_guide': True
-}
-
-# Support Information
-SUPPORT_INFO = {
-    'admin_telegram': '@admin_username',
-    'support_email': 'support@example.com',
-    'support_phone': '+967123456789',
-    'website': 'https://example.com',
-    'documentation_url': 'https://docs.example.com'
-}
-
-# Version Information
-VERSION_INFO = {
-    'major': 2,
-    'minor': 0,
-    'patch': 0,
-    'build': '2024-01-01',
-    'commit_hash': 'abc123',
-    'branch': 'main'
-}
-
-# License Information
-LICENSE_INFO = {
-    'type': 'MIT',
-    'year': '2024',
-    'holder': 'Pottagrm Team',
-    'url': 'https://opensource.org/licenses/MIT'
-}
-
-# Export Configuration
-EXPORT_CONFIG = {
-    'formats': ['json', 'csv', 'excel', 'pdf'],
-    'max_records': 10000,
-    'compression': True,
-    'encryption': False
-}
-
-# Import Configuration
-IMPORT_CONFIG = {
-    'formats': ['json', 'csv', 'excel'],
-    'max_file_size': 50 * 1024 * 1024,  # 50MB
-    'validation_strict': True,
-    'auto_rollback': True
-}
-
-# Backup Configuration
-BACKUP_CONFIG = {
-    'auto_backup': True,
-    'backup_time': '02:00',
-    'backup_frequency': 'daily',
-    'compression': True,
-    'encryption': False,
-    'retention_days': 30,
-    'cloud_storage': False
-}
-
-# Monitoring Configuration
-MONITORING_CONFIG = {
-    'enabled': True,
-    'metrics_collection': True,
-    'alerting': True,
-    'dashboard': True,
-    'log_aggregation': True
-}
-
-# Alerting Configuration
-ALERTING_CONFIG = {
-    'critical_alerts': True,
-    'warning_alerts': True,
-    'info_alerts': False,
-    'notification_channels': ['telegram', 'email'],
-    'escalation_rules': True
-}
-
-# Performance Optimization
-PERFORMANCE_OPTIMIZATION = {
-    'database_indexing': True,
-    'query_optimization': True,
-    'connection_pooling': True,
-    'caching': True,
-    'async_processing': True,
-    'batch_operations': True
-}
-
-# Security Features
-SECURITY_FEATURES = {
-    'rate_limiting': True,
-    'input_validation': True,
-    'sql_injection_protection': True,
-    'xss_protection': True,
-    'csrf_protection': True,
-    'encryption': True,
-    'audit_logging': True
-}
-
-# Compliance
-COMPLIANCE = {
-    'gdpr_compliant': False,
-    'data_retention_policy': True,
-    'privacy_policy': True,
-    'terms_of_service': True,
-    'data_encryption': True
-}
-
-# Internationalization
-I18N_CONFIG = {
-    'default_locale': 'ar_YE',
-    'supported_locales': ['ar_YE', 'en_US', 'ar_SA'],
-    'fallback_locale': 'en_US',
-    'date_format': 'DD/MM/YYYY',
-    'time_format': 'HH:mm:ss',
-    'currency': 'YER',
-    'timezone': 'Asia/Aden'
-}
-
-# Accessibility
-ACCESSIBILITY = {
-    'screen_reader_support': True,
-    'high_contrast_mode': False,
-    'font_size_adjustment': True,
-    'keyboard_navigation': True,
-    'voice_commands': False
-}
-
-# Mobile Optimization
-MOBILE_OPTIMIZATION = {
-    'responsive_design': True,
-    'touch_friendly': True,
-    'mobile_specific_features': True,
-    'offline_support': False,
-    'push_notifications': True
-}
-
-# API Rate Limits
-API_RATE_LIMITS = {
-    'public': {'requests': 100, 'window': 3600},
-    'authenticated': {'requests': 1000, 'window': 3600},
-    'admin': {'requests': 5000, 'window': 3600},
-    'super_admin': {'requests': 10000, 'window': 3600}
-}
-
-# Webhook Configuration
-WEBHOOK_CONFIG = {
-    'enabled': False,
-    'max_retries': 3,
-    'retry_delay': 60,
-    'timeout': 30,
-    'signature_verification': True
-}
-
-# Queue Configuration
-QUEUE_CONFIG = {
-    'enabled': True,
-    'max_workers': 4,
-    'max_queue_size': 1000,
-    'retry_failed_jobs': True,
-    'max_retries': 3
-}
-
-# Cache Configuration
-CACHE_CONFIG_DETAILED = {
-    'redis': {
-        'enabled': False,
-        'host': 'localhost',
-        'port': 6379,
-        'db': 0,
-        'password': None
-    },
-    'memory': {
-        'enabled': True,
-        'max_size': 1000,
-        'ttl': 300
-    },
-    'file': {
-        'enabled': False,
-        'path': '/tmp/cache',
-        'max_size': 100 * 1024 * 1024  # 100MB
-    }
-}
-
-# Database Optimization
-DATABASE_OPTIMIZATION = {
-    'connection_pooling': True,
-    'query_timeout': 30,
-    'max_connections': 20,
-    'idle_timeout': 300,
-    'auto_vacuum': True,
-    'wal_mode': True,
-    'synchronous': 'NORMAL',
-    'cache_size': 1000,
-    'temp_store': 'memory'
-}
-
-# Logging Configuration Detailed
-LOGGING_CONFIG_DETAILED = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'detailed': {
-            'format': '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s'
-        },
-        'simple': {
-            'format': '%(levelname)s - %(message)s'
-        }
-    },
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-            'level': 'INFO',
-            'formatter': 'simple',
-            'stream': 'ext://sys.stdout'
-        },
-        'file': {
-            'class': 'logging.handlers.RotatingFileHandler',
-            'level': 'DEBUG',
-            'formatter': 'detailed',
-            'filename': 'bot_v2.log',
-            'maxBytes': 10485760,  # 10MB
-            'backupCount': 5
-        }
-    },
-    'loggers': {
-        '': {
-            'handlers': ['console', 'file'],
-            'level': 'INFO',
-            'propagate': True
-        }
-    }
-}
-
-# Feature Toggles
-FEATURE_TOGGLES = {
-    'beta_features': False,
-    'experimental_features': False,
-    'maintenance_mode': False,
-    'read_only_mode': False,
-    'demo_mode': False
-}
-
-# System Requirements
-SYSTEM_REQUIREMENTS = {
-    'python_version': '3.8+',
-    'memory_min': 512,  # MB
-    'memory_recommended': 1024,  # MB
-    'disk_space_min': 100,  # MB
-    'disk_space_recommended': 500,  # MB
-    'cpu_cores_min': 1,
-    'cpu_cores_recommended': 2
-}
-
-# Performance Benchmarks
-PERFORMANCE_BENCHMARKS = {
-    'startup_time_target': 5.0,  # seconds
-    'response_time_target': 1.0,  # seconds
-    'database_query_target': 0.1,  # seconds
-    'memory_usage_target': 100,   # MB
-    'cpu_usage_target': 20.0      # percentage
-}
-
-# Error Recovery
-ERROR_RECOVERY = {
-    'auto_restart': True,
-    'graceful_degradation': True,
-    'fallback_modes': True,
-    'circuit_breaker': True,
-    'retry_strategies': True
-}
-
-# Data Migration
-DATA_MIGRATION = {
-    'auto_migration': True,
-    'backup_before_migration': True,
-    'rollback_on_failure': True,
-    'validation_after_migration': True,
-    'migration_logging': True
-}
-
-# System Health
-SYSTEM_HEALTH = {
-    'monitoring_enabled': True,
-    'auto_healing': True,
-    'health_check_interval': 300,
-    'alert_thresholds': True,
-    'performance_tracking': True
-}
-
-# User Experience
-USER_EXPERIENCE = {
-    'loading_indicators': True,
-    'progress_bars': True,
-    'error_messages': True,
-    'success_feedback': True,
-    'help_tooltips': True,
-    'keyboard_shortcuts': True
-}
-
-# Analytics and Reporting
-ANALYTICS_CONFIG = {
-    'usage_tracking': True,
-    'performance_metrics': True,
-    'user_behavior': True,
-    'error_tracking': True,
-    'business_metrics': True,
-    'custom_reports': True
-}
-
-# Integration Settings
-INTEGRATION_SETTINGS = {
-    'third_party_apis': True,
-    'webhook_support': True,
-    'api_versioning': True,
-    'rate_limiting': True,
-    'authentication': True,
-    'authorization': True
-}
-
-# Compliance and Legal
-COMPLIANCE_LEGAL = {
-    'data_protection': True,
-    'privacy_compliance': True,
-    'audit_trail': True,
-    'data_retention': True,
-    'user_consent': True,
-    'terms_of_service': True
-}
-
-# Disaster Recovery
-DISASTER_RECOVERY = {
-    'backup_strategy': True,
-    'recovery_procedures': True,
-    'data_replication': False,
-    'failover_systems': False,
-    'incident_response': True
-}
-
-# Quality Assurance
-QUALITY_ASSURANCE = {
-    'code_review': True,
-    'testing_automation': True,
-    'performance_testing': True,
-    'security_testing': True,
-    'user_acceptance_testing': True
-}
-
-# Deployment Configuration
-DEPLOYMENT_CONFIG = {
-    'environment': 'production',
-    'version_control': True,
-    'continuous_integration': False,
-    'continuous_deployment': False,
-    'rollback_procedures': True,
-    'health_checks': True
-}
-
-# Maintenance and Updates
-MAINTENANCE_UPDATES = {
-    'auto_updates': False,
-    'maintenance_windows': True,
-    'update_notifications': True,
-    'rollback_capability': True,
-    'update_validation': True
-}
-
-# Support and Documentation
-SUPPORT_DOCUMENTATION = {
-    'user_manual': True,
-    'admin_guide': True,
-    'api_documentation': True,
-    'troubleshooting_guide': True,
-    'video_tutorials': False,
-    'live_chat_support': False
-}
-
-# Performance Monitoring
-PERFORMANCE_MONITORING = {
-    'real_time_monitoring': True,
-    'performance_alerts': True,
-    'resource_tracking': True,
-    'bottleneck_detection': True,
-    'optimization_suggestions': True
-}
-
-# Security Monitoring
-SECURITY_MONITORING = {
-    'threat_detection': True,
-    'intrusion_detection': False,
-    'vulnerability_scanning': False,
-    'security_alerts': True,
-    'incident_response': True
-}
-
-# Data Management
-DATA_MANAGEMENT = {
-    'data_archiving': True,
-    'data_cleanup': True,
-    'data_validation': True,
-    'data_encryption': True,
-    'data_backup': True,
-    'data_restoration': True
-}
-
-# User Management
-USER_MANAGEMENT = {
-    'user_registration': True,
-    'user_authentication': True,
-    'user_authorization': True,
-    'user_profiles': True,
-    'user_preferences': True,
-    'user_activity_tracking': True
-}
-
-# Content Management
-CONTENT_MANAGEMENT = {
-    'dynamic_content': True,
-    'content_versioning': True,
-    'content_approval': True,
-    'content_scheduling': False,
-    'content_analytics': True
-}
-
-# Communication
-COMMUNICATION = {
-    'in_app_messaging': True,
-    'push_notifications': True,
-    'email_notifications': False,
-    'sms_notifications': False,
-    'webhook_notifications': True
-}
-
-# Workflow Management
-WORKFLOW_MANAGEMENT = {
-    'process_automation': True,
-    'task_scheduling': True,
-    'approval_workflows': True,
-    'escalation_procedures': True,
-    'workflow_analytics': True
-}
-
-# Reporting and Analytics
-REPORTING_ANALYTICS = {
-    'standard_reports': True,
-    'custom_reports': True,
-    'data_export': True,
-    'data_visualization': True,
-    'trend_analysis': True,
-    'predictive_analytics': False
-}
-
-# Integration Capabilities
-INTEGRATION_CAPABILITIES = {
-    'rest_api': True,
-    'webhook_api': True,
-    'sdk_libraries': False,
-    'plugin_system': False,
-    'api_gateway': False
-}
-
-# Scalability Features
-SCALABILITY_FEATURES = {
-    'horizontal_scaling': False,
-    'vertical_scaling': True,
-    'load_balancing': False,
-    'auto_scaling': False,
-    'distributed_processing': False
-}
-
-# Reliability Features
-RELIABILITY_FEATURES = {
-    'fault_tolerance': True,
-    'high_availability': False,
-    'disaster_recovery': True,
-    'backup_restoration': True,
-    'system_monitoring': True
-}
-
-# Innovation Features
-INNOVATION_FEATURES = {
-    'ai_ml_integration': False,
-    'blockchain_support': False,
-    'iot_integration': False,
-    'voice_commands': False,
-    'ar_vr_support': False
-}
-
-# Future Roadmap
-FUTURE_ROADMAP = {
-    'next_version': '2.1.0',
-    'planned_features': [
-        'Advanced AI Integration',
-        'Blockchain Wallet Support',
-        'Multi-Language Support',
-        'Advanced Analytics Dashboard',
-        'Mobile App Integration'
-    ],
-    'estimated_release': '2024-Q2',
-    'development_priority': 'High'
-}
-
-# Configuration Validation
-def validate_config() -> bool:
-    """Validate all configuration settings"""
-    try:
-        # Basic validation
-        assert BOT_TOKEN and len(BOT_TOKEN) > 0, "Bot token is required"
-        assert DB_PATH and len(DB_PATH) > 0, "Database path is required"
-        assert RATE_LIMIT_MAX_REQUESTS > 0, "Rate limit must be positive"
-        assert DB_MAX_CONNECTIONS > 0, "Database connections must be positive"
+import json
+from pathlib import Path
+from typing import Dict, Any, Optional, List
+from dataclasses import dataclass, field
+from enum import Enum
+
+from ..core.exceptions import ConfigurationException, MissingConfiguration, InvalidConfiguration
+
+
+class LogLevel(Enum):
+    """Log level enumeration"""
+    DEBUG = "DEBUG"
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    CRITICAL = "CRITICAL"
+
+
+class Environment(Enum):
+    """Environment enumeration"""
+    DEVELOPMENT = "development"
+    STAGING = "staging"
+    PRODUCTION = "production"
+
+
+@dataclass
+class DatabaseConfig:
+    """Database configuration"""
+    path: str = "yemen_net.db"
+    max_connections: int = 20
+    timeout: float = 30.0
+    backup_interval_hours: int = 24
+    optimize_interval_hours: int = 168  # 1 week
+    
+    def __post_init__(self):
+        if self.max_connections < 1:
+            raise InvalidConfiguration("max_connections must be at least 1")
+        if self.timeout <= 0:
+            raise InvalidConfiguration("timeout must be positive")
+
+
+@dataclass
+class TelegramConfig:
+    """Telegram bot configuration"""
+    token: str
+    webhook_url: Optional[str] = None
+    webhook_port: int = 8443
+    webhook_path: str = "/webhook"
+    max_connections: int = 40
+    
+    def __post_init__(self):
+        if not self.token:
+            raise MissingConfiguration("Telegram bot token is required")
+        if self.max_connections < 1 or self.max_connections > 100:
+            raise InvalidConfiguration("max_connections must be between 1 and 100")
+
+
+@dataclass
+class SecurityConfig:
+    """Security configuration"""
+    enable_rate_limiting: bool = True
+    max_login_attempts: int = 3
+    login_cooldown_minutes: int = 15
+    session_timeout_hours: int = 24
+    require_phone_verification: bool = True
+    enable_2fa: bool = False
+    password_min_length: int = 8
+    jwt_secret_key: Optional[str] = None
+    jwt_expiry_hours: int = 24
+    
+    def __post_init__(self):
+        if self.max_login_attempts < 1:
+            raise InvalidConfiguration("max_login_attempts must be at least 1")
+        if self.password_min_length < 4:
+            raise InvalidConfiguration("password_min_length must be at least 4")
+
+
+@dataclass
+class PaymentConfig:
+    """Payment system configuration"""
+    enable_payments: bool = True
+    min_transfer_amount: float = 10.0
+    max_transfer_amount: float = 100000.0
+    commission_rate: float = 0.02
+    auto_withdrawal_enabled: bool = False
+    withdrawal_min_amount: float = 100.0
+    withdrawal_fee: float = 5.0
+    supported_currencies: List[str] = field(default_factory=lambda: ["YER", "USD"])
+    
+    def __post_init__(self):
+        if self.min_transfer_amount < 0:
+            raise InvalidConfiguration("min_transfer_amount cannot be negative")
+        if self.max_transfer_amount <= self.min_transfer_amount:
+            raise InvalidConfiguration("max_transfer_amount must be greater than min_transfer_amount")
+        if self.commission_rate < 0 or self.commission_rate > 1:
+            raise InvalidConfiguration("commission_rate must be between 0 and 1")
+
+
+@dataclass
+class LoggingConfig:
+    """Logging configuration"""
+    level: LogLevel = LogLevel.INFO
+    log_to_file: bool = True
+    log_to_console: bool = True
+    log_directory: str = "logs"
+    max_file_size_mb: int = 10
+    backup_count: int = 5
+    log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s"
+    
+    def __post_init__(self):
+        if self.max_file_size_mb < 1:
+            raise InvalidConfiguration("max_file_size_mb must be at least 1")
+        if self.backup_count < 0:
+            raise InvalidConfiguration("backup_count cannot be negative")
+
+
+@dataclass
+class CacheConfig:
+    """Cache configuration"""
+    enable_caching: bool = True
+    default_ttl_seconds: int = 300
+    max_entries: int = 10000
+    cleanup_interval_minutes: int = 10
+    
+    def __post_init__(self):
+        if self.default_ttl_seconds < 1:
+            raise InvalidConfiguration("default_ttl_seconds must be at least 1")
+        if self.max_entries < 100:
+            raise InvalidConfiguration("max_entries must be at least 100")
+
+
+@dataclass
+class MonitoringConfig:
+    """Monitoring and metrics configuration"""
+    enable_monitoring: bool = True
+    metrics_collection_interval: int = 60
+    health_check_interval: int = 30
+    alert_thresholds: Dict[str, float] = field(default_factory=lambda: {
+        "cpu_usage": 80.0,
+        "memory_usage": 80.0,
+        "disk_usage": 85.0,
+        "error_rate": 5.0,
+        "response_time": 2.0
+    })
+    
+    def __post_init__(self):
+        for key, value in self.alert_thresholds.items():
+            if value < 0 or value > 100:
+                raise InvalidConfiguration(f"alert_thresholds.{key} must be between 0 and 100")
+
+
+@dataclass
+class BotConfig:
+    """Main bot configuration"""
+    environment: Environment = Environment.DEVELOPMENT
+    debug: bool = False
+    admin_user_ids: List[int] = field(default_factory=list)
+    maintenance_mode: bool = False
+    registration_enabled: bool = True
+    max_users: int = 10000
+    features_enabled: Dict[str, bool] = field(default_factory=lambda: {
+        "referral_system": True,
+        "commission_system": True,
+        "file_uploads": True,
+        "notifications": True,
+        "analytics": True,
+        "backup": True
+    })
+
+
+class Settings:
+    """Main settings class with validation and environment variable support"""
+    
+    def __init__(self, config_file: Optional[str] = None):
+        self.config_file = config_file or "config.json"
+        self._config_data = {}
         
-        # Advanced validation
-        assert all(role in USER_ROLES for role in PERMISSIONS.keys()), "All roles must have permissions"
-        assert all(emoji in EMOJIS.values() for emoji in EMOJIS.values()), "All emojis must be valid"
+        # Load configuration
+        self._load_config()
+        self._load_environment_variables()
+        self._validate_config()
         
-        return True
-    except AssertionError as e:
-        print(f"Configuration validation failed: {e}")
-        return False
-    except Exception as e:
-        print(f"Unexpected error during validation: {e}")
-        return False
+        # Initialize configuration objects
+        self.database = DatabaseConfig(**self._get_section("database", {}))
+        self.telegram = TelegramConfig(**self._get_section("telegram", {}))
+        self.security = SecurityConfig(**self._get_section("security", {}))
+        self.payment = PaymentConfig(**self._get_section("payment", {}))
+        self.logging = LoggingConfig(**self._get_section("logging", {}))
+        self.cache = CacheConfig(**self._get_section("cache", {}))
+        self.monitoring = MonitoringConfig(**self._get_section("monitoring", {}))
+        self.bot = BotConfig(**self._get_section("bot", {}))
+        
+    def _load_config(self):
+        """Load configuration from file"""
+        config_path = Path(self.config_file)
+        
+        if config_path.exists():
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    self._config_data = json.load(f)
+            except json.JSONDecodeError as e:
+                raise InvalidConfiguration(f"Invalid JSON in config file: {e}")
+            except Exception as e:
+                raise ConfigurationException(f"Failed to load config file: {e}")
+        else:
+            # Create default config file
+            self._create_default_config()
+            
+    def _create_default_config(self):
+        """Create default configuration file"""
+        default_config = {
+            "telegram": {
+                "token": "YOUR_BOT_TOKEN_HERE"
+            },
+            "database": {
+                "path": "yemen_net.db",
+                "max_connections": 20
+            },
+            "security": {
+                "enable_rate_limiting": True,
+                "max_login_attempts": 3
+            },
+            "payment": {
+                "enable_payments": True,
+                "min_transfer_amount": 10.0
+            },
+            "logging": {
+                "level": "INFO",
+                "log_to_file": True
+            },
+            "bot": {
+                "environment": "development",
+                "debug": True
+            }
+        }
+        
+        try:
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                json.dump(default_config, f, indent=2, ensure_ascii=False)
+            self._config_data = default_config
+        except Exception as e:
+            raise ConfigurationException(f"Failed to create default config: {e}")
+            
+    def _load_environment_variables(self):
+        """Load configuration from environment variables"""
+        env_mappings = {
+            # Telegram
+            "TELEGRAM_BOT_TOKEN": ("telegram", "token"),
+            "TELEGRAM_WEBHOOK_URL": ("telegram", "webhook_url"),
+            "TELEGRAM_WEBHOOK_PORT": ("telegram", "webhook_port"),
+            
+            # Database
+            "DATABASE_PATH": ("database", "path"),
+            "DATABASE_MAX_CONNECTIONS": ("database", "max_connections"),
+            "DATABASE_TIMEOUT": ("database", "timeout"),
+            
+            # Security
+            "SECURITY_ENABLE_RATE_LIMITING": ("security", "enable_rate_limiting"),
+            "SECURITY_MAX_LOGIN_ATTEMPTS": ("security", "max_login_attempts"),
+            "SECURITY_JWT_SECRET": ("security", "jwt_secret_key"),
+            
+            # Payment
+            "PAYMENT_ENABLE": ("payment", "enable_payments"),
+            "PAYMENT_MIN_AMOUNT": ("payment", "min_transfer_amount"),
+            "PAYMENT_MAX_AMOUNT": ("payment", "max_transfer_amount"),
+            "PAYMENT_COMMISSION_RATE": ("payment", "commission_rate"),
+            
+            # Logging
+            "LOG_LEVEL": ("logging", "level"),
+            "LOG_DIRECTORY": ("logging", "log_directory"),
+            
+            # Bot
+            "BOT_ENVIRONMENT": ("bot", "environment"),
+            "BOT_DEBUG": ("bot", "debug"),
+            "BOT_MAINTENANCE_MODE": ("bot", "maintenance_mode"),
+            "BOT_ADMIN_IDS": ("bot", "admin_user_ids")
+        }
+        
+        for env_var, (section, key) in env_mappings.items():
+            value = os.getenv(env_var)
+            if value is not None:
+                # Ensure section exists
+                if section not in self._config_data:
+                    self._config_data[section] = {}
+                    
+                # Type conversion
+                if key in ["max_connections", "webhook_port", "max_login_attempts"]:
+                    value = int(value)
+                elif key in ["timeout", "min_transfer_amount", "max_transfer_amount", "commission_rate"]:
+                    value = float(value)
+                elif key in ["enable_rate_limiting", "enable_payments", "debug", "maintenance_mode"]:
+                    value = value.lower() in ("true", "1", "yes", "on")
+                elif key == "admin_user_ids":
+                    value = [int(x.strip()) for x in value.split(",") if x.strip()]
+                    
+                self._config_data[section][key] = value
+                
+    def _validate_config(self):
+        """Validate configuration"""
+        required_settings = [
+            ("telegram", "token")
+        ]
+        
+        for section, key in required_settings:
+            if not self._get_nested_value(section, key):
+                raise MissingConfiguration(f"Required setting missing: {section}.{key}")
+                
+    def _get_section(self, section_name: str, default: Dict[str, Any]) -> Dict[str, Any]:
+        """Get configuration section with defaults"""
+        return self._config_data.get(section_name, default)
+        
+    def _get_nested_value(self, section: str, key: str, default: Any = None) -> Any:
+        """Get nested configuration value"""
+        return self._config_data.get(section, {}).get(key, default)
+        
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get configuration value by dot notation"""
+        keys = key.split(".")
+        value = self._config_data
+        
+        for k in keys:
+            if isinstance(value, dict) and k in value:
+                value = value[k]
+            else:
+                return default
+                
+        return value
+        
+    def set(self, key: str, value: Any):
+        """Set configuration value by dot notation"""
+        keys = key.split(".")
+        config = self._config_data
+        
+        for k in keys[:-1]:
+            if k not in config:
+                config[k] = {}
+            config = config[k]
+            
+        config[keys[-1]] = value
+        
+    def save(self):
+        """Save current configuration to file"""
+        try:
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                json.dump(self._config_data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            raise ConfigurationException(f"Failed to save config: {e}")
+            
+    def reload(self):
+        """Reload configuration from file and environment"""
+        self.__init__(self.config_file)
+        
+    def get_summary(self) -> Dict[str, Any]:
+        """Get configuration summary for debugging"""
+        return {
+            "environment": self.bot.environment.value,
+            "debug": self.bot.debug,
+            "database_path": self.database.path,
+            "telegram_configured": bool(self.telegram.token and self.telegram.token != "YOUR_BOT_TOKEN_HERE"),
+            "features_enabled": self.bot.features_enabled,
+            "security_enabled": self.security.enable_rate_limiting,
+            "payment_enabled": self.payment.enable_payments,
+            "logging_level": self.logging.level.value,
+            "cache_enabled": self.cache.enable_caching,
+            "monitoring_enabled": self.monitoring.enable_monitoring
+        }
 
-# Auto-validation on import
-if __name__ == "__main__":
-    if validate_config():
-        print("✅ Configuration validation passed")
-    else:
-        print("❌ Configuration validation failed")
-        exit(1)
+
+# Global settings instance
+settings = Settings()
+
+# Convenience exports
+DATABASE_CONFIG = settings.database
+TELEGRAM_CONFIG = settings.telegram
+SECURITY_CONFIG = settings.security
+PAYMENT_CONFIG = settings.payment
+LOGGING_CONFIG = settings.logging
+CACHE_CONFIG = settings.cache
+MONITORING_CONFIG = settings.monitoring
+BOT_CONFIG = settings.bot

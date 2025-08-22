@@ -1,520 +1,359 @@
+#!/usr/bin/env python3
 """
-Yemen Net Bot v2 - Main Entry Point
-Enhanced architecture with proper error handling, monitoring, and performance optimization
+Yemen Net Bot - Main Entry Point
+Advanced Telegram Bot for Network Card Sales
+
+Version: 3.0.0
+Author: Yemen Net Bot Development Team
+License: MIT
 """
 
 import asyncio
-import logging
 import signal
 import sys
-import time
+from pathlib import Path
 from typing import Optional
 
-from telegram import Update
-from telegram.ext import (
-    Application, CommandHandler, MessageHandler, CallbackQueryHandler,
-    ConversationHandler, filters
-)
+# Add project root to path
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
 
-# Import core modules
-from .core.config import config
-from .core.exceptions import BotException, ConfigurationException
+# Core imports with specific exception handling
+try:
+    from telegram import Update, MenuButtonCommands
+    from telegram.ext import Application, PicklePersistence
+    from telegram.error import NetworkError, InvalidToken, TimedOut
+except ImportError as e:
+    print(f"Failed to import Telegram libraries: {e}")
+    print("Please install python-telegram-bot: pip install python-telegram-bot")
+    sys.exit(1)
 
-# Import services
-from .services import db_manager, cache_manager, rate_limiter, monitoring_service
+# Internal imports with specific exception handling
+try:
+    from bot_v2.core.logger import logger, BotLogger
+    from bot_v2.core.exceptions import (
+        EmergencyShutdownException, 
+        ConfigurationException,
+        DatabaseException
+    )
+    from bot_v2.config.settings import settings, TELEGRAM_CONFIG, BOT_CONFIG
+    from bot_v2.services.database_service import db_service
+    from bot_v2.services.rate_limiter import rate_limiter
+    from bot_v2.handlers.bot_handlers import setup_handlers
+    from bot_v2.utils.validators import validate_environment
+    from bot_v2.core.monitoring import HealthMonitor
+except ImportError as e:
+    print(f"Failed to import bot modules: {e}")
+    print("Please ensure all bot modules are properly installed")
+    sys.exit(1)
 
-# Import handlers (will be created next)
-# from .handlers import user_handlers, admin_handlers, payment_handlers
-
-# Import conversation states
-from .core.conversation_states import ConversationStates
 
 class YemenNetBot:
-    """Enhanced Yemen Net Bot with comprehensive error handling and monitoring"""
+    """Main bot class with comprehensive error handling and monitoring"""
     
     def __init__(self):
-        self.config = config
-        self.logger = logging.getLogger('YemenNetBot')
-        
-        # Initialize application
         self.application: Optional[Application] = None
+        self.health_monitor: Optional[HealthMonitor] = None
+        self.shutdown_requested = False
         
-        # Bot state
-        self.is_running = False
-        self.start_time = None
+        # Setup signal handlers for graceful shutdown
+        signal.signal(signal.SIGINT, self._signal_handler)
+        signal.signal(signal.SIGTERM, self._signal_handler)
         
-        # Performance tracking
-        self.message_count = 0
-        self.error_count = 0
+    def _signal_handler(self, signum, frame):
+        """Handle shutdown signals gracefully"""
+        logger.info(f"Received signal {signum}, initiating graceful shutdown...")
+        self.shutdown_requested = True
         
-        # Initialize services
-        self._initialize_services()
-        
-        # Setup signal handlers
-        self._setup_signal_handlers()
-        
-        self.logger.info("Yemen Net Bot v2 initialized successfully")
-    
-    def _initialize_services(self):
-        """Initialize all services"""
+    async def initialize(self) -> bool:
+        """Initialize bot components with comprehensive error handling"""
         try:
-            # Verify database connection
-            db_stats = db_manager.get_database_stats()
-            if not db_stats:
-                raise ConfigurationException("Database initialization failed")
+            logger.info("Starting Yemen Net Bot initialization...")
             
-            self.logger.info("Database service initialized successfully")
+            # Validate environment and configuration
+            await self._validate_environment()
             
-            # Verify cache service
-            cache_stats = cache_manager.get_stats()
-            self.logger.info(f"Cache service initialized: {cache_stats['total_items']} items")
+            # Initialize database service
+            await self._initialize_database()
             
-            # Verify rate limiter
-            rate_limit_stats = rate_limiter.get_global_stats()
-            self.logger.info("Rate limiter service initialized successfully")
+            # Initialize Telegram application
+            await self._initialize_telegram()
             
-            # Verify monitoring service
-            monitoring_status = monitoring_service.get_health_status()
-            self.logger.info("Monitoring service initialized successfully")
+            # Setup health monitoring
+            await self._initialize_monitoring()
+            
+            logger.info("Bot initialization completed successfully")
+            return True
+            
+        except ConfigurationException as e:
+            logger.critical("Configuration error during initialization", e)
+            return False
+        except DatabaseException as e:
+            logger.critical("Database error during initialization", e)
+            return False
+        except NetworkError as e:
+            logger.critical("Network error during initialization", e)
+            return False
+        except Exception as e:
+            logger.critical("Unexpected error during initialization", e)
+            return False
+            
+    async def _validate_environment(self):
+        """Validate environment and configuration"""
+        try:
+            # Validate configuration
+            config_summary = settings.get_summary()
+            logger.info(f"Configuration loaded: {config_summary}")
+            
+            if not config_summary.get('telegram_configured'):
+                raise ConfigurationException("Telegram bot token not configured")
+                
+            # Validate environment setup
+            validation_result = validate_environment()
+            if not validation_result.get('valid', False):
+                raise ConfigurationException(f"Environment validation failed: {validation_result.get('errors', [])}")
+                
+            logger.info("Environment validation passed")
             
         except Exception as e:
-            self.logger.error(f"Service initialization failed: {e}")
-            raise ConfigurationException(f"Service initialization failed: {e}")
-    
-    def _setup_signal_handlers(self):
-        """Setup signal handlers for graceful shutdown"""
-        def signal_handler(signum, frame):
-            self.logger.info(f"Received signal {signum}, initiating shutdown...")
-            self.shutdown()
-        
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
-    
-    def _setup_handlers(self):
-        """Setup all bot handlers"""
+            logger.error("Environment validation failed", e)
+            raise ConfigurationException(f"Environment validation error: {e}")
+            
+    async def _initialize_database(self):
+        """Initialize database with proper error handling"""
         try:
-            # Import handlers here to avoid circular imports
-            from .handlers.user_handlers import setup_user_handlers
-            from .handlers.admin_handlers import setup_admin_handlers
-            from .handlers.payment_handlers import setup_payment_handlers
+            logger.info("Initializing database service...")
             
-            # Setup user handlers
-            user_handlers = setup_user_handlers()
-            for handler in user_handlers:
-                self.application.add_handler(handler)
-            
-            # Setup admin handlers
-            admin_handlers = setup_admin_handlers()
-            for handler in admin_handlers:
-                self.application.add_handler(handler)
-            
-            # Setup payment handlers
-            payment_handlers = setup_payment_handlers()
-            for handler in payment_handlers:
-                self.application.add_handler(handler)
-            
-            # Setup conversation handler
-            self._setup_conversation_handler()
-            
-            # Setup error handler
-            self.application.add_error_handler(self._error_handler)
-            
-            self.logger.info("All handlers setup successfully")
+            # Test database connection
+            health_check = db_service.health_check()
+            if health_check.get('status') != 'healthy':
+                raise DatabaseException(f"Database health check failed: {health_check.get('error')}")
+                
+            logger.info(f"Database initialized successfully: {health_check}")
             
         except Exception as e:
-            self.logger.error(f"Handler setup failed: {e}")
-            raise ConfigurationException(f"Handler setup failed: {e}")
-    
-    def _setup_conversation_handler(self):
-        """Setup conversation handler for multi-step interactions"""
+            logger.error("Database initialization failed", e)
+            raise DatabaseException(f"Database initialization error: {e}")
+            
+    async def _initialize_telegram(self):
+        """Initialize Telegram application with error handling"""
         try:
-            # Import conversation states
-            from .core.conversation_states import ConversationStates
+            logger.info("Initializing Telegram application...")
             
-            # Create conversation handler
-            conv_handler = ConversationHandler(
-                entry_points=[
-                    CommandHandler('start', self._start_command),
-                    CommandHandler('help', self._help_command),
-                    CommandHandler('profile', self._profile_command),
-                    CommandHandler('wallet', self._wallet_command),
-                    CommandHandler('settings', self._settings_command),
-                    CommandHandler('support', self._support_command)
-                ],
-                states={
-                    ConversationStates.PROFILE_EDIT: [
-                        MessageHandler(filters.TEXT & ~filters.COMMAND, self._profile_edit_handler)
-                    ],
-                    ConversationStates.TRANSFER_AMOUNT: [
-                        MessageHandler(filters.TEXT & ~filters.COMMAND, self._transfer_amount_handler)
-                    ],
-                    ConversationStates.TRANSFER_CONFIRM: [
-                        CallbackQueryHandler(self._transfer_confirm_handler)
-                    ],
-                    ConversationStates.CARD_UPLOAD: [
-                        MessageHandler(filters.Document.ALL, self._card_upload_handler)
-                    ]
-                },
-                fallbacks=[
-                    CommandHandler('cancel', self._cancel_command),
-                    CommandHandler('start', self._start_command)
-                ]
-            )
-            
-            self.application.add_handler(conv_handler)
-            self.logger.info("Conversation handler setup successfully")
-            
-        except Exception as e:
-            self.logger.error(f"Conversation handler setup failed: {e}")
-            raise ConfigurationException(f"Conversation handler setup failed: {e}")
-    
-    async def _start_command(self, update: Update, context):
-        """Handle /start command"""
-        try:
-            start_time = time.time()
-            
-            # Record metrics
-            monitoring_service.increment_metric('bot_commands_executed')
-            monitoring_service.increment_metric('bot_messages_processed')
-            
-            # Get user info
-            user = update.effective_user
-            user_id = user.id
-            
-            # Check rate limit
-            is_limited, reason, retry_after = rate_limiter.is_rate_limited(user_id, 'user_commands')
-            if is_limited:
-                await update.message.reply_text(
-                    f"⚠️ تم تجاوز حد الطلبات. يرجى المحاولة بعد {retry_after} ثانية."
-                )
-                return ConversationStates.END
-            
-            # Record request
-            rate_limiter.record_request(user_id, 'user_commands')
-            
-            # Check if user exists in database
-            db_user = db_manager.get_user_by_telegram_id(user_id)
-            if not db_user:
-                # Create new user
-                db_user_id = db_manager.create_user(user_id, user.full_name, user.username)
-                welcome_message = (
-                    f"🎉 مرحباً {user.first_name}!\n\n"
-                    "مرحباً بك في بوت شبكة اليمن\n"
-                    "البوت الذي يوفر لك جميع الخدمات المالية والدفع\n\n"
-                    "📱 استخدم الأزرار أدناه للتنقل بين الخدمات"
-                )
-            else:
-                # Update user activity
-                db_manager.update_user_activity(db_user['id'])
-                welcome_message = (
-                    f"مرحباً {user.first_name}! 👋\n\n"
-                    "مرحباً بعودتك إلى بوت شبكة اليمن\n"
-                    "كيف يمكنني مساعدتك اليوم؟"
-                )
-            
-            # Create main menu keyboard
-            from .utils.keyboards import get_main_menu_keyboard
-            keyboard = get_main_menu_keyboard()
-            
-            # Send welcome message
-            await update.message.reply_text(welcome_message, reply_markup=keyboard)
-            
-            # Record response time
-            response_time = (time.time() - start_time) * 1000
-            monitoring_service.record_metric('bot_response_time', response_time)
-            
-            return ConversationStates.MAIN_MENU
-            
-        except Exception as e:
-            self.logger.error(f"Error in start command: {e}")
-            monitoring_service.increment_metric('bot_errors')
-            await update.message.reply_text("❌ حدث خطأ أثناء بدء البوت. يرجى المحاولة مرة أخرى.")
-            return ConversationStates.END
-    
-    async def _help_command(self, update: Update, context):
-        """Handle /help command"""
-        try:
-            help_text = (
-                "🔧 **مساعدة البوت**\n\n"
-                "**الأوامر الأساسية:**\n"
-                "/start - بدء استخدام البوت\n"
-                "/help - عرض هذه الرسالة\n"
-                "/profile - عرض الملف الشخصي\n"
-                "/wallet - عرض المحفظة\n"
-                "/settings - الإعدادات\n"
-                "/support - الدعم الفني\n\n"
-                "**للحصول على مساعدة إضافية:**\n"
-                "تواصل مع فريق الدعم عبر @yemen_net_support"
-            )
-            
-            await update.message.reply_text(help_text, parse_mode='Markdown')
-            monitoring_service.increment_metric('bot_commands_executed')
-            
-        except Exception as e:
-            self.logger.error(f"Error in help command: {e}")
-            monitoring_service.increment_metric('bot_errors')
-            await update.message.reply_text("❌ حدث خطأ أثناء عرض المساعدة.")
-    
-    async def _profile_command(self, update: Update, context):
-        """Handle /profile command"""
-        try:
-            user = update.effective_user
-            db_user = db_manager.get_user_by_telegram_id(user.id)
-            
-            if not db_user:
-                await update.message.reply_text("❌ يرجى التسجيل أولاً باستخدام /start")
-                return
-            
-            # Get profile info
-            profile_text = (
-                f"👤 **الملف الشخصي**\n\n"
-                f"**الاسم:** {db_user['full_name']}\n"
-                f"**اسم المستخدم:** @{user.username or 'غير محدد'}\n"
-                f"**الدور:** {db_user['role']}\n"
-                f"**الرصيد:** {db_user['balance']:.2f} ريال\n"
-                f"**تاريخ التسجيل:** {db_user['created_at']}\n"
-                f"**آخر نشاط:** {db_user['last_activity']}"
-            )
-            
-            # Create profile keyboard
-            from .utils.keyboards import get_profile_keyboard
-            keyboard = get_profile_keyboard()
-            
-            await update.message.reply_text(profile_text, reply_markup=keyboard, parse_mode='Markdown')
-            monitoring_service.increment_metric('bot_commands_executed')
-            
-        except Exception as e:
-            self.logger.error(f"Error in profile command: {e}")
-            monitoring_service.increment_metric('bot_errors')
-            await update.message.reply_text("❌ حدث خطأ أثناء عرض الملف الشخصي.")
-    
-    async def _wallet_command(self, update: Update, context):
-        """Handle /wallet command"""
-        try:
-            user = update.effective_user
-            db_user = db_manager.get_user_by_telegram_id(user.id)
-            
-            if not db_user:
-                await update.message.reply_text("❌ يرجى التسجيل أولاً باستخدام /start")
-                return
-            
-            # Get wallet info
-            balance = db_manager.get_user_balance(db_user['id'])
-            transactions = db_manager.get_user_transactions(db_user['id'], limit=5)
-            
-            wallet_text = (
-                f"👛 **المحفظة**\n\n"
-                f"**الرصيد الحالي:** {balance:.2f} ريال\n"
-                f"**آخر المعاملات:**\n"
-            )
-            
-            if transactions:
-                for tx in transactions[:3]:
-                    tx_type = "➕" if tx['type'] == 'credit' else "➖"
-                    amount = float(tx['amount']) if tx['amount'] else 0.0
-                    wallet_text += f"{tx_type} {amount:.2f} ريال - {tx['description'] or 'معاملة'}\n"
-            else:
-                wallet_text += "لا توجد معاملات حديثة\n"
-            
-            # Create wallet keyboard
-            from .utils.keyboards import get_wallet_keyboard
-            keyboard = get_wallet_keyboard()
-            
-            await update.message.reply_text(wallet_text, reply_markup=keyboard, parse_mode='Markdown')
-            monitoring_service.increment_metric('bot_commands_executed')
-            
-        except Exception as e:
-            self.logger.error(f"Error in wallet command: {e}")
-            monitoring_service.increment_metric('bot_errors')
-            await update.message.reply_text("❌ حدث خطأ أثناء عرض المحفظة.")
-    
-    async def _settings_command(self, update: Update, context):
-        """Handle /settings command"""
-        try:
-            settings_text = (
-                "⚙️ **الإعدادات**\n\n"
-                "**الإشعارات:** ✅ مفعلة\n"
-                "**اللغة:** العربية\n"
-                "**المنطقة الزمنية:** GMT+3\n"
-                "**وضع التطوير:** ❌ معطل\n\n"
-                "استخدم الأزرار أدناه لتغيير الإعدادات"
-            )
-            
-            # Create settings keyboard
-            from .utils.keyboards import get_settings_keyboard
-            keyboard = get_settings_keyboard()
-            
-            await update.message.reply_text(settings_text, reply_markup=keyboard, parse_mode='Markdown')
-            monitoring_service.increment_metric('bot_commands_executed')
-            
-        except Exception as e:
-            self.logger.error(f"Error in settings command: {e}")
-            monitoring_service.increment_metric('bot_errors')
-            await update.message.reply_text("❌ حدث خطأ أثناء عرض الإعدادات.")
-    
-    async def _support_command(self, update: Update, context):
-        """Handle /support command"""
-        try:
-            support_text = (
-                "🆘 **الدعم الفني**\n\n"
-                "**للحصول على المساعدة:**\n"
-                "📧 البريد الإلكتروني: support@yemen-net.com\n"
-                "📱 تليجرام: @yemen_net_support\n"
-                "🌐 الموقع: www.yemen-net.com\n\n"
-                "**أوقات العمل:**\n"
-                "الأحد - الخميس: 8:00 ص - 6:00 م\n"
-                "الجمعة - السبت: 10:00 ص - 4:00 م\n\n"
-                "**للحالات الطارئة:**\n"
-                "اتصل على: +967-1-123456"
-            )
-            
-            await update.message.reply_text(support_text, parse_mode='Markdown')
-            monitoring_service.increment_metric('bot_commands_executed')
-            
-        except Exception as e:
-            self.logger.error(f"Error in support command: {e}")
-            monitoring_service.increment_metric('bot_errors')
-            await update.message.reply_text("❌ حدث خطأ أثناء عرض معلومات الدعم.")
-    
-    async def _cancel_command(self, update: Update, context):
-        """Handle /cancel command"""
-        await update.message.reply_text("❌ تم إلغاء العملية.")
-        return ConversationStates.END
-    
-    async def _profile_edit_handler(self, update: Update, context):
-        """Handle profile editing"""
-        # Placeholder for profile editing logic
-        await update.message.reply_text("📝 تم تحديث الملف الشخصي.")
-        return ConversationStates.MAIN_MENU
-    
-    async def _transfer_amount_handler(self, update: Update, context):
-        """Handle transfer amount input"""
-        # Placeholder for transfer amount logic
-        await update.message.reply_text("💰 تم تحديد مبلغ التحويل.")
-        return ConversationStates.TRANSFER_CONFIRM
-    
-    async def _transfer_confirm_handler(self, update: Update, context):
-        """Handle transfer confirmation"""
-        # Placeholder for transfer confirmation logic
-        await update.callback_query.answer("✅ تم تأكيد التحويل.")
-        return ConversationStates.MAIN_MENU
-    
-    async def _card_upload_handler(self, update: Update, context):
-        """Handle card upload"""
-        # Placeholder for card upload logic
-        await update.message.reply_text("💳 تم رفع البطاقة بنجاح.")
-        return ConversationStates.MAIN_MENU
-    
-    async def _error_handler(self, update: Update, context):
-        """Handle errors in bot operations"""
-        try:
-            self.logger.error(f"Exception while handling an update: {context.error}")
-            monitoring_service.increment_metric('bot_errors')
-            
-            # Send user-friendly error message
-            if update and update.effective_message:
-                await update.effective_message.reply_text(
-                    "❌ حدث خطأ أثناء معالجة طلبك. يرجى المحاولة مرة أخرى لاحقاً."
-                )
-            
-        except Exception as e:
-            self.logger.error(f"Error in error handler: {e}")
-    
-    async def start(self):
-        """Start the bot"""
-        try:
-            self.logger.info("Starting Yemen Net Bot v2...")
+            # Setup persistence
+            persistence = PicklePersistence(filepath="bot_data.pickle")
             
             # Create application
-            self.application = Application.builder().token(self.config.BOT_TOKEN).build()
+            self.application = (
+                Application.builder()
+                .token(TELEGRAM_CONFIG.token)
+                .persistence(persistence)
+                .build()
+            )
             
+            # Test token validity
+            try:
+                bot_info = await self.application.bot.get_me()
+                logger.info(f"Bot authenticated successfully: @{bot_info.username}")
+            except InvalidToken as e:
+                raise ConfigurationException("Invalid Telegram bot token")
+            except NetworkError as e:
+                raise NetworkError("Failed to connect to Telegram API")
+                
             # Setup handlers
-            self._setup_handlers()
+            setup_handlers(self.application)
             
-            # Start application
-            await self.application.initialize()
-            await self.application.start()
-            await self.application.updater.start_polling()
+            # Set bot menu button
+            await self.application.bot.set_menu_button(
+                menu_button=MenuButtonCommands()
+            )
             
-            # Update bot state
-            self.is_running = True
-            self.start_time = time.time()
+            logger.info("Telegram application initialized successfully")
             
-            # Record startup metrics
-            monitoring_service.record_metric('bot_startup_time', time.time())
-            monitoring_service.record_metric('bot_status', 1)  # 1 = running
+        except Exception as e:
+            logger.error("Telegram initialization failed", e)
+            raise
             
-            self.logger.info("Yemen Net Bot v2 started successfully")
-            
-            # Keep bot running
-            while self.is_running:
-                await asyncio.sleep(1)
+    async def _initialize_monitoring(self):
+        """Initialize health monitoring"""
+        try:
+            if BOT_CONFIG.features_enabled.get('monitoring', True):
+                from bot_v2.core.monitoring import HealthMonitor
+                self.health_monitor = HealthMonitor(
+                    db_service=db_service,
+                    rate_limiter=rate_limiter,
+                    application=self.application
+                )
+                await self.health_monitor.start()
+                logger.info("Health monitoring initialized")
+            else:
+                logger.info("Health monitoring disabled in configuration")
                 
         except Exception as e:
-            self.logger.error(f"Failed to start bot: {e}")
-            monitoring_service.record_metric('bot_status', 0)  # 0 = stopped
-            raise BotException(f"Bot startup failed: {e}")
-    
-    async def stop(self):
-        """Stop the bot"""
+            logger.warning("Failed to initialize health monitoring", e)
+            # Don't fail initialization if monitoring fails
+            
+    async def start(self):
+        """Start the bot with comprehensive error handling"""
         try:
-            self.logger.info("Stopping Yemen Net Bot v2...")
+            if not self.application:
+                raise RuntimeError("Bot not initialized. Call initialize() first.")
+                
+            logger.info("Starting Yemen Net Bot...")
             
-            # Update bot state
-            self.is_running = False
+            # Start polling
+            await self.application.initialize()
+            await self.application.start()
             
-            # Stop application
+            if BOT_CONFIG.debug:
+                logger.info("Bot started in debug mode")
+            else:
+                logger.info("Bot started in production mode")
+                
+            # Start polling with error handling
+            try:
+                await self.application.updater.start_polling(
+                    drop_pending_updates=True,
+                    allowed_updates=Update.ALL_TYPES
+                )
+                
+                logger.info("Bot is now polling for updates...")
+                
+                # Keep running until shutdown is requested
+                while not self.shutdown_requested:
+                    await asyncio.sleep(1)
+                    
+            except NetworkError as e:
+                logger.error("Network error during polling", e)
+                await self._handle_network_error(e)
+            except TimedOut as e:
+                logger.warning("Telegram API timeout", e)
+                await self._handle_timeout_error(e)
+            except Exception as e:
+                logger.error("Unexpected error during polling", e)
+                raise
+                
+        except EmergencyShutdownException as e:
+            logger.critical("Emergency shutdown triggered", e)
+            await self._emergency_shutdown(str(e))
+        except Exception as e:
+            logger.critical("Critical error in bot operation", e)
+            await self._emergency_shutdown(f"Critical error: {e}")
+        finally:
+            await self.shutdown()
+            
+    async def _handle_network_error(self, error: NetworkError):
+        """Handle network errors with retry logic"""
+        logger.warning(f"Network error occurred: {error}")
+        
+        # Wait before retrying
+        await asyncio.sleep(5)
+        
+        # Check if we should continue or shutdown
+        if self.shutdown_requested:
+            return
+            
+        # Log and continue
+        logger.info("Attempting to continue after network error...")
+        
+    async def _handle_timeout_error(self, error: TimedOut):
+        """Handle timeout errors"""
+        logger.warning(f"Timeout error: {error}")
+        # Timeouts are usually temporary, just continue
+        
+    async def _emergency_shutdown(self, reason: str):
+        """Perform emergency shutdown"""
+        logger.critical(f"Performing emergency shutdown: {reason}")
+        
+        try:
+            # Stop all services quickly
             if self.application:
+                await self.application.stop()
+                
+            if self.health_monitor:
+                await self.health_monitor.stop()
+                
+            # Cleanup database
+            db_service.cleanup()
+            
+            logger.critical("Emergency shutdown completed")
+            
+        except Exception as e:
+            logger.critical("Error during emergency shutdown", e)
+        finally:
+            sys.exit(1)
+            
+    async def shutdown(self):
+        """Graceful shutdown of all bot components"""
+        try:
+            logger.info("Starting graceful shutdown...")
+            
+            # Stop Telegram application
+            if self.application:
+                logger.info("Stopping Telegram application...")
                 await self.application.updater.stop()
                 await self.application.stop()
                 await self.application.shutdown()
+                
+            # Stop health monitoring
+            if self.health_monitor:
+                logger.info("Stopping health monitor...")
+                await self.health_monitor.stop()
+                
+            # Cleanup database service
+            logger.info("Cleaning up database service...")
+            db_service.cleanup()
             
-            # Record shutdown metrics
-            if self.start_time:
-                uptime = time.time() - self.start_time
-                monitoring_service.record_metric('bot_uptime', uptime)
-            monitoring_service.record_metric('bot_status', 0)  # 0 = stopped
-            
-            self.logger.info("Yemen Net Bot v2 stopped successfully")
-            
-        except Exception as e:
-            self.logger.error(f"Error stopping bot: {e}")
-    
-    def shutdown(self):
-        """Shutdown the bot and all services"""
-        try:
-            self.logger.info("Shutting down Yemen Net Bot v2...")
-            
-            # Stop bot
-            if self.is_running:
-                asyncio.create_task(self.stop())
-            
-            # Stop services
-            monitoring_service.stop()
-            db_manager.close()
-            
-            self.logger.info("Shutdown completed")
-            
-            # Exit
-            sys.exit(0)
+            # Final log flush
+            logger.info("Graceful shutdown completed")
             
         except Exception as e:
-            self.logger.error(f"Error during shutdown: {e}")
-            sys.exit(1)
+            logger.error("Error during graceful shutdown", e)
+            
+    async def restart(self):
+        """Restart the bot"""
+        logger.info("Restarting bot...")
+        await self.shutdown()
+        await asyncio.sleep(2)
+        await self.initialize()
+        await self.start()
+
 
 async def main():
     """Main entry point"""
+    bot = None
+    
     try:
-        # Create and start bot
+        # Create bot instance
         bot = YemenNetBot()
+        
+        # Initialize bot
+        if not await bot.initialize():
+            logger.critical("Bot initialization failed")
+            sys.exit(1)
+            
+        # Start bot
         await bot.start()
         
     except KeyboardInterrupt:
-        logging.info("Received keyboard interrupt, shutting down...")
+        logger.info("Received keyboard interrupt")
     except Exception as e:
-        logging.error(f"Fatal error: {e}")
+        logger.critical("Fatal error in main", e)
         sys.exit(1)
+    finally:
+        if bot:
+            await bot.shutdown()
+
 
 if __name__ == "__main__":
-    # Run the bot
-    asyncio.run(main())
+    try:
+        # Set event loop policy for Windows compatibility
+        if sys.platform == "win32":
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+            
+        # Run the bot
+        asyncio.run(main())
+        
+    except Exception as e:
+        print(f"Failed to start bot: {e}")
+        sys.exit(1)
