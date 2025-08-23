@@ -710,3 +710,61 @@ def update_user_balance(user_id, new_balance):
             conn.rollback()
             conn.close()
         return False
+
+def update_inventory_stock(network_id: int, category_id: int, change_amount: int) -> bool:
+    """
+    تحديث مخزون فئة الكروت
+    
+    Args:
+        network_id: معرف الشبكة (لا يُستخدم حالياً لكن متوفر للمستقبل)
+        category_id: معرف فئة الكرت
+        change_amount: مقدار التغيير في المخزون (موجب للإضافة، سالب للتقليل)
+    
+    Returns:
+        bool: True إذا تم التحديث بنجاح، False إذا فشل
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # جلب المخزون الحالي أولاً
+        cursor.execute('SELECT stock_count FROM card_categories WHERE id = ?', (category_id,))
+        result = cursor.fetchone()
+        
+        if not result:
+            logger.error(f"Category {category_id} not found")
+            conn.close()
+            return False
+        
+        current_stock = result[0]
+        new_stock = current_stock + change_amount
+        
+        # التأكد من عدم انخفاض المخزون تحت الصفر
+        if new_stock < 0:
+            logger.warning(f"Cannot reduce stock below 0. Current: {current_stock}, Change: {change_amount}")
+            conn.close()
+            return False
+        
+        # تحديث المخزون
+        cursor.execute('''
+            UPDATE card_categories 
+            SET stock_count = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (new_stock, category_id))
+        
+        if cursor.rowcount > 0:
+            conn.commit()
+            conn.close()
+            logger.info(f"Updated stock for category {category_id}: {current_stock} -> {new_stock}")
+            return True
+        else:
+            conn.close()
+            logger.warning(f"Failed to update stock for category {category_id}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error updating inventory stock: {e}")
+        if 'conn' in locals():
+            conn.rollback()
+            conn.close()
+        return False

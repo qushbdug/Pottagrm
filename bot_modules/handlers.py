@@ -2426,10 +2426,10 @@ async def process_amount_selection(update: Update, context: CallbackContext, amo
 async def process_card_purchase(update: Update, context: CallbackContext, category_id: str):
     """معالجة شراء الكرت - يستخدم الوظيفة المحسنة"""
     try:
-        from network_handler import process_card_purchase_enhanced
+        from bot_modules.network_handler import process_card_purchase_enhanced
         await process_card_purchase_enhanced(update, context, category_id)
     except Exception as e:
-        logger.error(f"Error in process card purchase: {e}")
+        logger.error(f"Error in process card purchase: {e}", exc_info=True)
         await update.callback_query.edit_message_text("❌ حدث خطأ في معالجة الشراء")
 
 # Export main handlers for use in main bot file
