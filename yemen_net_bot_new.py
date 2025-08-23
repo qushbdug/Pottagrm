@@ -217,6 +217,9 @@ async def button_click_handler(update: Update, context):
         elif callback_data.startswith('buy_from_network_'):
             network_id = callback_data.split('_')[3]
             await show_network_categories(update, context, network_id)
+        elif callback_data.startswith('quick_search_'):
+            search_term = callback_data.split('_')[2]
+            await perform_quick_search(update, context, search_term)
         elif callback_data == 'transfer_to_friend':
             await transfer_handler(update, context)
         
@@ -718,7 +721,12 @@ async def buy_cards_handler(update: Update, context):
 
 💡 **الحلول:**
 • تواصل مع المشرف لإضافة شبكات
-• تحقق لاحقاً من توفر شبكات جديدة"""
+• تحقق لاحقاً من توفر شبكات جديدة
+
+🔍 **للبحث عن شبكات محددة:**
+• اضغط على زر \"🔍 البحث في الشبكات\" أدناه
+• ابحث بالاسم أو المعرف أو اسم المزود
+• استخدم البحث السريع للشبكات المعروفة"""
         
         keyboard = []
         
@@ -1546,7 +1554,7 @@ async def customer_search_networks_handler(update: Update, context):
         query = update.callback_query
         user = get_user(query.from_user.id)
         
-        # إرسال رسالة تطلب البحث
+        # إرسال رسالة تطلب البحث مع تعليمات واضحة
         search_text = f"""
 🔍 **البحث في الشبكات** 🔍
 
@@ -1554,14 +1562,24 @@ async def customer_search_networks_handler(update: Update, context):
 💰 رصيدك: **{user['balance']:,.2f}** ريال
 
 💡 **كيفية البحث:**
-• اكتب اسم الشبكة (مثل: يمنتل)
-• اكتب معرف الشبكة (مثل: 21)
-• اكتب اسم المزود (مثل: MTN)
+
+🔤 **البحث بالاسم:**
+• اكتب اسم الشبكة (مثل: دريم، يمنتل، MTN)
+• اكتب جزء من الاسم (مثل: دريم، يمن)
+
+🔢 **البحث بالمعرف:**
+• اكتب رقم معرف الشبكة (مثل: 1، 2، 3)
+
+👤 **البحث بالمزود:**
+• اكتب اسم المزود (مثل: عبد الملك، يمنتل)
 
 📝 **أرسل كلمة البحث الآن:**
 """
         
         keyboard = [
+            [InlineKeyboardButton('🔍 بحث سريع: دريم', callback_data='quick_search_dream')],
+            [InlineKeyboardButton('🔍 بحث سريع: يمنتل', callback_data='quick_search_yemen')],
+            [InlineKeyboardButton('🔍 بحث سريع: MTN', callback_data='quick_search_mtn')],
             [InlineKeyboardButton('🔙 عودة لشراء الكروت', callback_data='buy_cards')]
         ]
         
@@ -1573,6 +1591,104 @@ async def customer_search_networks_handler(update: Update, context):
     except Exception as e:
         logger.error(f"Error in customer search networks handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في البحث عن الشبكات.")
+
+async def perform_quick_search(update: Update, context, search_term):
+    """تنفيذ البحث السريع"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        # تحويل مصطلح البحث إلى العربية
+        search_mapping = {
+            'dream': 'دريم',
+            'yemen': 'يمنتل',
+            'mtn': 'MTN'
+        }
+        
+        arabic_term = search_mapping.get(search_term, search_term)
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # البحث في الشبكات
+        cursor.execute('''
+            SELECT n.id, n.name, n.provider, n.location, COUNT(cc.id) as categories_count,
+                   MIN(cc.price) as min_price, MAX(cc.price) as max_price
+            FROM networks n
+            LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
+            WHERE n.is_active = 1 AND n.is_approved = 1 
+                  AND (n.name LIKE ? OR n.provider LIKE ? OR n.id = ?)
+            GROUP BY n.id, n.name, n.provider, n.location
+            ORDER BY n.name
+        ''', (f'%{arabic_term}%', f'%{arabic_term}%', search_term))
+        
+        networks = cursor.fetchall()
+        conn.close()
+        
+        if networks:
+            search_results = f"""
+🔍 **نتائج البحث السريع عن: "{arabic_term}"**
+
+📊 **تم العثور على {len(networks)} شبكة:**
+
+"""
+            
+            keyboard = []
+            
+            for network in networks:
+                net_id, name, provider, location, cat_count, min_price, max_price = network
+                location_text = f"📍 {location}" if location else ""
+                
+                # معالجة محسنة للشبكات بدون فئات كروت
+                if cat_count > 0:
+                    price_range = f"{min_price:,.0f} - {max_price:,.0f}" if min_price != max_price else f"{min_price:,.0f}"
+                    categories_text = f"💳 {cat_count} فئة متاحة"
+                    price_text = f"💰 {price_range} ريال"
+                    
+                    # أزرار للشراء
+                    keyboard.append([
+                        InlineKeyboardButton(f'🛒 شراء من {name}', callback_data=f'buy_from_network_{net_id}')
+                    ])
+                else:
+                    categories_text = "💳 لا توجد فئات كروت بعد"
+                    price_text = "💰 لم يتم تحديد الأسعار"
+                    
+                    # أزرار للعرض فقط
+                    keyboard.append([
+                        InlineKeyboardButton(f'👁️ عرض {name} (لا توجد فئات)', callback_data=f'network_{net_id}')
+                    ])
+                
+                search_results += f"""
+🌐 **{name}** (ID: {net_id})
+👤 {provider} {location_text}
+{categories_text}
+{price_text}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+        else:
+            search_results = f"""
+🔍 **نتائج البحث السريع عن: "{arabic_term}"**
+
+❌ **لم يتم العثور على شبكات تطابق البحث**
+
+💡 **اقتراحات:**
+• تأكد من صحة كلمة البحث
+• جرب البحث بكلمات أخرى
+• تحقق من توفر الشبكات
+"""
+            keyboard = []
+        
+        # إضافة أزرار الإجراءات
+        keyboard.extend([
+            [InlineKeyboardButton('🔍 بحث جديد', callback_data='search_networks')],
+            [InlineKeyboardButton('🔙 عودة لشراء الكروت', callback_data='buy_cards')]
+        ])
+        
+        await query.edit_message_text(search_results, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in quick search: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في البحث السريع.")
 
 async def show_network_categories(update: Update, context, network_id):
     """عرض فئات الكروت لشبكة معينة مع الأسعار"""
