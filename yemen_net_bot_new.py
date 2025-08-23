@@ -214,6 +214,9 @@ async def button_click_handler(update: Update, context):
         # Core features
         elif callback_data == 'buy_cards':
             await buy_cards_handler(update, context)
+        elif callback_data.startswith('buy_from_network_'):
+            network_id = callback_data.split('_')[3]
+            await show_network_categories(update, context, network_id)
         elif callback_data == 'transfer_to_friend':
             await transfer_handler(update, context)
         
@@ -1570,6 +1573,119 @@ async def customer_search_networks_handler(update: Update, context):
     except Exception as e:
         logger.error(f"Error in customer search networks handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في البحث عن الشبكات.")
+
+async def show_network_categories(update: Update, context, network_id):
+    """عرض فئات الكروت لشبكة معينة مع الأسعار"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # الحصول على معلومات الشبكة
+        cursor.execute('''
+            SELECT id, name, provider, description, location
+            FROM networks 
+            WHERE id = ? AND is_active = 1 AND is_approved = 1
+        ''', (network_id,))
+        
+        network = cursor.fetchone()
+        if not network:
+            await query.edit_message_text(f"{EMOJIS['error']} الشبكة غير موجودة أو غير متاحة.")
+            return
+        
+        net_id, name, provider, description, location = network
+        
+        # الحصول على فئات الكروت المتاحة
+        cursor.execute('''
+            SELECT id, name, value, price, currency, stock_count
+            FROM card_categories 
+            WHERE network_id = ? AND is_available = 1 AND stock_count > 0
+            ORDER BY price ASC
+        ''', (network_id,))
+        
+        categories = cursor.fetchall()
+        conn.close()
+        
+        if not categories:
+            # لا توجد فئات كروت متاحة
+            no_cards_text = f"""
+📶 **{name}** - لا توجد كروت متاحة
+
+👤 **المزود:** {provider}
+📍 **الموقع:** {location or 'غير محدد'}
+📝 **الوصف:** {description or 'لا يوجد وصف'}
+
+❌ **لا توجد فئات كروت متاحة حالياً**
+
+💡 **اقتراحات:**
+• تحقق لاحقاً من توفر كروت جديدة
+• جرب شبكة أخرى متاحة
+"""
+            
+            keyboard = [
+                [InlineKeyboardButton('🔙 عودة لشراء الكروت', callback_data='buy_cards')],
+                [InlineKeyboardButton('🔍 البحث في الشبكات', callback_data='search_networks')]
+            ]
+            
+            await query.edit_message_text(no_cards_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            return
+        
+        # عرض فئات الكروت مع الأسعار
+        categories_text = f"""
+📶 **{name}** - فئات الكروت المتاحة
+
+👤 **المزود:** {provider}
+📍 **الموقع:** {location or 'غير محدد'}
+📝 **الوصف:** {description or 'لا يوجد وصف'}
+
+💰 **رصيدك:** {user['balance']:,.2f} ريال
+
+💳 **فئات الكروت المتاحة ({len(categories)} فئة):**
+
+"""
+        
+        keyboard = []
+        
+        for category in categories:
+            cat_id, cat_name, value, price, currency, stock = category
+            
+            # تنسيق السعر
+            price_text = f"{price:,.0f} ريال"
+            
+            # تنسيق القيمة
+            if isinstance(value, int):
+                value_text = f"{value} جيجا"
+            else:
+                value_text = str(value)
+            
+            # إضافة فئة الكرت
+            categories_text += f"""
+🎯 **{cat_name}**
+📊 القيمة: {value_text}
+💰 السعر: {price_text}
+📦 المخزون: {stock} كرت
+━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+            
+            # إضافة زر الشراء
+            keyboard.append([
+                InlineKeyboardButton(f'🛒 شراء {cat_name} - {price_text}', callback_data=f'buy_card_{cat_id}')
+            ])
+        
+        # إضافة أزرار إضافية
+        keyboard.extend([
+            [InlineKeyboardButton('🔙 عودة لشراء الكروت', callback_data='buy_cards')],
+            [InlineKeyboardButton('🔍 البحث في الشبكات', callback_data='search_networks')],
+            [InlineKeyboardButton('💰 شحن الرصيد', callback_data='recharge_balance')]
+        ])
+        
+        await query.edit_message_text(categories_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in show network categories: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض فئات الكروت.")
 
 async def perform_customer_network_search(update: Update, context):
     """Perform customer network search"""
