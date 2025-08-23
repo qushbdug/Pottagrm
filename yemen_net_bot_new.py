@@ -256,6 +256,8 @@ async def button_click_handler(update: Update, context):
             await manage_networks_handler(update, context)
         elif callback_data == 'search_network':
             await search_network_handler(update, context)
+        elif callback_data == 'search_networks':
+            await customer_search_networks_handler(update, context)
         elif callback_data == 'cards_reports':
             await cards_reports_handler(update, context)
         elif callback_data == 'sales_stats':
@@ -1533,6 +1535,137 @@ async def perform_network_search(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in perform network search: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في البحث.")
+
+async def customer_search_networks_handler(update: Update, context):
+    """Handle customer network search"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        # إرسال رسالة تطلب البحث
+        search_text = f"""
+🔍 **البحث في الشبكات** 🔍
+
+👤 **{user['full_name']}**
+💰 رصيدك: **{user['balance']:,.2f}** ريال
+
+💡 **كيفية البحث:**
+• اكتب اسم الشبكة (مثل: يمنتل)
+• اكتب معرف الشبكة (مثل: 21)
+• اكتب اسم المزود (مثل: MTN)
+
+📝 **أرسل كلمة البحث الآن:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🔙 عودة لشراء الكروت', callback_data='buy_cards')]
+        ]
+        
+        # حفظ حالة البحث للعميل
+        context.user_data['customer_searching_network'] = True
+        
+        await query.edit_message_text(search_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in customer search networks handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في البحث عن الشبكات.")
+
+async def perform_customer_network_search(update: Update, context):
+    """Perform customer network search"""
+    try:
+        user = get_user(update.message.from_user.id)
+        search_query = update.message.text.strip()
+        
+        if not search_query:
+            await update.message.reply_text("❌ يرجى إدخال كلمة بحث صحيحة.")
+            return
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # البحث في جميع الشبكات المتاحة للعميل (المعتمدة والنشطة)
+        cursor.execute('''
+            SELECT n.id, n.name, n.provider, n.location, COUNT(cc.id) as categories_count,
+                   MIN(cc.price) as min_price, MAX(cc.price) as max_price
+            FROM networks n
+            LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
+            WHERE n.is_active = 1 AND n.is_approved = 1 
+                  AND (n.name LIKE ? OR n.provider LIKE ? OR n.id = ?)
+            GROUP BY n.id, n.name, n.provider, n.location
+            ORDER BY n.name
+        ''', (f'%{search_query}%', f'%{search_query}%', search_query))
+        
+        networks = cursor.fetchall()
+        conn.close()
+        
+        if networks:
+            search_results = f"""
+🔍 **نتائج البحث عن: "{search_query}"**
+
+📊 **تم العثور على {len(networks)} شبكة:**
+
+"""
+            
+            keyboard = []
+            
+            for network in networks:
+                net_id, name, provider, location, cat_count, min_price, max_price = network
+                location_text = f"📍 {location}" if location else ""
+                
+                # معالجة محسنة للشبكات بدون فئات كروت
+                if cat_count > 0:
+                    price_range = f"{min_price:,.0f} - {max_price:,.0f}" if min_price != max_price else f"{min_price:,.0f}"
+                    categories_text = f"💳 {cat_count} فئة متاحة"
+                    price_text = f"💰 {price_range} ريال"
+                    
+                    # أزرار للشراء
+                    keyboard.append([
+                        InlineKeyboardButton(f'🛒 شراء من {name}', callback_data=f'buy_from_network_{net_id}')
+                    ])
+                else:
+                    categories_text = "💳 لا توجد فئات كروت بعد"
+                    price_text = "💰 لم يتم تحديد الأسعار"
+                    
+                    # أزرار للعرض فقط
+                    keyboard.append([
+                        InlineKeyboardButton(f'👁️ عرض {name} (لا توجد فئات)', callback_data=f'network_{net_id}')
+                    ])
+                
+                search_results += f"""
+🌐 **{name}** (ID: {net_id})
+👤 {provider} {location_text}
+{categories_text}
+{price_text}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+        else:
+            search_results = f"""
+🔍 **نتائج البحث عن: "{search_query}"**
+
+❌ **لم يتم العثور على شبكات تطابق البحث**
+
+💡 **اقتراحات:**
+• تأكد من كتابة الاسم بشكل صحيح
+• جرب البحث باسم المزود (مثل: يمنتل، MTN)
+• تحقق من معرف الشبكة (رقم)
+• تأكد أن الشبكة معتمدة ونشطة
+"""
+            keyboard = []
+        
+        # إضافة أزرار الإجراءات
+        keyboard.extend([
+            [InlineKeyboardButton('🔍 بحث جديد', callback_data='search_networks')],
+            [InlineKeyboardButton('🔙 عودة لشراء الكروت', callback_data='buy_cards')]
+        ])
+        
+        # إزالة حالة البحث
+        context.user_data['customer_searching_network'] = False
+        
+        await update.message.reply_text(search_results, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in perform customer network search: {e}")
         await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في البحث.")
 
 async def cards_reports_handler(update: Update, context):

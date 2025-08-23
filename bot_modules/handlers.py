@@ -560,6 +560,11 @@ async def handle_text_message(update: Update, context: CallbackContext):
             from yemen_net_bot_new import perform_network_search
             return await perform_network_search(update, context)
         
+        # Check if customer is searching for networks
+        if context.user_data.get('customer_searching_network'):
+            from yemen_net_bot_new import perform_customer_network_search
+            return await perform_customer_network_search(update, context)
+        
         # Check if admin is adding network
         if context.user_data.get('admin_adding_network'):
             from bot_modules.admin_functions import admin_process_network_creation
