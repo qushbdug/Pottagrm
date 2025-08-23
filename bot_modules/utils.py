@@ -69,10 +69,23 @@ def get_user(telegram_id: int):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        
+        # الحصول على أسماء الأعمدة
+        cursor.execute('PRAGMA table_info(users)')
+        columns = [col[1] for col in cursor.fetchall()]
+        
+        # تنفيذ الاستعلام
         cursor.execute('SELECT * FROM users WHERE telegram_id = ?', (telegram_id,))
-        user = cursor.fetchone()
+        user_data = cursor.fetchone()
         conn.close()
-        return user
+        
+        if user_data:
+            # تحويل النتيجة إلى dict
+            user_dict = dict(zip(columns, user_data))
+            return user_dict
+        else:
+            return None
+            
     except Exception as e:
         logger.error(f"Error getting user: {e}")
         return None
