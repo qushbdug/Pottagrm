@@ -25,7 +25,10 @@ async def show_network_details_enhanced(update: Update, context: CallbackContext
         cursor = conn.cursor()
         
         # الحصول على بيانات الشبكة
-        cursor.execute('SELECT * FROM networks WHERE id = ? AND is_active = 1', (network_id,))
+        cursor.execute('''
+            SELECT id, name, provider, description, location 
+            FROM networks WHERE id = ? AND is_active = 1
+        ''', (network_id,))
         network = cursor.fetchone()
         
         if not network:
@@ -44,6 +47,7 @@ async def show_network_details_enhanced(update: Update, context: CallbackContext
         conn.close()
         
         # تنسيق معلومات الشبكة
+        # network = (id, name, provider, description, location)
         text = f"""
 🏢 **{network[1]}** - {network[2]}
 
@@ -141,7 +145,9 @@ async def process_card_purchase_enhanced(update: Update, context: CallbackContex
         
         # الحصول على بيانات فئة الكرت
         cursor.execute('''
-            SELECT cc.*, n.name as network_name, n.provider
+            SELECT cc.id, cc.network_id, cc.name, cc.value, cc.price, cc.currency, 
+                   cc.is_available, cc.stock_count, cc.created_at, cc.updated_at,
+                   n.name as network_name, n.provider
             FROM card_categories cc
             JOIN networks n ON cc.network_id = n.id
             WHERE cc.id = ? AND cc.is_available = 1
@@ -227,7 +233,9 @@ async def confirm_card_purchase(update: Update, context: CallbackContext, catego
         
         # الحصول على بيانات فئة الكرت
         cursor.execute('''
-            SELECT cc.*, n.name as network_name, n.provider
+            SELECT cc.id, cc.network_id, cc.name, cc.value, cc.price, cc.currency, 
+                   cc.is_available, cc.stock_count, cc.created_at, cc.updated_at,
+                   n.name as network_name, n.provider
             FROM card_categories cc
             JOIN networks n ON cc.network_id = n.id
             WHERE cc.id = ? AND cc.is_available = 1
@@ -278,9 +286,9 @@ async def confirm_card_purchase(update: Update, context: CallbackContext, catego
             
             # تسجيل الكرت في قاعدة البيانات
             cursor.execute('''
-                INSERT INTO cards (id, category_id, card_code, is_used, created_at, purchased_by)
-                VALUES (?, ?, ?, 0, ?, ?)
-            ''', (f"card_{card_code}", cat_id, card_code, purchase_date, user['id']))
+                INSERT INTO cards (category_id, card_number, is_sold, sold_to, sold_at)
+                VALUES (?, ?, 1, ?, ?)
+            ''', (cat_id, card_code, user['id'], purchase_date))
             
             # تسجيل المعاملة
             transaction_id = f"TXN_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{user['id']}"
