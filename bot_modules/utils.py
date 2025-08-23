@@ -8,10 +8,19 @@ import logging
 import uuid
 import base64
 import json
+import os
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Tuple, Any
 from bot_modules.config import *
 from bot_modules.database import get_db_connection
+
+# Import Fernet if available
+try:
+    from cryptography.fernet import Fernet
+    CRYPTO_AVAILABLE = True
+except ImportError:
+    Fernet = None
+    CRYPTO_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 

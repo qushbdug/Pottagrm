@@ -6,7 +6,7 @@ Handles all callback query interactions
 
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import CallbackContext
+from telegram.ext import CallbackContext, CallbackQueryHandler
 from bot_modules.config import *
 from bot_modules.utils import *
 from bot_modules.handlers import show_main_menu
