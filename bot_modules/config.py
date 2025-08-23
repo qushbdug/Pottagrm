@@ -9,6 +9,7 @@ from telegram import BotCommand
 
 # Bot configuration
 BOT_TOKEN = '7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0'
+BOT_VERSION = '3.0.0-Clean'  # نسخة منظمة بهندسة نظيفة
 DB_PATH = os.getenv('DB_PATH', os.path.abspath('yemen_net.db'))
 
 # Accounting constants
@@ -44,6 +45,9 @@ QUICK_COMMANDS = [
     BotCommand('help', '❓ المساعدة والدعم'),
     BotCommand('cancel', '❌ إلغاء العملية الحالية'),
 ]
+
+# Bot commands for main menu
+BOT_COMMANDS = QUICK_COMMANDS
 
 # Emojis for better UI
 EMOJIS = {

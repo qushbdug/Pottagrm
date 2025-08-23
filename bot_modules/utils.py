@@ -754,3 +754,164 @@ def log_transaction(transaction_id, user_id, transaction_type, amount, descripti
     except Exception as e:
         logger.error(f"Error logging transaction: {e}")
         return False
+
+
+# ===== دوال التنسيق والعرض =====
+
+def format_price_range(min_price: Optional[float], max_price: Optional[float], currency: str = "ريال") -> str:
+    """
+    تنسيق نطاق الأسعار
+    
+    Args:
+        min_price: السعر الأدنى
+        max_price: السعر الأعلى
+        currency: العملة
+        
+    Returns:
+        نص منسق للسعر
+    """
+    try:
+        if min_price and max_price:
+            if min_price == max_price:
+                return f"{min_price:,.0f} {currency}"
+            else:
+                return f"{min_price:,.0f} - {max_price:,.0f} {currency}"
+        elif min_price:
+            return f"{min_price:,.0f} {currency}"
+        else:
+            return "غير محدد"
+    except (TypeError, ValueError):
+        return "غير محدد"
+
+def format_data_size(size_mb: int) -> str:
+    """
+    تنسيق حجم البيانات
+    
+    Args:
+        size_mb: الحجم بالميجابايت
+        
+    Returns:
+        نص منسق للحجم
+    """
+    try:
+        size_mb = int(size_mb) if size_mb else 0
+        
+        if size_mb >= 1024:
+            return f"{size_mb/1024:.0f} جيجا"
+        elif size_mb >= 100:
+            return f"{size_mb} ميجا"
+        else:
+            return f"{size_mb} MB"
+    except (TypeError, ValueError):
+        return "غير محدد"
+
+def format_availability_status(count: int) -> tuple[str, str]:
+    """
+    تنسيق حالة التوفر
+    
+    Args:
+        count: عدد العناصر المتاحة
+        
+    Returns:
+        tuple (status_text, status_icon)
+    """
+    try:
+        count = int(count) if count else 0
+        
+        if count > 0:
+            return f"✅ متوفر", f"📦 متاح: {count} كرت"
+        else:
+            return "❌ نفذ", "📦 متاح: 0 كرت"
+    except (TypeError, ValueError):
+        return "❓ غير معروف", "📦 غير محدد"
+
+def safe_get_dict_value(data: dict, key: str, default: Any = None) -> Any:
+    """
+    استخراج قيمة من القاموس بشكل آمن
+    
+    Args:
+        data: القاموس
+        key: المفتاح
+        default: القيمة الافتراضية
+        
+    Returns:
+        القيمة أو القيمة الافتراضية
+    """
+    try:
+        value = data.get(key, default)
+        return value if value is not None else default
+    except (AttributeError, TypeError):
+        return default
+
+def validate_network_id(network_id: str) -> tuple[bool, int]:
+    """
+    التحقق من صحة معرف الشبكة
+    
+    Args:
+        network_id: معرف الشبكة كنص
+        
+    Returns:
+        tuple (is_valid, network_id_int)
+    """
+    try:
+        network_id_int = int(network_id)
+        return True, network_id_int
+    except (ValueError, TypeError):
+        return False, 0
+
+def create_separator_line(length: int = 40) -> str:
+    """
+    إنشاء خط فاصل
+    
+    Args:
+        length: طول الخط
+        
+    Returns:
+        خط فاصل
+    """
+    return "━" * length
+
+def format_user_info(user: dict) -> str:
+    """
+    تنسيق معلومات المستخدم للعرض
+    
+    Args:
+        user: بيانات المستخدم
+        
+    Returns:
+        نص منسق
+    """
+    try:
+        name = safe_get_dict_value(user, 'full_name', 'مستخدم غير معروف')
+        balance = safe_get_dict_value(user, 'balance', 0)
+        
+        return f"👤 **{name}**\n💰 رصيدك: **{balance:,.2f}** ريال"
+    except Exception as e:
+        logger.error(f"خطأ في تنسيق معلومات المستخدم: {e}")
+        return "👤 **مستخدم** \n💰 رصيدك: **0.00** ريال"
+
+def log_and_return_error(operation: str, error: Exception, user_message: str = None) -> str:
+    """
+    تسجيل الخطأ وإرجاع رسالة للمستخدم
+    
+    Args:
+        operation: اسم العملية
+        error: الخطأ
+        user_message: رسالة مخصصة للمستخدم
+        
+    Returns:
+        رسالة الخطأ للمستخدم
+    """
+    try:
+        from bot_modules.config import EMOJIS
+        
+        # تسجيل الخطأ الكامل في السجل
+        logger.error(f"خطأ في {operation}: {error}", exc_info=True)
+        
+        # إرجاع رسالة ودودة للمستخدم
+        if user_message:
+            return f"{EMOJIS.get('error', '❌')} {user_message}"
+        else:
+            return f"{EMOJIS.get('error', '❌')} حدث خطأ في {operation}. يرجى المحاولة مرة أخرى."
+    except Exception:
+        return "❌ حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى."
