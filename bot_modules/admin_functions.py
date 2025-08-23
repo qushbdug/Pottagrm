@@ -840,7 +840,7 @@ async def executive_reports_handler(update: Update, context: CallbackContext):
                 COUNT(t.id) as transaction_count,
                 SUM(t.amount) as total_amount
             FROM users u
-            LEFT JOIN transactions t ON u.id = t.user_id
+            LEFT JOIN transactions t ON (u.id = t.from_user OR u.id = t.to_user)
             WHERE u.balance > 0
             GROUP BY u.id, u.full_name, u.role, u.balance
             ORDER BY u.balance DESC, total_amount DESC
