@@ -35,29 +35,58 @@ def create_accounting_entry(transaction_type: str, amount: float, user_id: int,
         entry_id = f"JE-{datetime.now().strftime('%Y%m%d%H%M%S')}-{str(uuid.uuid4())[:6]}"
         entry_date = datetime.now().date()
         
+        # الحصول على بيانات إضافية أو استخدام القيم الافتراضية
+        cost_percentage = 0.8  # افتراضي 80%
+        commission_percentage = 0.05  # افتراضي 5%
+        
+        if additional_data:
+            cost_percentage = additional_data.get('cost_percentage', 0.8)
+            commission_percentage = additional_data.get('commission_percentage', 0.05)
+            custom_description = additional_data.get('description', '')
+        else:
+            custom_description = ''
+        
+        # حساب التكلفة والعمولة بناءً على البيانات الإضافية
+        cost_amount = amount * cost_percentage
+        commission_amount = amount * commission_percentage
+        
         # قواعد القيد المزدوج حسب نوع المعاملة
         accounting_rules = {
             'card_purchase': {
-                'description': f'شراء كرت إنترنت - مبلغ {amount:,.2f} ريال',
+                'description': custom_description or f'شراء كرت إنترنت - مبلغ {amount:,.2f} ريال',
                 'entries': [
                     {'account_code': '1000', 'debit': amount, 'credit': 0, 'desc': 'استلام نقدية من العميل'},
                     {'account_code': '4000', 'debit': 0, 'credit': amount, 'desc': 'إيراد بيع كرت إنترنت'},
-                    {'account_code': '5000', 'debit': amount * 0.8, 'credit': 0, 'desc': 'تكلفة الكرت المباع'},
-                    {'account_code': '2000', 'debit': 0, 'credit': amount * 0.8, 'desc': 'مستحق للمزود'}
+                    {'account_code': '5000', 'debit': cost_amount, 'credit': 0, 'desc': 'تكلفة الكرت المباع'},
+                    {'account_code': '2000', 'debit': 0, 'credit': cost_amount, 'desc': 'مستحق للمزود'}
                 ]
             },
             'coupon_redeem': {
-                'description': f'شحن رصيد بكوبون - مبلغ {amount:,.2f} ريال',
+                'description': custom_description or f'شحن رصيد بكوبون - مبلغ {amount:,.2f} ريال',
                 'entries': [
                     {'account_code': '1100', 'debit': amount, 'credit': 0, 'desc': 'زيادة رصيد محفظة العميل'},
                     {'account_code': '1000', 'debit': 0, 'credit': amount, 'desc': 'تقليل النقدية (قيمة الكوبون)'}
                 ]
             },
             'transfer': {
-                'description': f'تحويل رصيد بين العملاء - مبلغ {amount:,.2f} ريال',
+                'description': custom_description or f'تحويل رصيد بين العملاء - مبلغ {amount:,.2f} ريال',
                 'entries': [
                     {'account_code': '1100', 'debit': amount, 'credit': 0, 'desc': 'زيادة رصيد المستلم'},
                     {'account_code': '1100', 'debit': 0, 'credit': amount, 'desc': 'تقليل رصيد المرسل'}
+                ]
+            },
+            'agent_commission': {
+                'description': custom_description or f'عمولة وكيل - مبلغ {commission_amount:,.2f} ريال',
+                'entries': [
+                    {'account_code': '5200', 'debit': commission_amount, 'credit': 0, 'desc': 'مصروف عمولة الوكيل'},
+                    {'account_code': '2100', 'debit': 0, 'credit': commission_amount, 'desc': 'عمولة مستحقة للوكيل'}
+                ]
+            },
+            'supplier_payment': {
+                'description': custom_description or f'دفع مستحقات مزود - مبلغ {amount:,.2f} ريال',
+                'entries': [
+                    {'account_code': '2000', 'debit': amount, 'credit': 0, 'desc': 'تقليل مستحقات المزود'},
+                    {'account_code': '1000', 'debit': 0, 'credit': amount, 'desc': 'دفع نقدي للمزود'}
                 ]
             }
         }
@@ -112,10 +141,24 @@ def create_accounting_entry(transaction_type: str, amount: float, user_id: int,
                 entry_date.year, entry_date.month
             ))
         
+        # تسجيل البيانات الإضافية إذا كانت موجودة
+        if additional_data:
+            try:
+                cursor.execute('''
+                    INSERT INTO accounting_audit_trail 
+                    (entry_id, action_type, action_details, created_by, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (
+                    entry_id, 'additional_data', str(additional_data), user_id, datetime.now()
+                ))
+                logger.info(f"تم تسجيل البيانات الإضافية للقيد: {entry_id}")
+            except Exception as audit_e:
+                logger.warning(f"فشل في تسجيل البيانات الإضافية: {audit_e}")
+        
         conn.commit()
         conn.close()
         
-        logger.info(f"تم إنشاء قيد محاسبي: {entry_id}")
+        logger.info(f"تم إنشاء قيد محاسبي: {entry_id} مع بيانات إضافية: {bool(additional_data)}")
         return entry_id
         
     except Exception as e:
