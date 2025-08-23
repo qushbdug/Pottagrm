@@ -1,555 +1,149 @@
 #!/usr/bin/env python3
 """
-Handlers module for Pottagrm Enhanced Bot
-Contains all main bot handlers and command processors
+Handlers Module
+Main handlers for bot commands and text messages
 """
 
 import logging
-import random
-import sqlite3
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import CallbackContext, ConversationHandler
+from telegram.ext import CallbackContext, CommandHandler, MessageHandler, filters
 from bot_modules.config import *
 from bot_modules.utils import *
+from bot_modules.wallet_handlers import enhanced_wallet_handler
+from bot_modules.network_handlers import (
+    buy_cards_handler, customer_search_networks_handler, perform_quick_search
+)
 
 logger = logging.getLogger(__name__)
 
 # Command handlers
-async def start(update: Update, context: CallbackContext) -> int:
+async def start_command(update: Update, context: CallbackContext):
     """Handle /start command"""
     try:
-        user = get_user(update.effective_user.id)
-        if user:
-            update_user_activity(user['id'])
-            return await show_main_menu(update, context, user['role'])
+        user = update.effective_user
+        user_id = user.id
+        
+        # Check if user exists
+        existing_user = get_user(user_id)
+        
+        if existing_user:
+            # User exists, show main menu
+            await show_main_menu(update, context, existing_user['role'])
         else:
-            return await register_new_user(update, context)
+            # New user, register them
+            await register_new_user(update, context)
+            
     except Exception as e:
-        logger.error(f"Error in start handler: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ. يرجى المحاولة مرة أخرى.")
-        return ConversationHandler.END
+        logger.error(f"Error in start command: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في بدء البوت.")
 
-async def wallet_handler(update: Update, context: CallbackContext):
-    """Handle /wallet command - enhanced wallet view"""
+async def help_command(update: Update, context: CallbackContext):
+    """Handle /help command"""
+    try:
+        help_text = """
+🤖 **مرحباً بك في بوت يمن نت!** 🤖
+
+📱 **الأوامر المتاحة:**
+/start - بدء البوت
+/help - عرض المساعدة
+/wallet - عرض المحفظة
+/buy - شراء كروت
+/profile - الملف الشخصي
+
+💡 **الميزات:**
+• شراء كروت الإنترنت
+• إدارة المحفظة
+• تحويل الأرصدة
+• إدارة الشبكات (للمزودين)
+
+🔧 **للمساعدة:** تواصل مع الدعم الفني
+"""
+        
+        await update.message.reply_text(help_text, parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in help command: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في عرض المساعدة.")
+
+async def wallet_command(update: Update, context: CallbackContext):
+    """Handle /wallet command"""
     try:
         user = get_user(update.effective_user.id)
+        
         if not user:
             await update.message.reply_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
             return
-
-        return await enhanced_wallet_handler(update, context)
+        
+        # Call wallet handler
+        await enhanced_wallet_handler(update, context)
+        
     except Exception as e:
-        logger.error(f"Error in wallet handler: {e}")
+        logger.error(f"Error in wallet command: {e}")
         await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في عرض المحفظة.")
 
-async def admin_handler(update: Update, context: CallbackContext):
-    """Handle /admin command"""
-    try:
-        from bot_modules.admin_functions import admin_panel_handler
-        return await admin_panel_handler(update, context)
-    except Exception as e:
-        logger.error(f"Error in admin handler: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في الوصول للوحة الإدارة.")
-
-async def cancel(update: Update, context: CallbackContext) -> int:
-    """Handle cancellation"""
-    try:
-        # Clear any pending states
-        context.user_data.clear()
-        
-        user = get_user(update.effective_user.id)
-        if user:
-            update_user_activity(user['id'])
-            return await show_main_menu(update, context, user['role'])
-        else:
-            await update.message.reply_text(f"{EMOJIS['cancel']} تم الإلغاء. استخدم /start للبدء.")
-            return ConversationHandler.END
-    except Exception as e:
-        logger.error(f"Error in cancel handler: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ.")
-        return ConversationHandler.END
-
-# Registration handlers
-async def register_new_user(update: Update, context: CallbackContext) -> int:
-    """Start new user registration"""
-    try:
-        welcome_text = f"""
-{EMOJIS['fire']} **مرحباً بك في بوت كروت الإنترنت اليمني المطور!** {EMOJIS['fire']}
-
-🚀 **Pottagrm Enhanced v2.1.0**
-
-🌟 **ميزات جديدة ومطورة:**
-• 💳 محفظة إلكترونية متقدمة
-• 📊 تقارير شخصية مفصلة  
-• ⭐ نظام تقييمات ومراجعات
-• 🔔 إشعارات ذكية مخصصة
-• 🎁 نظام عروض وخصومات
-• 🔒 أمان محسّن ومشفر
-
-📝 **للمتابعة، يرجى إدخال اسمك الكامل:**
-"""
-        
-        await update.message.reply_text(welcome_text, parse_mode='Markdown')
-        return GET_FULL_NAME
-    except Exception as e:
-        logger.error(f"Error in register new user: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في بدء التسجيل.")
-        return ConversationHandler.END
-
-async def get_full_name(update: Update, context: CallbackContext) -> int:
-    """Get user's full name"""
-    try:
-        full_name = update.message.text.strip()
-        if len(full_name) < 3:
-            await update.message.reply_text(f"{EMOJIS['error']} الاسم يجب أن يكون 3 أحرف على الأقل.")
-            return GET_FULL_NAME
-        
-        context.user_data['full_name'] = full_name
-        await update.message.reply_text(
-            f"{EMOJIS['phone']} **أهلاً {full_name}!**\n\n"
-            f"يرجى إدخال رقم هاتفك (يجب أن يبدأ بـ 77, 78, 79 أو 70):"
-        , parse_mode='Markdown')
-        return GET_PHONE
-    except Exception as e:
-        logger.error(f"Error in get full name: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ. يرجى المحاولة مرة أخرى.")
-        return GET_FULL_NAME
-
-async def get_phone(update: Update, context: CallbackContext) -> int:
-    """Get user's phone number"""
-    try:
-        phone = update.message.text.strip()
-        
-        # Validate phone format
-        if not (phone.startswith(('77', '78', '79', '70')) and len(phone) == 9 and phone.isdigit()):
-            await update.message.reply_text(
-                f"{EMOJIS['error']} رقم الهاتف غير صحيح.\n"
-                f"يجب أن يكون 9 أرقام ويبدأ بـ 77, 78, 79 أو 70"
-            )
-            return GET_PHONE
-        
-        # Check if phone already exists
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT id FROM users WHERE phone = ?', (phone,))
-        if cursor.fetchone():
-            conn.close()
-            await update.message.reply_text(f"{EMOJIS['error']} رقم الهاتف مسجل مسبقاً.")
-            return GET_PHONE
-        conn.close()
-        
-        context.user_data['phone'] = phone
-        
-        # Show role selection
-        role_text = f"""
-{EMOJIS['user']} **اختر نوع حسابك:**
-
-🛒 **عميل** - شراء كروت الإنترنت
-🔷 **وكيل** - بيع الكروت وكسب عمولة  
-🏪 **مزود** - رفع وإدارة الشبكات والكروت
-
-👇 **اختر الدور المناسب لك:**
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton(f'{EMOJIS["purchase"]} عميل', callback_data='role_customer')],
-            [InlineKeyboardButton(f'🔷 وكيل', callback_data='role_agent')],
-            [InlineKeyboardButton(f'🏪 مزود', callback_data='role_supplier')]
-        ]
-        
-        await update.message.reply_text(role_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        return CHOOSE_ROLE
-    except Exception as e:
-        logger.error(f"Error in get phone: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ. يرجى المحاولة مرة أخرى.")
-        return GET_PHONE
-
-async def choose_role(update: Update, context: CallbackContext) -> int:
-    """Handle role selection"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        role = query.data.split('_')[1]  # Extract role from callback_data
-        
-        # Create user account
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Generate unique wallet number
-        wallet_number = None
-        for _ in range(50):
-            trial = '79' + ''.join(str(random.randint(0, 9)) for _ in range(7))
-            cursor.execute('SELECT 1 FROM users WHERE wallet_number = ?', (trial,))
-            if not cursor.fetchone():
-                wallet_number = trial
-                break
-        
-        if not wallet_number:
-            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إنشاء رقم المحفظة.")
-            return ConversationHandler.END
-        
-        # Generate invite code
-        invite_code = None
-        for _ in range(50):
-            trial = ''.join(random.choices('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', k=8))
-            cursor.execute('SELECT 1 FROM users WHERE invite_code = ?', (trial,))
-            if not cursor.fetchone():
-                invite_code = trial
-                break
-        
-        # Insert new user
-        cursor.execute('''
-            INSERT INTO users (telegram_id, full_name, phone, role, wallet_number, invite_code, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (update.effective_user.id, context.user_data['full_name'], 
-              context.user_data['phone'], role, wallet_number, invite_code, 
-              1 if role == 'customer' else 0))  # Auto-activate customers only
-        
-        user_id = cursor.lastrowid
-        
-        # Log the registration
-        log_activity(user_id, 'user_registration', f'New user registered as {role}', {
-            'telegram_id': update.effective_user.id,
-            'role': role,
-            'wallet_number': wallet_number
-        })
-        
-        conn.commit()
-        conn.close()
-        
-        # Store data before clearing
-        full_name = context.user_data.get('full_name', 'المستخدم')
-        phone = context.user_data.get('phone', 'غير محدد')
-        
-        # Clear registration data
-        context.user_data.clear()
-        
-        # Send welcome message based on role
-        if role == 'customer':
-            welcome_message = f"""
-✅ **تم إنشاء حسابك بنجاح!**
-
-👤 **معلومات حسابك:**
-📛 الاسم: **{full_name}**
-📞 الهاتف: **{phone}**
-🏷️ النوع: **عميل**
-💳 رقم المحفظة: **{wallet_number}**
-🎫 كود الدعوة: **{invite_code}**
-
-🎉 **حسابك مفعل ويمكنك البدء في الشراء فوراً!**
-
-💡 **يمكنك الآن:**
-• شراء كروت الإنترنت
-• تحويل رصيد للأصدقاء
-• عرض إحصائياتك
-• تقييم الخدمات
-"""
-        elif role == 'agent':
-            welcome_message = f"""
-✅ **تم إنشاء حساب الوكيل بنجاح!**
-
-👤 **معلومات حسابك:**
-📛 الاسم: **{full_name}**
-📞 الهاتف: **{phone}**
-🏷️ النوع: **وكيل**
-💳 رقم المحفظة: **{wallet_number}**
-🎫 كود الدعوة: **{invite_code}**
-
-⏳ **حسابك في انتظار التفعيل من الإدارة**
-
-💰 **كوكيل ستحصل على عمولة من كل عملية بيع!**
-"""
-        else:  # supplier
-            welcome_message = f"""
-✅ **تم إنشاء حساب المزود بنجاح!**
-
-👤 **معلومات حسابك:**
-📛 الاسم: **{full_name}**
-📞 الهاتف: **{phone}**
-🏷️ النوع: **مزود**
-💳 رقم المحفظة: **{wallet_number}**
-🎫 كود الدعوة: **{invite_code}**
-
-⏳ **حسابك في انتظار التفعيل من الإدارة**
-
-🏪 **كمزود يمكنك رفع وإدارة الشبكات والكروت**
-"""
-        
-        keyboard = [[InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]]
-        
-        await query.edit_message_text(welcome_message, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-        # Send notification to admins for non-customer registrations
-        if role in ['agent', 'supplier']:
-            # Notify admins about new registration
-            pass  # Will implement admin notification
-        
-        return ConversationHandler.END
-        
-    except Exception as e:
-        logger.error(f"Error in choose role: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إنشاء الحساب.")
-        return ConversationHandler.END
-
-# Menu handlers
-async def show_main_menu(update: Update, context: CallbackContext, role: str) -> int:
-    """Show main menu based on user role"""
+async def buy_command(update: Update, context: CallbackContext):
+    """Handle /buy command"""
     try:
         user = get_user(update.effective_user.id)
+        
         if not user:
-            return await start(update, context)
-        
-        update_user_activity(user['id'])
-        
-        # Create dynamic menu based on role
-        keyboard = create_main_keyboard(role)
-        
-        menu_text = f"""
-🚀 **بوت كروت الإنترنت اليمني المطور** 🚀
-
-👤 أهلاً وسهلاً **{user['full_name']}**
-🏷️ النوع: **{USER_ROLES.get(role, role)}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
-💳 رقم محفظتك: **{user['wallet_number']}**
-⚡ الحالة: **{"✅ مفعل" if user['is_active'] else "⏳ في انتظار التفعيل"}**
-
-🎯 **اختر العملية المطلوبة:**
-"""
-        
-        if update.message:
-            await update.message.reply_text(menu_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        else:
-            await update.callback_query.edit_message_text(menu_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-            
-        return ConversationHandler.END
-        
-    except Exception as e:
-        logger.error(f"Error in show main menu: {e}")
-        error_text = f"{EMOJIS['error']} حدث خطأ في تحميل القائمة الرئيسية."
-        if update.message:
-            await update.message.reply_text(error_text)
-        else:
-            await update.callback_query.edit_message_text(error_text)
-        return ConversationHandler.END
-
-def create_main_keyboard(role: str):
-    """Create main menu keyboard based on user role"""
-    try:
-        # Core features for all users
-        base_buttons = [
-            [InlineKeyboardButton('💳 محفظتي المطورة', callback_data='enhanced_wallet')],
-            [InlineKeyboardButton('🛒 شراء كروت', callback_data='buy_cards'),
-             InlineKeyboardButton('💸 تحويل رصيد', callback_data='transfer_to_friend')],
-            [InlineKeyboardButton('🎟️ شحن بكوبون', callback_data='redeem_coupon'),
-             InlineKeyboardButton('🔍 البحث عن شبكات', callback_data='search_networks')],
-            [InlineKeyboardButton('📊 تقاريري الشخصية', callback_data='personal_reports'),
-             InlineKeyboardButton('🎁 العروض والخصومات', callback_data='promotions')],
-            [InlineKeyboardButton('🔔 إشعاراتي', callback_data='my_notifications'),
-             InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings')],
-            [InlineKeyboardButton('⭐ تقييماتي', callback_data='my_ratings')]
-        ]
-        
-        # Role-specific features
-        if role == 'agent':
-            base_buttons.extend([
-                [InlineKeyboardButton('💼 لوحة الوكيل', callback_data='agent_panel'),
-                 InlineKeyboardButton('💰 عمولاتي', callback_data='my_commissions')]
-            ])
-        elif role == 'supplier':
-            base_buttons.extend([
-                [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel'),
-                 InlineKeyboardButton('📶 إدارة الشبكات', callback_data='manage_networks')],
-                [InlineKeyboardButton('📤 رفع كروت', callback_data='upload_cards'),
-                 InlineKeyboardButton('📈 تقارير المبيعات', callback_data='sales_reports')]
-            ])
-        elif role in ['admin', 'super_admin']:
-            base_buttons.extend([
-                [InlineKeyboardButton('👑 لوحة الإدارة', callback_data='admin_panel'),
-                 InlineKeyboardButton('📊 التقارير التنفيذية', callback_data='executive_reports')]
-            ])
-            
-            if role == 'super_admin':
-                base_buttons.append([
-                    InlineKeyboardButton('💰 إدارة الأرصدة', callback_data='admin_wallet'),
-                    InlineKeyboardButton('✅ تفعيل مزودين', callback_data='super_activate_suppliers')
-                ])
-        
-        # Add help and support
-        base_buttons.append([InlineKeyboardButton('❓ المساعدة والدعم', callback_data='help')])
-        
-        return base_buttons
-    except Exception as e:
-        logger.error(f"Error creating main keyboard: {e}")
-        return [[InlineKeyboardButton(f'{EMOJIS["error"]} خطأ في القائمة', callback_data='main_menu')]]
-
-# Enhanced wallet handler
-async def enhanced_wallet_handler(update: Update, context: CallbackContext):
-    """Show enhanced wallet information"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.message.reply_text(f"{EMOJIS['error']} يرجى التسجيل أولاً.")
+            await update.message.reply_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
             return
         
-        update_user_activity(user['id'])
+        # Call buy cards handler
+        await buy_cards_handler(update, context)
         
-        # Get recent transactions
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT t.*, u.full_name as related_user
-            FROM transactions t
-            LEFT JOIN users u ON (
-                CASE 
-                    WHEN t.type = 'credit' THEN NULL
-                    ELSE u.id = ?
-                END
-            )
-            WHERE t.from_user = ? OR t.to_user = ?
-            ORDER BY t.created_at DESC
-            LIMIT 10
-        ''', (user['id'], user['id']))
-        
-        recent_transactions = cursor.fetchall()
-        
-        # Get transaction summary
-        cursor.execute('''
-            SELECT 
-                COUNT(*) as total_transactions,
-                SUM(CASE WHEN transaction_type = 'credit' THEN amount ELSE 0 END) as total_credits,
-                SUM(CASE WHEN transaction_type = 'debit' THEN amount ELSE 0 END) as total_debits
-            FROM wallet_transactions 
-            WHERE user_id = ?
-        ''', (user['id'],))
-        
-        summary = cursor.fetchone()
-        conn.close()
-        
-        # Handle None values safely
-        total_credits = summary['total_credits'] or 0.0
-        total_debits = summary['total_debits'] or 0.0
-        total_transactions = summary['total_transactions'] or 0
-        
-        # Calculate wallet analytics
-        available_balance = user['balance']
-        total_spent = total_debits
-        savings_rate = ((total_credits - total_debits) / max(total_credits, 1)) * 100 if total_credits > 0 else 0
-        
-        wallet_text = f"""
-💳 **محفظتي المطورة** 💳
+    except Exception as e:
+        logger.error(f"Error in buy command: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في عرض قائمة الشراء.")
 
-👤 **{user['full_name']}**
-🏷️ نوع الحساب: **{USER_ROLES.get(user['role'] if 'role' in user.keys() else 'customer', 'عميل')}**
-⚡ حالة الحساب: **{"✅ مفعل" if user['is_active'] else "⏳ في انتظار التفعيل"}**
+async def profile_command(update: Update, context: CallbackContext):
+    """Handle /profile command"""
+    try:
+        user = get_user(update.effective_user.id)
+        
+        if not user:
+            await update.message.reply_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
+            return
+        
+        profile_text = f"""
+👤 **الملف الشخصي** 👤
 
-💰 **الرصيد والإحصائيات:**
-💵 الرصيد المتاح: **{available_balance:,.2f}** ريال
-🆔 رقم المحفظة: **{user['wallet_number']}**
-📊 معدل الادخار: **{savings_rate:.1f}%**
+📱 **المعلومات الأساسية:**
+👤 **الاسم:** {user['full_name']}
+🆔 **المعرف:** {user['id']}
+📞 **رقم الهاتف:** {user.get('phone', 'غير محدد')}
+👑 **الدور:** {get_role_name(user['role'])}
+💰 **الرصيد:** {user['balance']:,.2f} ريال
 
-📈 **ملخص المعاملات:**
-🔺 إجمالي الإيداعات: **{total_credits:,.2f}** ريال
-🔻 إجمالي المصروفات: **{total_debits:,.2f}** ريال
-🔢 عدد المعاملات: **{total_transactions:,}** معاملة
-💰 صافي الرصيد: **{(total_credits - total_debits):,.2f}** ريال
-
-📝 **آخر المعاملات:**
+📊 **الإحصائيات:**
+📅 **تاريخ التسجيل:** {user.get('created_at', 'غير محدد')}
+🕐 **آخر نشاط:** {user.get('last_activity', 'غير محدد')}
 """
         
-        if recent_transactions:
-            for tx in recent_transactions[:5]:
-                tx_type = "➕" if tx['transaction_type'] == 'credit' else "➖"
-                description = tx['description'] or 'معاملة'
-                try:
-                    amount = float(tx['amount']) if tx['amount'] is not None else 0.0
-                except (ValueError, TypeError):
-                    amount = 0.0
-                wallet_text += f"\n{tx_type} {amount:.2f} ريال - {description[:30]}..."
-        else:
-            wallet_text += "\nلا توجد معاملات بعد"
-        
         keyboard = [
-            [InlineKeyboardButton('📊 تفاصيل المعاملات', callback_data='transaction_details'),
-             InlineKeyboardButton('💸 تحويل رصيد', callback_data='transfer_to_friend')],
-            [InlineKeyboardButton('📈 إحصائيات مفصلة', callback_data='wallet_stats'),
-             InlineKeyboardButton('💳 كشف حساب', callback_data='account_statement')],
-            [InlineKeyboardButton('🔄 تحديث الرصيد', callback_data='enhanced_wallet'),
-             InlineKeyboardButton('💰 إيداع رصيد', callback_data='deposit_balance')],
-            [InlineKeyboardButton('⚙️ إعدادات المحفظة', callback_data='wallet_settings'),
-             InlineKeyboardButton('📞 الدعم', callback_data='help')],
-            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            [InlineKeyboardButton('💰 محفظتي', callback_data='enhanced_wallet')],
+            [InlineKeyboardButton('🛒 شراء كروت', callback_data='buy_cards')],
+            [InlineKeyboardButton('🔙 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
-        if update.message:
-            await update.message.reply_text(wallet_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        else:
-            await update.callback_query.edit_message_text(wallet_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-            
+        await update.message.reply_text(profile_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
     except Exception as e:
-        logger.error(f"Error in enhanced wallet handler: {e}")
-        error_msg = f"{EMOJIS['error']} حدث خطأ في عرض المحفظة."
-        if update.message:
-            await update.message.reply_text(error_msg)
-        else:
-            await update.callback_query.edit_message_text(error_msg)
+        logger.error(f"Error in profile command: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في عرض الملف الشخصي.")
 
-# Message handler for processing admin operations
+# Text message handler
 async def handle_text_message(update: Update, context: CallbackContext):
-    """Handle text messages for special operations"""
+    """Handle text messages with state management"""
     try:
-        # Check if waiting for money creation
-        if context.user_data.get('awaiting_money_creation'):
-            from bot_modules.admin_functions import process_money_creation
-            return await process_money_creation(update, context)
+        user = get_user(update.effective_user.id)
         
-        # Check if waiting for balance issue
-        if context.user_data.get('awaiting_balance_issue'):
-            from bot_modules.admin_functions import process_balance_issue
-            return await process_balance_issue(update, context)
+        if not user:
+            await update.message.reply_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
+            return
         
-        # Check if waiting for recharge cards issue
-        if context.user_data.get('awaiting_card_issue'):
-            from bot_modules.admin_functions import process_recharge_cards_issue
-            return await process_recharge_cards_issue(update, context)
-        
-        # Check if waiting for broadcast message
-        if context.user_data.get('awaiting_broadcast'):
-            from bot_modules.admin_functions import process_broadcast_message
-            return await process_broadcast_message(update, context)
-        
-        # Check if waiting for WiFi search
-        if context.user_data.get('awaiting_wifi_search'):
-            return await process_wifi_search(update, context)
-        
-        # Check if waiting for transfer step 1 (wallet number)
-        if context.user_data.get('awaiting_transfer_step1'):
-            return await process_transfer_step1(update, context)
-        
-        # Check if waiting for transfer step 2 (amount)
-        if context.user_data.get('awaiting_transfer_step2'):
-            return await process_transfer_step2(update, context)
-        
-        # Check if waiting for simple admin send
-        if context.user_data.get('awaiting_simple_send'):
-            return await process_simple_admin_send(update, context)
-        
-        # Check if waiting for simple transfer
-        if context.user_data.get('awaiting_simple_transfer'):
-            return await process_simple_transfer(update, context)
-        
-        # Check if waiting for network name
-        if context.user_data.get('awaiting_network_name'):
-            return await process_network_creation(update, context, update.message.text)
-        
-        # Check if waiting for network description
-        if context.user_data.get('awaiting_network_description'):
-            return await process_network_description(update, context, update.message.text)
-        
-        # Check if waiting for network location
-        if context.user_data.get('awaiting_network_location'):
-            return await process_network_location(update, context, update.message.text)
+        text = update.message.text.strip()
         
         # ===== HIGH PRIORITY STATES (Card input flow) =====
         # Check if supplier is entering custom price (PRIORITY HIGH)
@@ -567,7 +161,7 @@ async def handle_text_message(update: Update, context: CallbackContext):
         # ===== NETWORK SEARCH STATES =====
         # Check if waiting for network search
         if context.user_data.get('awaiting_network_search'):
-            return await process_network_search(update, context, update.message.text)
+            return await process_network_search(update, context, text)
         
         # Check if searching for networks (new search feature)
         if context.user_data.get('searching_network'):
@@ -579,3288 +173,94 @@ async def handle_text_message(update: Update, context: CallbackContext):
             from yemen_net_bot_new import perform_customer_network_search
             return await perform_customer_network_search(update, context)
         
-        # Check if admin is adding network
-        if context.user_data.get('admin_adding_network'):
-            from bot_modules.admin_functions import admin_process_network_creation
-            return await admin_process_network_creation(update, context)
+        # ===== TRANSFER STATES =====
+        # Check if waiting for transfer recipient
+        if context.user_data.get('awaiting_transfer_step1'):
+            return await process_transfer_recipient(update, context, text)
         
-        # Check if supplier is adding network
-        if context.user_data.get('adding_network'):
-            return await process_supplier_network_creation(update, context)
-        
-        # Check if admin is uploading cards
-        if context.user_data.get('admin_uploading_card'):
-            from bot_modules.admin_functions import admin_process_card_upload
-            return await admin_process_card_upload(update, context)
-        
-        # Check if supplier is manually entering cards
-        if context.user_data.get('awaiting_manual_card'):
-            return await process_manual_card_input(update, context)
-        
-        # Check if admin is creating coupon
-        if context.user_data.get('admin_creating_coupon'):
-            from bot_modules.admin_functions import process_coupon_creation
-            return await process_coupon_creation(update, context)
-        
-        # Check if user is redeeming coupon
-        if context.user_data.get('redeeming_coupon'):
-            return await process_coupon_redemption(update, context)
-        
-        # Check if supplier is manually entering cards
-        if context.user_data.get('awaiting_manual_card'):
-            return await process_manual_card_input(update, context)
+        # Check if waiting for transfer amount
+        if context.user_data.get('awaiting_transfer_step2'):
+            return await process_transfer_amount(update, context, text)
         
         # Check if waiting for user search
         if context.user_data.get('awaiting_user_search'):
-            return await process_user_search(update, context, update.message.text)
+            return await process_user_search(update, context, text)
         
-        # Check if waiting for balance send (old method - keep for compatibility)
-        if context.user_data.get('awaiting_balance_send'):
-            return await process_balance_send(update, context)
-        
-        # Regular message handling
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.message.reply_text(f"{EMOJIS['info']} أرسل /start للبدء.")
-            return
-        
-        # Default response for unrecognized messages
-        await update.message.reply_text(
-            f"{EMOJIS['info']} لم أفهم رسالتك. استخدم الأزرار أو /menu للقائمة الرئيسية."
-        )
+        # ===== DEFAULT RESPONSE =====
+        # If no specific state, show main menu
+        await show_main_menu(update, context, user['role'])
         
     except Exception as e:
         logger.error(f"Error in handle text message: {e}")
         await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في معالجة الرسالة.")
 
-# Enhanced User Features
-
-async def wifi_search_handler(update: Update, context: CallbackContext):
-    """البحث عن الشبكات المتاحة"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            if update.message:
-                await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
-            else:
-                await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-        
-        # الحصول على الشبكات المتاحة
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # احصل على عدد الشبكات النشطة
-        cursor.execute('SELECT COUNT(*) FROM networks WHERE is_active = 1')
-        active_networks_count = cursor.fetchone()[0]
-        
-        # احصل على عدد فئات الكروت المتاحة
-        cursor.execute('''
-            SELECT COUNT(*) FROM card_categories cc 
-            JOIN networks n ON cc.network_id = n.id 
-            WHERE n.is_active = 1 AND cc.is_available = 1
-        ''')
-        available_categories_count = cursor.fetchone()[0]
-        
-        # احصه على إجمالي المخزون
-        cursor.execute('''
-            SELECT SUM(cc.stock_count) FROM card_categories cc 
-            JOIN networks n ON cc.network_id = n.id 
-            WHERE n.is_active = 1 AND cc.is_available = 1
-        ''')
-        total_stock = cursor.fetchone()[0] or 0
-        
-        conn.close()
-        
-        if active_networks_count == 0:
-            text = f"""
-📶 **البحث عن شبكات الواي فاي** 📶
-
-👤 مرحباً **{user['full_name']}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
-
-🏪 **لا توجد شبكات متاحة حالياً**
-
-📋 **نحن نتعامل حصرياً مع:**
-• 🌐 كروت شبكات الواي فاي المنزلية
-• 💳 كروت الخدمات المقدمة من المزودين المعتمدين
-• 📶 شبكات الإنترنت اللاسلكي
-
-⏳ **الشبكات ستظهر عندما:**
-• يقوم المزودون بإضافة شبكاتهم
-• يتم رفع كروت الواي فاي المتاحة
-• يتم تفعيل الخدمات الجديدة
-
-💡 **للمزودين:**
-يمكنكم إضافة شبكاتكم من لوحة المزود
-
-🔔 **سيتم إشعارك فور توفر شبكات جديدة!**
-"""
-        else:
-            text = f"""
-📶 **البحث عن شبكات الواي فاي** 📶
-
-👤 مرحباً **{user['full_name']}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
-
-📊 **إحصائيات الشبكات:**
-🌐 الشبكات المتاحة: **{active_networks_count}** شبكة
-💳 فئات الكروت: **{available_categories_count}** فئة
-📦 إجمالي المخزون: **{total_stock:,}** كرت
-
-🔍 **خيارات البحث:**
-
-1️⃣ **عرض جميع الشبكات**
-   استعرض كافة الشبكات المضافة من المزودين
-
-2️⃣ **البحث بالاسم**
-   ابحث عن شبكة واي فاي معينة
-
-3️⃣ **حسب نوع الخدمة**
-   شبكات الواي فاي المنزلية
-
-4️⃣ **حسب السعر**
-   اختر حسب ميزانيتك
-"""
-        
-        if active_networks_count == 0:
-            keyboard = [
-                [InlineKeyboardButton('🔄 تحديث الشبكات', callback_data='search_networks'),
-                 InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')],
-                [InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet'),
-                 InlineKeyboardButton('📞 الدعم الفني', callback_data='help')],
-                [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-            ]
-        else:
-            keyboard = [
-                [InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks'),
-                 InlineKeyboardButton('🔍 بحث بالاسم', callback_data='search_by_network_name')],
-                [InlineKeyboardButton('📶 شبكات الواي فاي', callback_data='wifi_networks'),
-                 InlineKeyboardButton('🏠 شبكات منزلية', callback_data='home_networks')],
-                [InlineKeyboardButton('💰 حسب السعر', callback_data='networks_by_price'),
-                 InlineKeyboardButton('⭐ الأكثر طلباً', callback_data='popular_networks')],
-                [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-            ]
-        
-        if update.message:
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        else:
-            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in WiFi search: {e}")
-        error_msg = "❌ حدث خطأ في البحث"
-        if update.message:
-            await update.message.reply_text(error_msg)
-        else:
-            await update.callback_query.edit_message_text(error_msg)
-
-async def process_wifi_search(update: Update, context: CallbackContext):
-    """Process WiFi search query"""
-    try:
-        if not context.user_data.get('awaiting_wifi_search'):
-            return
-        
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.message.reply_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
-            return
-        
-        search_term = update.message.text.strip()
-        
-        if len(search_term) < 2:
-            await update.message.reply_text(f"{EMOJIS['error']} كلمة البحث قصيرة جداً. أدخل على الأقل حرفين.")
-            return
-        
-        # Search in networks
-        from bot_modules.database import get_db_connection
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Search by name, code, or city
-        cursor.execute('''
-            SELECT n.*, u.full_name as supplier_name 
-            FROM networks n
-            JOIN users u ON n.supplier_id = u.id
-            WHERE (n.name LIKE ? OR COALESCE(n.network_code, '') LIKE ? OR n.city LIKE ?)
-            AND n.is_active = 1 AND n.is_approved = 1
-            ORDER BY n.name
-            LIMIT 20
-        ''', (f'%{search_term}%', f'%{search_term}%', f'%{search_term}%'))
-        
-        networks = cursor.fetchall()
-        
-        # Get card categories for each network
-        results = []
-        for network in networks:
-            cursor.execute('''
-                SELECT COUNT(*) as categories_count, MIN(price) as min_price, MAX(price) as max_price
-                FROM card_categories 
-                WHERE network_id = ? AND is_available = 1
-            ''', (network['id'],))
-            
-            category_info = cursor.fetchone()
-            
-            results.append({
-                'network': network,
-                'categories_count': category_info['categories_count'],
-                'min_price': category_info['min_price'],
-                'max_price': category_info['max_price']
-            })
-        
-        conn.close()
-        
-        # Clear user state
-        context.user_data.pop('awaiting_wifi_search', None)
-        
-        if not results:
-            await update.message.reply_text(f"""
-{EMOJIS['error']} **لم يتم العثور على نتائج**
-
-🔍 **كلمة البحث:** `{search_term}`
-
-💡 **اقتراحات:**
-• تأكد من صحة الإملاء
-• جرب كلمات أخرى
-• ابحث باسم المدينة
-• استخدم /wifi_search للبحث مرة أخرى
-""", parse_mode='Markdown')
-            return
-        
-        # Format results
-        results_text = f"""
-🔍 **نتائج البحث عن: {search_term}**
-
-📊 **تم العثور على {len(results)} شبكة**
-
-"""
-        
-        for i, result in enumerate(results[:10], 1):
-            network = result['network']
-            min_price = result['min_price'] or 0
-            max_price = result['max_price'] or 0
-            
-            price_range = f"{min_price:.0f}" if min_price == max_price else f"{min_price:.0f} - {max_price:.0f}"
-            
-            network_code = network.get('network_code') or 'غير محدد'
-            supplier_name = result.get('network', {}).get('supplier_name') or network.get('supplier_name', 'غير محدد')
-            
-            results_text += f"""
-**{i}. {network['name']}**
-🆔 الكود: `{network_code}`
-🌍 المدينة: {network['city']}
-👤 المزود: {supplier_name}
-🎫 الفئات: {result['categories_count']} فئة
-💰 الأسعار: {price_range} ريال
-
-"""
-        
-        if len(results) > 10:
-            results_text += f"\n... و {len(results) - 10} شبكة أخرى"
-        
-        results_text += f"""
-───────────────────
-💡 لشراء البطاقات استخدم /buy
-🔍 للبحث مرة أخرى استخدم /wifi_search
-"""
-        
-        await update.message.reply_text(results_text, parse_mode='Markdown')
-        
-        # Log the search
-        logger.info(f"User {user['full_name']} searched for WiFi: {search_term} - Found {len(results)} results")
-        
-    except Exception as e:
-        logger.error(f"Error in process WiFi search: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في البحث.")
-
-async def send_balance_handler(update: Update, context: CallbackContext):
-    """إرسال رصيد مع البحث المتقدم"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            if update.message:
-                await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
-            else:
-                await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-        
-        if user['balance'] <= 10:
-            error_msg = f"❌ رصيدك غير كافي\nرصيدك: {user['balance']:.2f} ريال\nالحد الأدنى: 60 ريال (50 + 10 رسوم)"
-            if update.message:
-                await update.message.reply_text(error_msg)
-            else:
-                await update.callback_query.edit_message_text(error_msg)
-            return
-        
-        text = f"""
-💸 **تحويل رصيد** 💸
-
-👤 مرحباً **{user['full_name']}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
-
-🎯 **اختر طريقة التحويل:**
-
-1️⃣ **البحث المتقدم**
-   ابحث عن المستخدم بالاسم، المحفظة، الهاتف أو المعرف
-
-2️⃣ **التحويل السريع**
-   اكتب رقم المحفظة والمبلغ مباشرة
-   مثال: `791234567 100`
-
-⚠️ **ملاحظات مهمة:**
-• رسوم التحويل: 10 ريال
-• الحد الأدنى: 50 ريال
-• الحد الأقصى: {min(user['balance'] - 10, 50000):,.0f} ريال
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('🔍 البحث المتقدم', callback_data='advanced_search_transfer'),
-             InlineKeyboardButton('⚡ تحويل سريع', callback_data='quick_transfer')],
-            [InlineKeyboardButton('📋 سجل التحويلات', callback_data='transfer_history'),
-             InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet')],
-            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-        ]
-        
-        if update.message:
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        else:
-            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in send balance handler: {e}")
-        error_text = "❌ حدث خطأ"
-        if update.message:
-            await update.message.reply_text(error_text)
-        else:
-            await update.callback_query.edit_message_text(error_text)
-
-async def process_balance_send(update: Update, context: CallbackContext):
-    """Process balance sending to another user"""
-    try:
-        if not context.user_data.get('awaiting_balance_send'):
-            return
-        
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.message.reply_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
-            return
-        
-        # Parse input
-        parts = update.message.text.strip().split()
-        if len(parts) < 2:
-            await update.message.reply_text(f"{EMOJIS['error']} تنسيق غير صحيح. أدخل: رقم_المحفظة المبلغ السبب")
-            return
-        
-        target_wallet = parts[0]
-        try:
-            amount = float(parts[1])
-        except ValueError:
-            await update.message.reply_text(f"{EMOJIS['error']} المبلغ يجب أن يكون رقماً صحيحاً.")
-            return
-        
-        reason = ' '.join(parts[2:]) if len(parts) > 2 else 'تحويل رصيد من صديق'
-        
-        # Validate amount
-        if amount <= 0:
-            await update.message.reply_text(f"{EMOJIS['error']} المبلغ يجب أن يكون أكبر من صفر.")
-            return
-        
-        # Calculate transfer fee (1%)
-        transfer_fee = amount * 0.01
-        total_deduction = amount + transfer_fee
-        
-        if total_deduction > user['balance']:
-            await update.message.reply_text(f"""
-{EMOJIS['error']} **رصيدك غير كافي!**
-
-💰 المبلغ المطلوب: **{amount:.2f}** ريال
-💳 رسوم التحويل (1%): **{transfer_fee:.2f}** ريال
-📊 إجمالي الخصم: **{total_deduction:.2f}** ريال
-💵 رصيدك الحالي: **{user['balance']:.2f}** ريال
-❌ النقص: **{total_deduction - user['balance']:.2f}** ريال
-""", parse_mode='Markdown')
-            return
-        
-        # Find target user
-        from bot_modules.database import get_db_connection
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('SELECT * FROM users WHERE wallet_number = ?', (target_wallet,))
-        target_user = cursor.fetchone()
-        
-        if not target_user:
-            await update.message.reply_text(f"""
-{EMOJIS['error']} **لم يتم العثور على المستخدم!**
-
-🔍 رقم المحفظة: `{target_wallet}`
-
-💡 **تأكد من:**
-• صحة رقم المحفظة
-• أن الرقم يتكون من 9 أرقام
-• أن الرقم يبدأ بـ 79
-""", parse_mode='Markdown')
-            conn.close()
-            return
-        
-        if target_user['id'] == user['id']:
-            await update.message.reply_text(f"{EMOJIS['error']} لا يمكنك إرسال رصيد لنفسك!")
-            conn.close()
-            return
-        
-        # Create transactions
-        import uuid
-        from datetime import datetime
-        
-        # Transfer transaction
-        transfer_id = str(uuid.uuid4())
-        cursor.execute('''
-            INSERT INTO transactions 
-            (id, from_user, to_user, amount, type, description, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (transfer_id, user['id'], target_user['id'], amount, 'transfer', reason, datetime.now()))
-        
-        # Fee transaction
-        fee_id = str(uuid.uuid4())
-        cursor.execute('''
-            INSERT INTO transactions 
-            (id, from_user, amount, type, description, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (fee_id, user['id'], transfer_fee, 'transfer_fee', f'رسوم تحويل رصيد إلى {target_user["full_name"]}', datetime.now()))
-        
-        # Update balances
-        from bot_modules.utils import recalc_and_set_user_balance
-        sender_new_balance = recalc_and_set_user_balance(user['id'])
-        receiver_new_balance = recalc_and_set_user_balance(target_user['id'])
-        
-        conn.commit()
-        conn.close()
-        
-        # Clear user state
-        context.user_data.pop('awaiting_balance_send', None)
-        
-        # Send confirmation to sender
-        success_text = f"""
-✅ **تم إرسال الرصيد بنجاح!**
-
-📤 **تفاصيل التحويل:**
-👤 المستلم: **{target_user['full_name']}**
-💰 المبلغ المرسل: **{amount:.2f}** ريال
-💳 رسوم التحويل: **{transfer_fee:.2f}** ريال
-📊 إجمالي الخصم: **{total_deduction:.2f}** ريال
-
-💵 **الأرصدة:**
-🔻 رصيدك الجديد: **{sender_new_balance:.2f}** ريال
-🔺 رصيد المستلم: **{receiver_new_balance:.2f}** ريال
-
-💬 **السبب:** {reason}
-🕐 **وقت التحويل:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-📱 سيتم إشعار المستلم فوراً
-"""
-        
-        await update.message.reply_text(success_text, parse_mode='Markdown')
-        
-        # Send notification to receiver
-        try:
-            notification_text = f"""
-💰 **تم استلام رصيد جديد!** 💰
-
-📥 **تفاصيل الاستلام:**
-👤 المرسل: **{user['full_name']}**
-💰 المبلغ المستلم: **{amount:.2f}** ريال
-💵 رصيدك الجديد: **{receiver_new_balance:.2f}** ريال
-
-💬 **السبب:** {reason}
-🕐 **وقت التحويل:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-───────────────────
-💡 استخدم /wallet لعرض محفظتك
-"""
-            
-            await context.bot.send_message(
-                chat_id=target_user['telegram_id'],
-                text=notification_text,
-                parse_mode='Markdown'
-            )
-        except Exception as e:
-            logger.warning(f"Failed to send notification to receiver {target_user['telegram_id']}: {e}")
-        
-        # Log the transfer
-        logger.info(f"User {user['full_name']} sent {amount} YER to {target_user['full_name']} (fee: {transfer_fee})")
-        
-    except Exception as e:
-        logger.error(f"Error in process balance send: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في إرسال الرصيد.")
-
-# New Enhanced Transfer System
-
-async def process_transfer_step1(update: Update, context: CallbackContext):
-    """Process step 1 - Find user by phone or wallet number"""
-    try:
-        if not context.user_data.get('awaiting_transfer_step1'):
-            return
-        
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.message.reply_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
-            return
-        
-        search_input = update.message.text.strip()
-        
-        # Find target user by phone or wallet number
-        from bot_modules.database import get_db_connection
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Search by wallet number first, then by phone
-        cursor.execute('SELECT * FROM users WHERE wallet_number = ? OR phone = ?', (search_input, search_input))
-        target_user = cursor.fetchone()
-        
-        if not target_user:
-            await update.message.reply_text(f"""
-{EMOJIS['error']} **لم يتم العثور على المستخدم!**
-
-🔍 البحث عن: `{search_input}`
-
-💡 **تأكد من:**
-• صحة رقم الهاتف أو رقم المحفظة
-• أن المستخدم مسجل في البوت
-• أن الرقم مكتوب بالطريقة الصحيحة
-
-📝 جرب مرة أخرى أو اكتب /cancel للإلغاء
-""", parse_mode='Markdown')
-            conn.close()
-            return
-        
-        if target_user['id'] == user['id']:
-            await update.message.reply_text(f"{EMOJIS['error']} لا يمكنك إرسال رصيد لنفسك!")
-            conn.close()
-            return
-        
-        conn.close()
-        
-        # Save target user info and move to step 2
-        context.user_data['target_user_id'] = target_user['id']
-        context.user_data['target_user_name'] = target_user['full_name']
-        context.user_data['target_wallet'] = target_user['wallet_number'] if 'wallet_number' in target_user.keys() else 'غير محدد'
-        context.user_data.pop('awaiting_transfer_step1', None)
-        context.user_data['awaiting_transfer_step2'] = True
-        
-        text = f"""
-✅ **تم العثور على المستخدم!**
-
-👤 **المستلم:** {target_user['full_name']}
-🆔 **رقم المحفظة:** {target_user['wallet_number'] if 'wallet_number' in target_user.keys() else 'غير محدد'}
-📱 **رقم الهاتف:** {target_user['phone']}
-
-💰 **رصيدك الحالي:** {user['balance']:,.2f} ريال
-
-📋 **الخطوة الثانية:**
-أدخل المبلغ الذي تريد إرساله
-
-💡 **مثال:** `100`
-
-⚠️ **ملاحظة:** سيتم خصم 1% رسوم تحويل
-
-📝 أدخل المبلغ:
-
-أو اكتب /cancel للإلغاء
-"""
-        
-        await update.message.reply_text(text, parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in process transfer step 1: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في البحث عن المستخدم.")
-
-async def process_transfer_step2(update: Update, context: CallbackContext):
-    """Process step 2 - Get amount and show confirmation"""
-    try:
-        if not context.user_data.get('awaiting_transfer_step2'):
-            return
-        
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.message.reply_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
-            return
-        
-        # Parse amount
-        try:
-            amount = float(update.message.text.strip())
-        except ValueError:
-            await update.message.reply_text(f"{EMOJIS['error']} المبلغ يجب أن يكون رقماً صحيحاً.")
-            return
-        
-        # Validate amount
-        if amount <= 0:
-            await update.message.reply_text(f"{EMOJIS['error']} المبلغ يجب أن يكون أكبر من صفر.")
-            return
-        
-        # Calculate transfer fee (1%)
-        transfer_fee = amount * 0.01
-        total_deduction = amount + transfer_fee
-        
-        if total_deduction > user['balance']:
-            await update.message.reply_text(f"""
-{EMOJIS['error']} **رصيدك غير كافي!**
-
-💰 المبلغ المطلوب: **{amount:.2f}** ريال
-💳 رسوم التحويل (1%): **{transfer_fee:.2f}** ريال
-📊 إجمالي الخصم: **{total_deduction:.2f}** ريال
-💵 رصيدك الحالي: **{user['balance']:.2f}** ريال
-❌ النقص: **{total_deduction - user['balance']:.2f}** ريال
-
-📝 جرب مبلغاً أقل أو اكتب /cancel للإلغاء
-""", parse_mode='Markdown')
-            return
-        
-        # Save amount and show confirmation
-        context.user_data['transfer_amount'] = amount
-        context.user_data['transfer_fee'] = transfer_fee
-        
-        target_name = context.user_data.get('target_user_name', 'غير محدد')
-        target_wallet = context.user_data.get('target_wallet', 'غير محدد')
-        
-        confirmation_text = f"""
-🔍 **تأكيد التحويل** 🔍
-
-📤 **تفاصيل التحويل:**
-👤 المستلم: **{target_name}**
-🆔 رقم المحفظة: **{target_wallet}**
-💰 المبلغ: **{amount:,.2f}** ريال
-💳 رسوم التحويل: **{transfer_fee:.2f}** ريال
-📊 إجمالي الخصم: **{total_deduction:.2f}** ريال
-
-💵 **رصيدك بعد التحويل:** **{user['balance'] - total_deduction:.2f}** ريال
-
-❓ **هل تريد المتابعة؟**
-"""
-        
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        keyboard = [
-            [InlineKeyboardButton('✅ نعم، أرسل الرصيد', callback_data='confirm_transfer_yes'),
-             InlineKeyboardButton('❌ لا، إلغاء العملية', callback_data='confirm_transfer_no')]
-        ]
-        
-        await update.message.reply_text(
-            confirmation_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-        
-        context.user_data.pop('awaiting_transfer_step2', None)
-        context.user_data['awaiting_transfer_confirmation'] = True
-        
-    except Exception as e:
-        logger.error(f"Error in process transfer step 2: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في معالجة المبلغ.")
-
-async def process_simple_admin_send(update: Update, context: CallbackContext):
-    """Simple admin money sending"""
-    try:
-        if not context.user_data.get('awaiting_simple_send'):
-            return
-        
-        user = get_user(update.effective_user.id)
-        if not user or user['role'] != 'super_admin':
-            await update.message.reply_text("❌ ليس لديك صلاحية.")
-            return
-        
-        # Parse input: wallet_number amount
-        parts = update.message.text.strip().split()
-        if len(parts) < 2:
-            await update.message.reply_text("❌ اكتب: رقم المحفظة والمبلغ\nمثال: 791234567 100")
-            return
-        
-        wallet_number = parts[0]
-        try:
-            amount = float(parts[1])
-        except ValueError:
-            await update.message.reply_text("❌ المبلغ يجب أن يكون رقماً.")
-            return
-        
-        if amount <= 0:
-            await update.message.reply_text("❌ المبلغ يجب أن يكون أكبر من صفر.")
-            return
-        
-        if amount > user['balance']:
-            await update.message.reply_text(f"❌ رصيدك غير كافي.\nرصيدك: {user['balance']:,.0f} ريال")
-            return
-        
-        # Find target user
-        from bot_modules.database import get_db_connection
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('SELECT * FROM users WHERE wallet_number = ?', (wallet_number,))
-        target_user = cursor.fetchone()
-        
-        if not target_user:
-            await update.message.reply_text(f"❌ لم يتم العثور على محفظة: {wallet_number}")
-            conn.close()
-            return
-        
-        # Transfer money
-        import uuid
-        from datetime import datetime
-        
-        transaction_id = str(uuid.uuid4())
-        cursor.execute('''
-            INSERT INTO transactions 
-            (id, from_user, to_user, amount, type, description, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (transaction_id, user['id'], target_user['id'], amount, 'admin_transfer', 'تحويل من المدير', datetime.now()))
-        
-        # Update balances
-        from bot_modules.utils import recalc_and_set_user_balance
-        admin_new_balance = recalc_and_set_user_balance(user['id'])
-        target_new_balance = recalc_and_set_user_balance(target_user['id'])
-        
-        conn.commit()
-        conn.close()
-        
-        # Clear state
-        context.user_data.pop('awaiting_simple_send', None)
-        
-        # Send confirmation
-        await update.message.reply_text(f"""
-✅ **تم الإرسال بنجاح!**
-
-👤 المستلم: {target_user['full_name']}
-💰 المبلغ: {amount:,.0f} ريال
-💵 رصيدك الجديد: {admin_new_balance:,.0f} ريال
-""", parse_mode='Markdown')
-        
-        # Notify receiver
-        try:
-            await context.bot.send_message(
-                chat_id=target_user['telegram_id'],
-                text=f"💰 تم استلام {amount:,.0f} ريال من الإدارة\n💵 رصيدك الجديد: {target_new_balance:,.0f} ريال"
-            )
-        except Exception:
-            pass
-        
-        logger.info(f"Admin {user['full_name']} sent {amount} to {target_user['full_name']}")
-        
-    except Exception as e:
-        logger.error(f"Error in simple admin send: {e}")
-        await update.message.reply_text("❌ حدث خطأ في الإرسال.")
-
-async def process_simple_transfer(update: Update, context: CallbackContext):
-    """Simple user-to-user transfer"""
-    try:
-        if not context.user_data.get('awaiting_simple_transfer'):
-            return
-        
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.message.reply_text("❌ يرجى التسجيل أولاً.")
-            return
-        
-        # Parse input: wallet_number amount
-        parts = update.message.text.strip().split()
-        if len(parts) < 2:
-            await update.message.reply_text("❌ اكتب: رقم المحفظة والمبلغ\nمثال: 791234567 50")
-            return
-        
-        wallet_number = parts[0]
-        try:
-            amount = float(parts[1])
-        except ValueError:
-            await update.message.reply_text("❌ المبلغ يجب أن يكون رقماً.")
-            return
-        
-        if amount <= 0:
-            await update.message.reply_text("❌ المبلغ يجب أن يكون أكبر من صفر.")
-            return
-        
-        if amount < 10:
-            await update.message.reply_text("❌ أقل مبلغ للتحويل هو 10 ريال.")
-            return
-        
-        # Calculate fees
-        transfer_fee = amount * 0.01  # 1%
-        total_deduction = amount + transfer_fee
-        
-        if total_deduction > user['balance']:
-            await update.message.reply_text(f"""❌ رصيدك غير كافي
-
-💰 المبلغ: {amount:.0f} ريال
-💳 الرسوم: {transfer_fee:.0f} ريال
-📊 المطلوب: {total_deduction:.0f} ريال
-💵 رصيدك: {user['balance']:.0f} ريال""")
-            return
-        
-        # Find target user
-        from bot_modules.database import get_db_connection
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('SELECT * FROM users WHERE wallet_number = ?', (wallet_number,))
-        target_user = cursor.fetchone()
-        
-        if not target_user:
-            await update.message.reply_text(f"❌ لم يتم العثور على محفظة: {wallet_number}")
-            conn.close()
-            return
-        
-        if target_user['id'] == user['id']:
-            await update.message.reply_text("❌ لا يمكنك إرسال رصيد لنفسك!")
-            conn.close()
-            return
-        
-        # Transfer money
-        import uuid
-        from datetime import datetime
-        
-        # Transfer transaction
-        transfer_id = str(uuid.uuid4())
-        cursor.execute('''
-            INSERT INTO transactions 
-            (id, from_user, to_user, amount, type, description, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (transfer_id, user['id'], target_user['id'], amount, 'transfer', 'تحويل رصيد', datetime.now()))
-        
-        # Fee transaction
-        fee_id = str(uuid.uuid4())
-        cursor.execute('''
-            INSERT INTO transactions 
-            (id, from_user, amount, type, description, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (fee_id, user['id'], transfer_fee, 'transfer_fee', 'رسوم تحويل', datetime.now()))
-        
-        # Update balances
-        from bot_modules.utils import recalc_and_set_user_balance
-        sender_new_balance = recalc_and_set_user_balance(user['id'])
-        receiver_new_balance = recalc_and_set_user_balance(target_user['id'])
-        
-        conn.commit()
-        conn.close()
-        
-        # Clear state
-        context.user_data.pop('awaiting_simple_transfer', None)
-        
-        # Send confirmation
-        await update.message.reply_text(f"""
-✅ **تم الإرسال بنجاح!**
-
-👤 المستلم: {target_user['full_name']}
-💰 المبلغ: {amount:.0f} ريال
-💳 الرسوم: {transfer_fee:.0f} ريال
-💵 رصيدك الجديد: {sender_new_balance:.0f} ريال
-""", parse_mode='Markdown')
-        
-        # Notify receiver
-        try:
-            await context.bot.send_message(
-                chat_id=target_user['telegram_id'],
-                text=f"💰 تم استلام {amount:.0f} ريال من {user['full_name']}\n💵 رصيدك الجديد: {receiver_new_balance:.0f} ريال"
-            )
-        except Exception:
-            pass
-        
-        logger.info(f"User {user['full_name']} sent {amount} to {target_user['full_name']} (fee: {transfer_fee})")
-        
-    except Exception as e:
-        logger.error(f"Error in simple transfer: {e}")
-        await update.message.reply_text("❌ حدث خطأ في التحويل.")
-
-async def enhanced_placeholder_handler(update: Update, context: CallbackContext, title: str, description: str):
-    """Enhanced placeholder for future features"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            if update.message:
-                await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
-            else:
-                await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-        
-        text = f"""
-✨ **{title}** ✨
-
-👤 مرحباً **{user['full_name']}**
-
-✅ **الميزة متاحة الآن!**
-{description}
-
-🎯 **المميزات الحالية:**
-• واجهة محسنة ومطورة
-• أداء سريع وموثوق  
-• تجربة أفضل
-
-🔔 سيتم إشعارك فور توفر هذه الميزة!
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('🏠 العودة للقائمة الرئيسية', callback_data='main_menu'),
-             InlineKeyboardButton('🔄 تحديث', callback_data='main_menu')]
-        ]
-        
-        if update.message:
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        else:
-            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-            
-    except Exception as e:
-        logger.error(f"Error in enhanced placeholder: {e}")
-        error_text = "❌ حدث خطأ مؤقت"
-        if update.message:
-            await update.message.reply_text(error_text)
-        else:
-            await update.callback_query.edit_message_text(error_text)
-
-async def personal_reports_handler(update: Update, context: CallbackContext):
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            if update.message:
-                await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
-            else:
-                await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT 
-                COUNT(*) as total_transactions,
-                COALESCE(SUM(CASE WHEN type IN ('wallet_recharge','coupon_redeem','p2p_credit') THEN amount ELSE 0 END), 0) as total_in,
-                COALESCE(SUM(CASE WHEN type IN ('card_purchase','p2p_debit') THEN amount ELSE 0 END), 0) as total_out
-            FROM transactions WHERE from_user = ? OR to_user = ?
-        ''', (user['id'], user['id']))
-        summary = cursor.fetchone()
-        cursor.execute('''
-            SELECT type, amount, description, created_at
-            FROM transactions 
-            WHERE from_user = ? OR to_user = ?
-            ORDER BY created_at DESC LIMIT 5
-        ''', (user['id'], user['id']))
-        recent = cursor.fetchall()
-        conn.close()
-        total_in = (summary['total_in'] or 0)
-        total_out = (summary['total_out'] or 0)
-        net = total_in - total_out
-        text = f"""
-📊 تقاريري الشخصية
-
-🔹 الوارد: {total_in:,.2f} ريال
-🔸 الصادر: {total_out:,.2f} ريال
-⚖️ الصافي: {net:,.2f} ريال
-
-🕘 آخر المعاملات:
-"""
-        if recent:
-            for r in recent:
-                text += f"• {r['type']} - {r['amount']:,.2f} - {str(r['created_at'])[:16]}\n"
-        else:
-            text += "لا توجد معاملات حديثة."
-        keyboard = [[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]
-        if update.message:
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-        else:
-            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    except Exception as e:
-        logger.error(f"Error in personal_reports_handler: {e}")
-        if update.message:
-            await update.message.reply_text("❌ حدث خطأ في التقارير الشخصية.")
-        else:
-            await update.callback_query.edit_message_text("❌ حدث خطأ في التقارير الشخصية.")
-
-async def promotions_handler(update: Update, context: CallbackContext):
-    try:
-        text = """
-🎁 العروض والخصومات
-
-لا توجد عروض متاحة حالياً.
-"""
-        kb = [[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]
-        if update.message:
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
-        else:
-            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
-    except Exception as e:
-        logger.error(f"Error in promotions_handler: {e}")
-
-async def my_notifications_handler(update: Update, context: CallbackContext):
-    try:
-        text = """
-🔔 إشعاراتي
-
-لا توجد إشعارات جديدة حالياً.
-"""
-        kb = [[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]
-        if update.message:
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
-        else:
-            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
-    except Exception as e:
-        logger.error(f"Error in my_notifications_handler: {e}")
-
-async def account_settings_handler(update: Update, context: CallbackContext):
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            if update.message:
-                await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
-            else:
-                await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-        text = f"""
-⚙️ إعدادات الحساب
-
-👤 الاسم: {user['full_name']}
-📱 الهاتف: {user.get('phone','غير محدد')}
-👑 الدور: {user.get('role','customer')}
-"""
-        kb = [[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]
-        if update.message:
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
-        else:
-            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
-    except Exception as e:
-        logger.error(f"Error in account_settings_handler: {e}")
-
-async def my_ratings_handler(update: Update, context: CallbackContext):
-    try:
-        text = """
-⭐ تقييماتي
-
-لا توجد تقييمات متاحة حالياً.
-"""
-        kb = [[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]
-        if update.message:
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
-        else:
-            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
-    except Exception as e:
-        logger.error(f"Error in my_ratings_handler: {e}")
-
-async def help_handler(update: Update, context: CallbackContext):
-    """Enhanced help and support"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            if update.message:
-                await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
-            else:
-                await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-        
-        help_text = f"""
-❓ **المساعدة والدعم** ❓
-
-👤 مرحباً **{user['full_name']}**
-🆔 رقم محفظتك: **{user['wallet_number']}**
-
-📋 **الأوامر الأساسية:**
-• `/start` - بدء أو إعادة تشغيل البوت
-• `/menu` - عرض القائمة الرئيسية
-• `/wallet` - عرض محفظتك
-• `/cancel` - إلغاء العملية الحالية
-
-💡 **طريقة الاستخدام:**
-1️⃣ اختر الميزة من القائمة الرئيسية
-2️⃣ اتبع التعليمات المعروضة
-3️⃣ استخدم الأزرار للتنقل
-
-🛒 **لشراء الكروت:**
-• اختر "🛒 شراء كروت"
-• اختر الشبكة والفئة
-• ادفع واستلم الكرت
-
-💸 **لتحويل الرصيد:**
-• اختر "💸 تحويل رصيد"
-• اكتب: رقم المحفظة المبلغ
-• مثال: `791234567 100`
-
-📞 **للدعم الفني:**
-• تواصل مع الإدارة
-• اشرح مشكلتك بوضوح
-• ستتم الإجابة في أسرع وقت
-
-🔧 **نصائح مهمة:**
-• احتفظ برقم محفظتك آمناً
-• لا تشارك معلوماتك مع أحد
-• تأكد من صحة البيانات قبل التأكيد
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('📞 التواصل مع الإدارة', callback_data='contact_admin'),
-             InlineKeyboardButton('🔔 الإشعارات', callback_data='my_notifications')],
-            [InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings'),
-             InlineKeyboardButton('📊 حالة الحساب', callback_data='account_status')],
-            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-        ]
-        
-        if update.message:
-            await update.message.reply_text(help_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        else:
-            await update.callback_query.edit_message_text(help_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-            
-    except Exception as e:
-        logger.error(f"Error in help handler: {e}")
-        error_text = "❌ حدث خطأ في تحميل المساعدة"
-        if update.message:
-            await update.message.reply_text(error_text)
-        else:
-            await update.callback_query.edit_message_text(error_text)
-
-async def search_user_for_transfer(update: Update, context: CallbackContext):
-    """البحث عن مستخدم لإرسال رصيد"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-
-        search_text = f"""
-🔍 **البحث عن مستخدم لإرسال الرصيد** 🔍
-
-👤 مرحباً **{user['full_name']}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
-
-📝 **طرق البحث المتاحة:**
-
-1️⃣ **بالاسم الكامل**
-   اكتب: الاسم أحمد محمد
-
-2️⃣ **برقم المحفظة**
-   اكتب: المحفظة 791234567
-
-3️⃣ **برقم الهاتف**
-   اكتب: الهاتف 770123456
-
-4️⃣ **بمعرف التلغرام**
-   اكتب: المعرف @username
-
-💡 **أمثلة:**
-• `الاسم أحمد محمد علي`
-• `المحفظة 791234567`
-• `الهاتف 770123456`
-• `المعرف @ahmed123`
-
-اكتب طريقة البحث والقيمة:
-"""
-
-        keyboard = [
-            [InlineKeyboardButton('💳 البحث بالمحفظة', callback_data='search_by_wallet'),
-             InlineKeyboardButton('👤 البحث بالاسم', callback_data='search_by_name')],
-            [InlineKeyboardButton('📱 البحث بالهاتف', callback_data='search_by_phone'),
-             InlineKeyboardButton('🆔 البحث بالمعرف', callback_data='search_by_username')],
-            [InlineKeyboardButton('🔙 عودة', callback_data='main_menu'),
-             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
-        ]
-
-        await update.callback_query.edit_message_text(
-            search_text, 
-            reply_markup=InlineKeyboardMarkup(keyboard), 
-            parse_mode='Markdown'
-        )
-        
-        context.user_data['awaiting_user_search'] = True
-
-    except Exception as e:
-        logger.error(f"Error in search user for transfer: {e}")
-        await update.callback_query.edit_message_text("❌ حدث خطأ في البحث")
-
-async def process_user_search(update: Update, context: CallbackContext, search_text: str):
-    """معالجة البحث عن المستخدم"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
-            return
-
-        # تحليل نص البحث
-        search_text = search_text.strip()
-        search_results = []
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        if search_text.startswith('الاسم '):
-            # البحث بالاسم
-            name = search_text[5:].strip()
-            cursor.execute("""
-                SELECT id, full_name, wallet_number, phone, telegram_id, balance, is_active, role
-                FROM users 
-                WHERE full_name LIKE ? AND id != ?
-                ORDER BY full_name
-                LIMIT 10
-            """, (f"%{name}%", user['id']))
-            
-        elif search_text.startswith('المحفظة '):
-            # البحث برقم المحفظة
-            wallet = search_text[8:].strip()
-            cursor.execute("""
-                SELECT id, full_name, wallet_number, phone, telegram_id, balance, is_active, role
-                FROM users 
-                WHERE wallet_number = ? AND id != ?
-            """, (wallet, user['id']))
-            
-        elif search_text.startswith('الهاتف '):
-            # البحث برقم الهاتف
-            phone = search_text[7:].strip()
-            cursor.execute("""
-                SELECT id, full_name, wallet_number, phone, telegram_id, balance, is_active, role
-                FROM users 
-                WHERE phone LIKE ? AND id != ?
-                ORDER BY full_name
-                LIMIT 10
-            """, (f"%{phone}%", user['id']))
-            
-        elif search_text.startswith('المعرف '):
-            # البحث بمعرف التلغرام
-            username = search_text[7:].strip().replace('@', '')
-            cursor.execute("""
-                SELECT id, full_name, wallet_number, phone, telegram_id, balance, is_active, role
-                FROM users 
-                WHERE CAST(telegram_id AS TEXT) LIKE ? AND id != ?
-                ORDER BY full_name
-                LIMIT 10
-            """, (f"%{username}%", user['id']))
-        else:
-            # بحث عام في جميع الحقول
-            cursor.execute("""
-                SELECT id, full_name, wallet_number, phone, telegram_id, balance, is_active, role
-                FROM users 
-                WHERE (full_name LIKE ? OR wallet_number LIKE ? OR phone LIKE ? OR CAST(telegram_id AS TEXT) LIKE ?) 
-                AND id != ?
-                ORDER BY full_name
-                LIMIT 10
-            """, (f"%{search_text}%", f"%{search_text}%", f"%{search_text}%", f"%{search_text}%", user['id']))
-
-        search_results = cursor.fetchall()
-        conn.close()
-
-        if not search_results:
-            await update.message.reply_text(
-                f"❌ **لم يتم العثور على نتائج**\n\n"
-                f"🔍 تم البحث عن: `{search_text}`\n"
-                f"💡 تأكد من صحة البيانات وحاول مرة أخرى\n\n"
-                f"🔄 للبحث مرة أخرى: /transfer",
-                parse_mode='Markdown'
-            )
-            context.user_data.pop('awaiting_user_search', None)
-            return
-
-        # عرض النتائج
-        result_text = f"""
-🔍 **نتائج البحث** 🔍
-
-👤 **{user['full_name']}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
-
-📊 **تم العثور على {len(search_results)} نتيجة:**
-
-"""
-
-        keyboard = []
-        for i, result in enumerate(search_results, 1):
-            user_id, full_name, wallet_number, phone, telegram_id, balance, is_active, role = result
-            status_emoji = "✅" if is_active else "⏳"
-            role_emoji = "👑" if role == 'admin' else "🏪" if role == 'supplier' else "💼" if role == 'agent' else "👤"
-            
-            result_text += f"""
-{i}️⃣ {status_emoji} **{full_name}** {role_emoji}
-   💳 المحفظة: `{wallet_number}`
-   📱 الهاتف: {phone or 'غير متاح'}
-   💰 الرصيد: {balance:,.2f} ريال
-   ━━━━━━━━━━━━━━━━━━━━━━━━━
-"""
-            
-            # إضافة زر للاختيار
-            keyboard.append([InlineKeyboardButton(
-                f"{i}️⃣ {full_name[:20]}... - {wallet_number}",
-                callback_data=f"select_user_{user_id}"
-            )])
-
-        # إضافة أزرار إضافية
-        keyboard.extend([
-            [InlineKeyboardButton('🔍 بحث جديد', callback_data='transfer_to_friend'),
-             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')],
-            [InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
-        ])
-
-        await update.message.reply_text(
-            result_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-        
-        # حفظ النتائج للاختيار
-        context.user_data['search_results'] = {str(result[0]): result for result in search_results}
-        context.user_data.pop('awaiting_user_search', None)
-
-    except sqlite3.OperationalError as db_error:
-        logger.error(f"Database error in user search: {db_error}")
-        await update.message.reply_text(
-            "❌ **خطأ في قاعدة البيانات** ❌\n\n"
-            "🔄 يرجى المحاولة مرة أخرى بعد قليل",
-            parse_mode='Markdown'
-        )
-        context.user_data.pop('awaiting_user_search', None)
-    except Exception as e:
-        logger.error(f"Error in process user search: {e}")
-        await update.message.reply_text(
-            "❌ **حدث خطأ في البحث** ❌\n\n"
-            f"🔍 **التفاصيل:** {str(e)[:100]}...\n\n"
-            "🔄 **يرجى المحاولة مرة أخرى**",
-            parse_mode='Markdown'
-        )
-        context.user_data.pop('awaiting_user_search', None)
-
-async def select_user_for_transfer(update: Update, context: CallbackContext, selected_user_id: str):
-    """اختيار مستخدم لإرسال الرصيد"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-
-        # الحصول على بيانات المستخدم المختار
-        search_results = context.user_data.get('search_results', {})
-        if selected_user_id not in search_results:
-            await update.callback_query.edit_message_text("❌ المستخدم غير موجود")
-            return
-
-        selected_user = search_results[selected_user_id]
-        target_id, target_name, target_wallet, target_phone, target_username, target_balance, target_active, target_role = selected_user
-
-        if not target_active:
-            await update.callback_query.edit_message_text(
-                "❌ **المستخدم غير مفعل**\n\n"
-                f"👤 {target_name}\n"
-                f"💳 {target_wallet}\n\n"
-                "لا يمكن إرسال رصيد لمستخدم غير مفعل"
-            )
-            return
-
-        # طلب المبلغ
-        transfer_text = f"""
-💸 **تحويل رصيد** 💸
-
-👤 **المرسل:** {user['full_name']}
-💰 **رصيدك:** {user['balance']:,.2f} ريال
-
-📤 **المستقبل:**
-👤 الاسم: **{target_name}**
-💳 المحفظة: **{target_wallet}**
-📱 الهاتف: {target_phone or 'غير متاح'}
-💰 رصيده: {target_balance:,.2f} ريال
-
-💡 **اكتب المبلغ الذي تريد إرساله:**
-
-⚠️ **ملاحظات مهمة:**
-• رسوم التحويل: 10 ريال
-• الحد الأدنى: 50 ريال
-• الحد الأقصى: {min(user['balance'] - 10, 50000):,.0f} ريال
-• تأكد من صحة البيانات قبل التأكيد
-"""
-
-        keyboard = [
-            [InlineKeyboardButton('💰 100 ريال', callback_data=f'amount_100_{selected_user_id}'),
-             InlineKeyboardButton('💰 500 ريال', callback_data=f'amount_500_{selected_user_id}')],
-            [InlineKeyboardButton('💰 1000 ريال', callback_data=f'amount_1000_{selected_user_id}'),
-             InlineKeyboardButton('💰 5000 ريال', callback_data=f'amount_5000_{selected_user_id}')],
-            [InlineKeyboardButton('🔙 اختيار مستخدم آخر', callback_data='transfer_to_friend'),
-             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
-        ]
-
-        await update.callback_query.edit_message_text(
-            transfer_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-
-        # حفظ بيانات التحويل
-        context.user_data['transfer_target'] = {
-            'id': target_id,
-            'name': target_name,
-            'wallet': target_wallet,
-            'phone': target_phone
-        }
-        context.user_data['awaiting_transfer_amount'] = True
-
-    except Exception as e:
-        logger.error(f"Error in select user for transfer: {e}")
-        await update.callback_query.edit_message_text("❌ حدث خطأ في اختيار المستخدم")
-
-async def show_all_networks(update: Update, context: CallbackContext):
-    """عرض جميع الشبكات المتاحة"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # الحصول على جميع الشبكات مع فئات الكروت
-        cursor.execute('''
-            SELECT 
-                n.id, n.name, n.provider, n.description, n.location,
-                COUNT(cc.id) as card_types,
-                SUM(cc.stock_count) as total_stock,
-                MIN(cc.price) as min_price,
-                MAX(cc.price) as max_price
-            FROM networks n
-            LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
-            WHERE n.is_active = 1
-            GROUP BY n.id, n.name, n.provider, n.description, n.location
-            ORDER BY n.name
-        ''')
-        
-        networks = cursor.fetchall()
-        conn.close()
-        
-        if not networks:
-            await update.callback_query.edit_message_text(
-                "❌ **لا توجد شبكات متاحة حالياً**\n\n"
-                "تحقق لاحقاً للحصول على التحديثات"
-            )
-            return
-
-        text = f"""
-🌐 **جميع الشبكات المتاحة** 🌐
-
-👤 **{user['full_name']}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
-
-📊 **عدد الشبكات:** {len(networks)} شبكة
-
-"""
-
-        keyboard = []
-        for network in networks:
-            network_id, name, provider, description, location, card_types, total_stock, min_price, max_price = network
-            
-            # تنسيق معلومات الشبكة
-            stock_status = "📦" if total_stock and total_stock > 0 else "❌"
-            price_range = ""
-            if min_price and max_price:
-                if min_price == max_price:
-                    price_range = f"{min_price:,.0f} ريال"
-                else:
-                    price_range = f"{min_price:,.0f} - {max_price:,.0f} ريال"
-            
-            text += f"""
-🏢 **{name}**
-📝 {description or 'شبكة واي فاي منزلية'}
-📍 الموقع: {location or 'غير محدد'}
-👤 المزود: {provider}
-💳 الفئات: {card_types or 0} فئة
-📦 المخزون: {total_stock or 0} كرت
-💰 الأسعار: {price_range or 'غير محدد'}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-
-"""
-            
-            # إضافة زر للشبكة
-            button_text = f"{stock_status} {name}"
-            if total_stock and total_stock > 0:
-                button_text += f" ({total_stock})"
-            
-            keyboard.append([InlineKeyboardButton(
-                button_text,
-                callback_data=f"network_{network_id}"
-            )])
-
-        # إضافة أزرار إضافية
-        keyboard.extend([
-            [InlineKeyboardButton('🔍 بحث متقدم', callback_data='search_networks'),
-             InlineKeyboardButton('💰 ترتيب بالسعر', callback_data='networks_by_price')],
-            [InlineKeyboardButton('🔙 عودة', callback_data='search_networks'),
-             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-        ])
-
-        await update.callback_query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-
-    except Exception as e:
-        logger.error(f"Error in show all networks: {e}")
-        await update.callback_query.edit_message_text("❌ حدث خطأ في عرض الشبكات")
-
-async def show_network_details(update: Update, context: CallbackContext, network_id: str):
-    """عرض تفاصيل شبكة معينة - يستخدم الوظيفة المحسنة"""
-    try:
-        from network_handler import show_network_details_enhanced
-        await show_network_details_enhanced(update, context, network_id)
-    except Exception as e:
-        logger.error(f"Error in show network details: {e}")
-        await update.callback_query.edit_message_text("❌ حدث خطأ في عرض تفاصيل الشبكة")
-
-async def show_mobile_networks(update: Update, context: CallbackContext):
-    """عرض شبكات المحمول"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # البحث عن شبكات المحمول
-        cursor.execute('''
-            SELECT 
-                n.id, n.name, n.provider, n.description,
-                COUNT(cc.id) as card_types,
-                SUM(cc.stock_count) as total_stock,
-                MIN(cc.price) as min_price,
-                MAX(cc.price) as max_price
-            FROM networks n
-            LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
-            WHERE n.is_active = 1 AND (
-                n.name LIKE '%سبأفون%' OR 
-                n.name LIKE '%إم تي إن%' OR 
-                n.name LIKE '%واي%' OR
-                n.name LIKE '%تيليمن%' OR
-                n.provider LIKE '%محمول%' OR
-                n.provider LIKE '%موبايل%'
-            )
-            GROUP BY n.id, n.name, n.provider, n.description
-            ORDER BY n.name
-        ''')
-        
-        networks = cursor.fetchall()
-        conn.close()
-        
-        text = f"""
-📱 **شبكات المحمول** 📱
-
-👤 **{user['full_name']}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
-
-📊 **تم العثور على:** {len(networks)} شبكة محمول
-
-"""
-
-        keyboard = []
-        
-        if networks:
-            for network in networks:
-                network_id, name, provider, description, card_types, total_stock, min_price, max_price = network
-                
-                stock_status = "📦" if total_stock and total_stock > 0 else "❌"
-                text += f"""
-📱 **{name}**
-📝 {description or 'شبكة محمول موثوقة'}
-💳 الفئات: {card_types or 0} فئة
-📦 المخزون: {total_stock or 0} كرت
-━━━━━━━━━━━━━━━━━━━━━━━━━
-
-"""
-                
-                keyboard.append([InlineKeyboardButton(
-                    f"{stock_status} {name}",
-                    callback_data=f"network_{network_id}"
-                )])
-        else:
-            text += "❌ لا توجد شبكات محمول متاحة حالياً\n"
-
-        # إضافة أزرار إضافية
-        keyboard.extend([
-            [InlineKeyboardButton('🏠 إنترنت منزلي', callback_data='home_networks'),
-             InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks')],
-            [InlineKeyboardButton('🔙 عودة', callback_data='search_networks'),
-             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-        ])
-
-        await update.callback_query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-
-    except Exception as e:
-        logger.error(f"Error in show mobile networks: {e}")
-        await update.callback_query.edit_message_text("❌ حدث خطأ في عرض شبكات المحمول")
-
-async def show_home_networks(update: Update, context: CallbackContext):
-    """عرض شبكات الإنترنت المنزلي"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # البحث عن شبكات الإنترنت المنزلي
-        cursor.execute('''
-            SELECT 
-                n.id, n.name, n.provider, n.description,
-                COUNT(cc.id) as card_types,
-                SUM(cc.stock_count) as total_stock,
-                MIN(cc.price) as min_price,
-                MAX(cc.price) as max_price
-            FROM networks n
-            LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
-            WHERE n.is_active = 1 AND (
-                n.name LIKE '%نت%' OR 
-                n.name LIKE '%ماكس%' OR 
-                n.name LIKE '%برودباند%' OR
-                n.provider LIKE '%إنترنت%' OR
-                n.description LIKE '%منزلي%' OR
-                n.description LIKE '%واي فاي%'
-            )
-            GROUP BY n.id, n.name, n.provider, n.description
-            ORDER BY n.name
-        ''')
-        
-        networks = cursor.fetchall()
-        conn.close()
-        
-        text = f"""
-🏠 **إنترنت منزلي** 🏠
-
-👤 **{user['full_name']}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
-
-📊 **تم العثور على:** {len(networks)} شبكة إنترنت منزلي
-
-"""
-
-        keyboard = []
-        
-        if networks:
-            for network in networks:
-                network_id, name, provider, description, card_types, total_stock, min_price, max_price = network
-                
-                stock_status = "📦" if total_stock and total_stock > 0 else "❌"
-                text += f"""
-🏠 **{name}**
-📝 {description or 'شبكة إنترنت منزلي موثوقة'}
-💳 الفئات: {card_types or 0} فئة
-📦 المخزون: {total_stock or 0} كرت
-━━━━━━━━━━━━━━━━━━━━━━━━━
-
-"""
-                
-                keyboard.append([InlineKeyboardButton(
-                    f"{stock_status} {name}",
-                    callback_data=f"network_{network_id}"
-                )])
-        else:
-            text += "❌ لا توجد شبكات إنترنت منزلي متاحة حالياً\n"
-
-        # إضافة أزرار إضافية
-        keyboard.extend([
-            [InlineKeyboardButton('📱 شبكات المحمول', callback_data='mobile_networks'),
-             InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks')],
-            [InlineKeyboardButton('🔙 عودة', callback_data='search_networks'),
-             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-        ])
-
-        await update.callback_query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-
-    except Exception as e:
-        logger.error(f"Error in show home networks: {e}")
-        await update.callback_query.edit_message_text("❌ حدث خطأ في عرض شبكات الإنترنت المنزلي")
-
-async def quick_transfer_handler(update: Update, context: CallbackContext):
-    """التحويل السريع"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-        
-        text = f"""
-⚡ **تحويل سريع** ⚡
-
-👤 **{user['full_name']}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
-
-📝 **اكتب: رقم المحفظة والمبلغ**
-💡 مثال: `791234567 100`
-
-⚠️ **ملاحظات مهمة:**
-• رسوم التحويل: 10 ريال
-• الحد الأدنى: 50 ريال
-• الحد الأقصى: {min(user['balance'] - 10, 50000):,.0f} ريال
-• تأكد من صحة البيانات قبل الإرسال
-
-📋 **خطوات التحويل:**
-1️⃣ اكتب رقم المحفظة والمبلغ
-2️⃣ تأكيد البيانات
-3️⃣ إتمام التحويل فوراً
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('🔍 البحث المتقدم', callback_data='advanced_search_transfer'),
-             InlineKeyboardButton('📋 سجل التحويلات', callback_data='transfer_history')],
-            [InlineKeyboardButton('🔙 عودة', callback_data='transfer_to_friend'),
-             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
-        ]
-        
-        await update.callback_query.edit_message_text(
-            text, 
-            reply_markup=InlineKeyboardMarkup(keyboard), 
-            parse_mode='Markdown'
-        )
-        
-        context.user_data['awaiting_simple_transfer'] = True
-        
-    except Exception as e:
-        logger.error(f"Error in quick transfer handler: {e}")
-        await update.callback_query.edit_message_text("❌ حدث خطأ في التحويل السريع")
-
-async def search_by_type_handler(update: Update, context: CallbackContext, search_type: str):
-    """البحث حسب النوع"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-        
-        type_names = {
-            "wallet": "رقم المحفظة",
-            "name": "الاسم الكامل", 
-            "phone": "رقم الهاتف",
-            "username": "معرف التلغرام"
-        }
-        
-        type_examples = {
-            "wallet": "791234567",
-            "name": "أحمد محمد علي",
-            "phone": "770123456", 
-            "username": "@ahmed123"
-        }
-        
-        search_name = type_names.get(search_type, "غير محدد")
-        example = type_examples.get(search_type, "")
-        
-        text = f"""
-🔍 **البحث بـ{search_name}** 🔍
-
-👤 **{user['full_name']}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
-
-📝 **اكتب {search_name} للمستخدم:**
-
-💡 **مثال:** `{example}`
-
-⚠️ **ملاحظات:**
-• اكتب البيانات بدقة
-• يمكن البحث بالجزء أو الكامل
-• سيتم عرض النتائج المطابقة
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('🔙 طرق البحث الأخرى', callback_data='advanced_search_transfer'),
-             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
-        ]
-        
-        await update.callback_query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-        
-        context.user_data['awaiting_user_search'] = True
-        context.user_data['search_type'] = search_type
-        
-    except Exception as e:
-        logger.error(f"Error in search by type handler: {e}")
-        await update.callback_query.edit_message_text("❌ حدث خطأ في البحث")
-
-async def process_amount_selection(update: Update, context: CallbackContext, amount: str, user_id: str):
-    """معالجة اختيار المبلغ"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-        
-        # التحقق من البيانات المحفوظة
-        search_results = context.user_data.get('search_results', {})
-        if user_id not in search_results:
-            await update.callback_query.edit_message_text("❌ بيانات المستخدم غير متاحة")
-            return
-        
-        selected_user = search_results[user_id]
-        target_id, target_name, target_wallet, target_phone, target_username, target_balance, target_active, target_role = selected_user
-        
-        transfer_amount = float(amount)
-        fee = 10
-        total_needed = transfer_amount + fee
-        
-        # التحقق من الرصيد
-        if user['balance'] < total_needed:
-            await update.callback_query.edit_message_text(
-                f"❌ **رصيد غير كافي**\n\n"
-                f"💰 رصيدك: {user['balance']:,.2f} ريال\n"
-                f"💸 المطلوب: {total_needed:,.2f} ريال\n"
-                f"   • المبلغ: {transfer_amount:,.2f} ريال\n"
-                f"   • الرسوم: {fee:,.2f} ريال\n\n"
-                f"💡 تحتاج {total_needed - user['balance']:,.2f} ريال إضافية"
-            )
-            return
-        
-        # عرض تأكيد التحويل
-        confirmation_text = f"""
-✅ **تأكيد التحويل** ✅
-
-👤 **من:** {user['full_name']}
-💳 محفظتك: {user['wallet_number']}
-
-📤 **إلى:** {target_name}
-💳 محفظة المستقبل: {target_wallet}
-
-💰 **تفاصيل التحويل:**
-💸 المبلغ: **{transfer_amount:,.2f}** ريال
-💳 الرسوم: **{fee:,.2f}** ريال
-💵 الإجمالي: **{total_needed:,.2f}** ريال
-
-💰 **رصيدك بعد التحويل:** {user['balance'] - total_needed:,.2f} ريال
-
-⚠️ **هل تريد إتمام التحويل؟**
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('✅ تأكيد التحويل', callback_data=f'confirm_transfer_{user_id}_{amount}'),
-             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')],
-            [InlineKeyboardButton('🔙 تغيير المبلغ', callback_data=f'select_user_{user_id}')]
-        ]
-        
-        await update.callback_query.edit_message_text(
-            confirmation_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-        
-    except Exception as e:
-        logger.error(f"Error in process amount selection: {e}")
-        await update.callback_query.edit_message_text("❌ حدث خطأ في معالجة المبلغ")
-
-async def process_card_purchase(update: Update, context: CallbackContext, category_id: str):
-    """معالجة شراء الكرت - يستخدم الوظيفة المحسنة"""
-    try:
-        from bot_modules.network_handler import process_card_purchase_enhanced
-        await process_card_purchase_enhanced(update, context, category_id)
-    except Exception as e:
-        logger.error(f"Error in process card purchase: {e}", exc_info=True)
-        await update.callback_query.edit_message_text("❌ حدث خطأ في معالجة الشراء")
-
-# Export main handlers for use in main bot file
-COMMAND_HANDLERS = {
-    'start': start,
-    'wallet': wallet_handler,
-    'admin': admin_handler,
-    'cancel': cancel,
-    'wifi_search': wifi_search_handler,
-    'send_balance': send_balance_handler,
-    'search_networks': wifi_search_handler,
-    'transfer_to_friend': send_balance_handler,
-    'personal_reports': personal_reports_handler,
-    'promotions': promotions_handler,
-    'my_notifications': my_notifications_handler,
-    'account_settings': account_settings_handler,
-    'my_ratings': my_ratings_handler,
-    'agent_panel': lambda u, c: enhanced_placeholder_handler(u, c, "💼 لوحة الوكيل", "لوحة تحكم خاصة بالوكلاء"),
-    'my_commissions': lambda u, c: enhanced_placeholder_handler(u, c, "💰 عمولاتي", "عرض العمولات والأرباح"),
-    'supplier_panel': lambda u, c: enhanced_placeholder_handler(u, c, "🏪 لوحة المزود", "لوحة تحكم خاصة بالمزودين"),
-    'manage_networks': lambda u, c: supplier_manage_networks(u, c),
-    'upload_cards': lambda u, c: enhanced_placeholder_handler(u, c, "📤 رفع كروت", "رفع وإدارة كروت الشحن"),
-    'sales_reports': lambda u, c: enhanced_placeholder_handler(u, c, "📈 تقارير المبيعات", "تقارير مفصلة عن مبيعاتك"),
-    'buy_cards': lambda u, c: enhanced_placeholder_handler(u, c, "🛒 شراء الكروت", "شراء كروت الشحن من الشبكات المتاحة"),
-    'help': help_handler,
-    'transaction_details': lambda u, c: enhanced_placeholder_handler(u, c, "📊 تفاصيل المعاملات", "عرض تفاصيل معاملاتك المالية"),
-    'wallet_stats': lambda u, c: enhanced_placeholder_handler(u, c, "📈 إحصائيات المحفظة", "إحصائيات مفصلة عن محفظتك"),
-    'account_statement': lambda u, c: enhanced_placeholder_handler(u, c, "📄 كشف الحساب", "كشف حساب مفصل بجميع المعاملات"),
-    'deposit_balance': lambda u, c: enhanced_placeholder_handler(u, c, "💰 إيداع رصيد", "إيداع رصيد في محفظتك"),
-    'wallet_settings': lambda u, c: enhanced_placeholder_handler(u, c, "⚙️ إعدادات المحفظة", "إعدادات وتخصيص محفظتك"),
-    'contact_admin': lambda u, c: enhanced_placeholder_handler(u, c, "📞 التواصل مع الإدارة", "التواصل مع فريق الدعم"),
-    'account_status': lambda u, c: enhanced_placeholder_handler(u, c, "📊 حالة الحساب", "عرض حالة وإحصائيات حسابك"),
-    'advanced_search_transfer': search_user_for_transfer,
-    'quick_transfer': quick_transfer_handler,
-    'transfer_history': lambda u, c: enhanced_placeholder_handler(u, c, "📋 سجل التحويلات", "سجل جميع عمليات التحويل"),
-    'search_by_wallet': lambda u, c: search_by_type_handler(u, c, "wallet"),
-    'search_by_name': lambda u, c: search_by_type_handler(u, c, "name"),
-    'search_by_phone': lambda u, c: search_by_type_handler(u, c, "phone"),
-    'search_by_username': lambda u, c: search_by_type_handler(u, c, "username"),
-    'all_networks': show_all_networks,
-    'mobile_networks': show_mobile_networks,
-    'home_networks': show_home_networks,
-    'search_by_network_name': lambda u, c: search_networks_by_name(u, c),
-    'networks_by_price': lambda u, c: enhanced_placeholder_handler(u, c, "💰 ترتيب بالسعر", "ترتيب الشبكات حسب السعر"),
-    'popular_networks': lambda u, c: enhanced_placeholder_handler(u, c, "⭐ الأكثر طلباً", "الشبكات الأكثر شعبية"),
-    'insufficient_balance': lambda u, c: enhanced_placeholder_handler(u, c, "💰 رصيد غير كافي", "تحتاج لشحن رصيدك أولاً"),
-    'supplier_manage_networks': lambda u, c: supplier_manage_networks(u, c),
-    'add_new_network': lambda u, c: add_new_network_handler(u, c),
-    'network_sales_reports': lambda u, c: enhanced_placeholder_handler(u, c, "📊 تقارير المبيعات", "عرض تقارير مفصلة عن مبيعات شبكاتك"),
-    'manage_stock': lambda u, c: enhanced_placeholder_handler(u, c, "📦 إدارة المخزون", "إدارة مخزون الكروت والشبكات"),
-    'profit_analysis': lambda u, c: enhanced_placeholder_handler(u, c, "📈 تحليل الأرباح", "تحليل مفصل للأرباح والعوائد"),
-}
-
-from telegram.ext import MessageHandler, CallbackQueryHandler, filters
-
-CONVERSATION_STATES = {
-    GET_FULL_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_full_name)],
-    GET_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone)],
-    CHOOSE_ROLE: [CallbackQueryHandler(choose_role, pattern='^role_')],
-}
-
-async def supplier_manage_networks(update: Update, context: CallbackContext):
-    """إدارة الشبكات للمزودين"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-        
-        if user['role'] != 'supplier':
-            await update.callback_query.edit_message_text("❌ هذه الميزة متاحة للمزودين فقط")
-            return
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # الحصول على شبكات المزود
-        cursor.execute('''
-            SELECT id, name, description, location, is_active, created_at
-            FROM networks 
-            WHERE created_by = ?
-            ORDER BY created_at DESC
-        ''', (user['id'],))
-        
-        my_networks = cursor.fetchall()
-        
-        # الحصول على إجمالي الكروت المباعة
-        cursor.execute('''
-            SELECT COUNT(*) as total_sold, SUM(cc.price) as total_revenue
-            FROM cards c
-            JOIN card_categories cc ON c.category_id = cc.id
-            JOIN networks n ON cc.network_id = n.id
-            WHERE n.created_by = ? AND c.is_sold = 1
-        ''', (user['id'],))
-        
-        sales_data = cursor.fetchone()
-        total_sold = sales_data[0] if sales_data else 0
-        total_revenue = sales_data[1] if sales_data else 0.0
-        
-        conn.close()
-        
-        text = f"""
-🏪 **إدارة شبكاتي** 🏪
-
-👤 المزود: **{user['full_name']}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
-
-📊 **إحصائيات المبيعات:**
-💳 إجمالي الكروت المباعة: **{total_sold:,}** كرت
-💰 إجمالي الإيرادات: **{total_revenue:,.2f}** ريال
-
-🌐 **شبكاتي ({len(my_networks)} شبكة):**
-
-"""
-
-        keyboard = []
-        
-        if my_networks:
-            for network in my_networks:
-                network_id, name, description, location, is_active, created_at = network
-                status_emoji = "✅" if is_active else "⏳"
-                
-                text += f"""
-{status_emoji} **{name}**
-📝 {description or 'شبكة واي فاي منزلية'}
-📍 الموقع: {location or 'غير محدد'}
-📅 أضيفت: {created_at[:10]}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-
-"""
-                
-                keyboard.append([InlineKeyboardButton(
-                    f"{status_emoji} {name}",
-                    callback_data=f"manage_network_{network_id}"
-                )])
-        else:
-            text += """
-📋 **لم تقم بإضافة أي شبكات بعد**
-
-💡 **لإضافة شبكة جديدة:**
-• اضغط على "إضافة شبكة جديدة"
-• أدخل اسم الشبكة
-• أضف وصفاً للشبكة
-• أضف فئات الكروت والأسعار
-
-🎯 **فوائد إضافة الشبكات:**
-• زيادة مبيعاتك
-• وصول أكبر للعملاء
-• إدارة سهلة للمخزون
-"""
-
-        # إضافة أزرار الإدارة
-        keyboard.extend([
-            [InlineKeyboardButton('➕ إضافة شبكة جديدة', callback_data='add_new_network'),
-             InlineKeyboardButton('📊 تقارير المبيعات', callback_data='network_sales_reports')],
-            [InlineKeyboardButton('📦 إدارة المخزون', callback_data='manage_stock'),
-             InlineKeyboardButton('💰 تحليل الأرباح', callback_data='profit_analysis')],
-            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel'),
-             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-        ])
-
-        await update.callback_query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-
-    except Exception as e:
-        logger.error(f"Error in supplier manage networks: {e}")
-        await update.callback_query.edit_message_text("❌ حدث خطأ في إدارة الشبكات")
-
-async def add_new_network_handler(update: Update, context: CallbackContext):
-    """إضافة شبكة جديدة"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-        
-        if user['role'] != 'supplier':
-            await update.callback_query.edit_message_text("❌ هذه الميزة متاحة للمزودين فقط")
-            return
-        
-        text = f"""
-➕ **إضافة شبكة واي فاي جديدة** ➕
-
-👤 المزود: **{user['full_name']}**
-
-📝 **أدخل اسم الشبكة:**
-
-💡 **أمثلة على أسماء الشبكات:**
-• `واي فاي الرحمن`
-• `شبكة النور للإنترنت`
-• `واي فاي البركة`
-• `إنترنت الأمل المنزلي`
-
-⚠️ **ملاحظات مهمة:**
-• اختر اسماً واضحاً وجذاباً
-• تجنب الأسماء المكررة
-• يفضل أن يعكس الاسم منطقتك أو خدمتك
-• لا تستخدم رموز غريبة
-
-📝 **اكتب اسم الشبكة:**
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('🔙 إدارة شبكاتي', callback_data='manage_networks'),
-             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
-        ]
-        
-        await update.callback_query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-        
-        context.user_data['awaiting_network_name'] = True
-        
-    except Exception as e:
-        logger.error(f"Error in add new network handler: {e}")
-        await update.callback_query.edit_message_text("❌ حدث خطأ في إضافة شبكة جديدة")
-
-async def process_network_creation(update: Update, context: CallbackContext, network_name: str):
-    """معالجة إنشاء شبكة جديدة"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
-            return
-        
-        if user['role'] != 'supplier':
-            await update.message.reply_text("❌ هذه الميزة متاحة للمزودين فقط")
-            return
-        
-        network_name = network_name.strip()
-        
-        if len(network_name) < 3:
-            await update.message.reply_text("❌ اسم الشبكة قصير جداً. يجب أن يكون على الأقل 3 أحرف")
-            return
-        
-        if len(network_name) > 50:
-            await update.message.reply_text("❌ اسم الشبكة طويل جداً. الحد الأقصى 50 حرف")
-            return
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # التحقق من عدم تكرار الاسم
-        cursor.execute('SELECT id FROM networks WHERE name = ?', (network_name,))
-        if cursor.fetchone():
-            await update.message.reply_text("❌ اسم الشبكة موجود بالفعل. اختر اسماً آخر")
-            return
-        
-        # إضافة الشبكة الجديدة
-        cursor.execute('''
-            INSERT INTO networks (supplier_id, name, provider, description, created_by, is_active, is_approved)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (user['id'], network_name, user['full_name'], f'شبكة واي فاي منزلية - {network_name}', user['id'], 1, 1))
-        
-        network_id = cursor.lastrowid
-        
-        conn.commit()
-        conn.close()
-        
-        # طلب وصف الشبكة
-        text = f"""
-✅ **تم إنشاء الشبكة بنجاح!** ✅
-
-🌐 **اسم الشبكة:** {network_name}
-👤 **المزود:** {user['full_name']}
-📅 **تاريخ الإنشاء:** اليوم
-
-📝 **الآن أدخل وصفاً للشبكة:**
-
-💡 **أمثلة على الوصف:**
-• `شبكة واي فاي منزلية عالية السرعة في منطقة الصافية`
-• `إنترنت منزلي مستقر للألعاب والدراسة`
-• `واي فاي منزلي سريع ومناسب للعائلات`
-
-⚠️ **نصائح للوصف:**
-• اذكر المنطقة إذا أمكن
-• أشر إلى جودة الخدمة
-• اذكر الاستخدامات المناسبة
-• لا تتجاوز 100 حرف
-
-📝 **اكتب وصف الشبكة:**
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('⏭️ تخطي الوصف', callback_data=f'skip_description_{network_id}'),
-             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
-        ]
-        
-        await update.message.reply_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-        
-        context.user_data['awaiting_network_description'] = True
-        context.user_data['new_network_id'] = network_id
-        context.user_data.pop('awaiting_network_name', None)
-        
-    except Exception as e:
-        logger.error(f"Error in process network creation: {e}")
-        await update.message.reply_text("❌ حدث خطأ في إنشاء الشبكة")
-
-async def process_network_description(update: Update, context: CallbackContext, description: str):
-    """معالجة وصف الشبكة"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
-            return
-        
-        if user['role'] != 'supplier':
-            await update.message.reply_text("❌ هذه الميزة متاحة للمزودين فقط")
-            return
-        
-        network_id = context.user_data.get('new_network_id')
-        if not network_id:
-            await update.message.reply_text("❌ لم يتم العثور على معرف الشبكة")
-            return
-        
-        description = description.strip()
-        
-        if len(description) > 100:
-            await update.message.reply_text("❌ الوصف طويل جداً. الحد الأقصى 100 حرف")
-            return
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # تحديث وصف الشبكة
-        cursor.execute('''
-            UPDATE networks 
-            SET description = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND created_by = ?
-        ''', (description, network_id, user['id']))
-        
-        conn.commit()
-        conn.close()
-        
-        # طلب الموقع
-        text = f"""
-✅ **تم تحديث وصف الشبكة بنجاح!** ✅
-
-📝 **الوصف المضاف:** {description}
-
-📍 **الآن أدخل موقع الشبكة:**
-
-💡 **أمثلة على المواقع:**
-• `منطقة الصافية - صنعاء`
-• `حي الزراعة - عدن`
-• `شارع هائل - تعز`
-• `مدينة الحديدة - المدينة`
-• `إب - جبلة`
-
-⚠️ **نصائح لكتابة الموقع:**
-• اذكر الحي أو المنطقة بوضوح
-• أضف المحافظة إذا أمكن
-• استخدم أسماء معروفة محلياً
-• لا تتجاوز 50 حرف
-• يمكن تخطي هذه الخطوة
-
-📍 **اكتب موقع الشبكة:**
-
-🎯 **خطوات إضافة فئة كرت:**
-1️⃣ اختر نوع الكرت (جيجا أو رصيد)
-2️⃣ حدد القيمة (مثل: 1 جيجا أو 1000 ريال)
-3️⃣ حدد السعر للكرت الواحد
-4️⃣ حدد عدد الكروت المتوفرة
-
-💡 **أمثلة على فئات الكروت:**
-• كرت 500 ميجا - 1000 ريال (50 كرت متوفر)
-• كرت 1 جيجا - 1800 ريال (30 كرت متوفر)
-• كرت 2 جيجا - 3200 ريال (20 كرت متوفر)
-
-🚀 **بدء إضافة الفئات:**
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('⏭️ تخطي الموقع', callback_data=f'skip_location_{network_id}'),
-             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
-        ]
-        
-        await update.message.reply_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-        
-        context.user_data['awaiting_network_location'] = True
-        context.user_data.pop('awaiting_network_description', None)
-        
-    except Exception as e:
-        logger.error(f"Error in process network description: {e}")
-        await update.message.reply_text("❌ حدث خطأ في معالجة وصف الشبكة")
-
-async def process_network_location(update: Update, context: CallbackContext, location: str):
-    """معالجة موقع الشبكة"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
-            return
-        
-        if user['role'] != 'supplier':
-            await update.message.reply_text("❌ هذه الميزة متاحة للمزودين فقط")
-            return
-        
-        network_id = context.user_data.get('new_network_id')
-        if not network_id:
-            await update.message.reply_text("❌ لم يتم العثور على معرف الشبكة")
-            return
-        
-        location = location.strip()
-        
-        if len(location) > 50:
-            await update.message.reply_text("❌ الموقع طويل جداً. الحد الأقصى 50 حرف")
-            return
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # تحديث موقع الشبكة
-        cursor.execute('''
-            UPDATE networks 
-            SET location = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND created_by = ?
-        ''', (location, network_id, user['id']))
-        
-        conn.commit()
-        conn.close()
-        
-        # عرض خيارات إضافة فئات الكروت
-        text = f"""
-✅ **تم تحديث موقع الشبكة بنجاح!** ✅
-
-📍 **الموقع المضاف:** {location}
-
-💳 **الآن أضف فئات الكروت:**
-
-🎯 **خطوات إضافة فئة كرت:**
-1️⃣ اختر نوع الكرت (جيجا أو رصيد)
-2️⃣ حدد القيمة (مثل: 1 جيجا أو 1000 ريال)
-3️⃣ حدد السعر للكرت الواحد
-4️⃣ حدد عدد الكروت المتوفرة
-
-💡 **أمثلة على فئات الكروت:**
-• كرت 500 ميجا - 1000 ريال (50 كرت متوفر)
-• كرت 1 جيجا - 1800 ريال (30 كرت متوفر)
-• كرت 2 جيجا - 3200 ريال (20 كرت متوفر)
-
-🚀 **بدء إضافة الفئات:**
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('💳 إضافة فئة كرت جديدة', callback_data=f'add_card_category_{network_id}'),
-             InlineKeyboardButton('⏭️ إنهاء لاحقاً', callback_data='manage_networks')],
-            [InlineKeyboardButton('🔙 إدارة شبكاتي', callback_data='manage_networks'),
-             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
-        ]
-        
-        await update.message.reply_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-        
-        context.user_data.pop('awaiting_network_location', None)
-        context.user_data.pop('new_network_id', None)
-        
-    except Exception as e:
-        logger.error(f"Error in process network location: {e}")
-        await update.message.reply_text("❌ حدث خطأ في معالجة موقع الشبكة")
-
-async def skip_network_location(update: Update, context: CallbackContext, network_id: str):
-    """تخطي إضافة الموقع"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-        
-        if user['role'] != 'supplier':
-            await update.callback_query.edit_message_text("❌ هذه الميزة متاحة للمزودين فقط")
-            return
-        
-        # عرض خيارات إضافة فئات الكروت
-        text = f"""
-⏭️ **تم تخطي إضافة الموقع** ⏭️
-
-💳 **الآن أضف فئات الكروت:**
-
-🎯 **خطوات إضافة فئة كرت:**
-1️⃣ اختر نوع الكرت (جيجا أو رصيد)
-2️⃣ حدد القيمة (مثل: 1 جيجا أو 1000 ريال)
-3️⃣ حدد السعر للكرت الواحد
-4️⃣ حدد عدد الكروت المتوفرة
-
-💡 **أمثلة على فئات الكروت:**
-• كرت 500 ميجا - 1000 ريال (50 كرت متوفر)
-• كرت 1 جيجا - 1800 ريال (30 كرت متوفر)
-• كرت 2 جيجا - 3200 ريال (20 كرت متوفر)
-
-🚀 **بدء إضافة الفئات:**
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('💳 إضافة فئة كرت جديدة', callback_data=f'add_card_category_{network_id}'),
-             InlineKeyboardButton('⏭️ إنهاء لاحقاً', callback_data='manage_networks')],
-            [InlineKeyboardButton('🔙 إدارة شبكاتي', callback_data='manage_networks'),
-             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
-        ]
-        
-        await update.callback_query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-        
-        context.user_data.pop('awaiting_network_location', None)
-        context.user_data.pop('new_network_id', None)
-        
-    except Exception as e:
-        logger.error(f"Error in skip network location: {e}")
-        await update.callback_query.edit_message_text("❌ حدث خطأ في تخطي الموقع")
-
-async def search_networks_by_name(update: Update, context: CallbackContext):
-    """البحث عن الشبكات بالاسم أو الموقع"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-        
-        text = f"""
-🔍 **البحث عن شبكة واي فاي** 🔍
-
-👤 مرحباً **{user['full_name']}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
-
-📝 **اكتب للبحث:**
-
-💡 **يمكنك البحث بـ:**
-• اسم الشبكة (مثل: واي فاي الرحمن)
-• الموقع (مثل: الصافية، صنعاء)
-• المزود (مثل: أحمد محمد)
-
-🔍 **أمثلة للبحث:**
-• `الرحمن`
-• `الصافية`
-• `صنعاء`
-• `واي فاي`
-
-📝 **اكتب كلمة البحث:**
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('🌐 عرض جميع الشبكات', callback_data='all_networks'),
-             InlineKeyboardButton('📍 بحث بالموقع', callback_data='search_by_location')],
-            [InlineKeyboardButton('🔙 عودة', callback_data='search_networks'),
-             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
-        ]
-        
-        await update.callback_query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-        
-        context.user_data['awaiting_network_search'] = True
-        
-    except Exception as e:
-        logger.error(f"Error in search networks by name: {e}")
-        await update.callback_query.edit_message_text("❌ حدث خطأ في البحث")
-
-async def process_network_search(update: Update, context: CallbackContext, search_term: str):
-    """معالجة البحث عن الشبكات"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
-            return
-        
-        search_term = search_term.strip()
-        
-        if len(search_term) < 2:
-            await update.message.reply_text("❌ كلمة البحث قصيرة جداً. أدخل على الأقل حرفين")
-            return
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # البحث في الشبكات
-        cursor.execute('''
-            SELECT 
-                n.id, n.name, n.provider, n.description, n.location,
-                COUNT(cc.id) as card_types,
-                SUM(cc.stock_count) as total_stock,
-                MIN(cc.price) as min_price,
-                MAX(cc.price) as max_price
-            FROM networks n
-            LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
-            LEFT JOIN supplier_codes sc ON sc.supplier_id = n.supplier_id
-            WHERE n.is_active = 1 AND n.is_approved = 1 AND (
-                n.name LIKE ? OR 
-                n.location LIKE ? OR 
-                n.provider LIKE ? OR 
-                n.description LIKE ? OR
-                n.network_code LIKE ? OR
-                sc.supplier_code LIKE ?
-            )
-            GROUP BY n.id, n.name, n.provider, n.description, n.location
-            ORDER BY n.name
-            LIMIT 10
-        ''', (
-            f"%{search_term}%", f"%{search_term}%", f"%{search_term}%", f"%{search_term}%",
-            f"%{search_term}%", f"%{search_term}%"
-        ))
-        
-        search_results = cursor.fetchall()
-        conn.close()
-        
-        if not search_results:
-            text = f"""
-❌ **لم يتم العثور على نتائج** ❌
-
-🔍 تم البحث عن: `{search_term}`
-
-💡 **نصائح للبحث:**
-• تأكد من صحة كتابة كلمة البحث
-• جرب البحث بكلمات أقل
-• ابحث بالموقع بدلاً من الاسم
-• تأكد من وجود شبكات متاحة
-
-🔄 **جرب البحث مرة أخرى:**
-"""
-            
-            keyboard = [
-                [InlineKeyboardButton('🔍 بحث جديد', callback_data='search_by_network_name'),
-                 InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks')],
-                [InlineKeyboardButton('🔙 عودة', callback_data='search_networks')]
-            ]
-            
-            await update.message.reply_text(
-                text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
-            return
-        
-        # عرض نتائج البحث
-        text = f"""
-🔍 **نتائج البحث** 🔍
-
-👤 **{user['full_name']}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
-
-📊 **تم العثور على {len(search_results)} شبكة:**
-
-"""
-
-        keyboard = []
-        for i, network in enumerate(search_results, 1):
-            network_id, name, provider, description, location, card_types, total_stock, min_price, max_price = network
-            
-            stock_status = "📦" if total_stock and total_stock > 0 else "❌"
-            price_range = ""
-            if min_price and max_price:
-                if min_price == max_price:
-                    price_range = f"{min_price:,.0f} ريال"
-                else:
-                    price_range = f"{min_price:,.0f} - {max_price:,.0f} ريال"
-            
-            text += f"""
-{i}️⃣ **{name}** {stock_status}
-📍 {location or 'غير محدد'}
-👤 المزود: {provider}
-💳 {card_types or 0} فئة • 📦 {total_stock or 0} كرت
-💰 {price_range or 'غير محدد'}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-
-"""
-            
-            button_text = f"{i}️⃣ {name[:15]}..."
-            if total_stock and total_stock > 0:
-                button_text += f" ({total_stock})"
-            
-            keyboard.append([InlineKeyboardButton(
-                button_text,
-                callback_data=f"network_{network_id}"
-            )])
-
-        # إضافة أزرار إضافية
-        keyboard.extend([
-            [InlineKeyboardButton('🔍 بحث جديد', callback_data='search_by_network_name'),
-             InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks')],
-            [InlineKeyboardButton('🔙 عودة', callback_data='search_networks'),
-             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-        ])
-
-        await update.message.reply_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-        
-        context.user_data.pop('awaiting_network_search', None)
-
-    except Exception as e:
-        logger.error(f"Error in process network search: {e}")
-        await update.message.reply_text("❌ حدث خطأ في البحث")
-        context.user_data.pop('awaiting_network_search', None)
-
-async def redeem_coupon_handler(update: Update, context: CallbackContext):
-    """معالج شحن الرصيد بكوبون"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        user = get_user(query.from_user.id)
-        if not user:
-            await query.edit_message_text(f"{EMOJIS['error']} يرجى إرسال /start أولاً.")
-            return
-        
-        # تنظيف أي حالات سابقة
-        context.user_data.clear()
-        context.user_data['redeeming_coupon'] = True
-        
-        text = f"""
-🎟️ **شحن الرصيد بكوبون** 🎟️
-
-{EMOJIS['user']} مرحباً **{user['full_name']}**
-💰 رصيدك الحالي: **{user['balance']:,.2f}** ريال
-
-📝 **كيفية الاستخدام:**
-🔸 أدخل رقم الكوبون المكون من 9 أرقام
-🔸 يجب أن يبدأ الكوبون بالحرف A
-🔸 مثال: A12345678
-
-⚠️ **ملاحظات مهمة:**
-• كل كوبون يُستخدم مرة واحدة فقط
-• تأكد من صحة رقم الكوبون
-• الكوبون المنتهي الصلاحية لا يعمل
-• سيتم إضافة القيمة فوراً ومباشرة لرصيدك عند الاستخدام
-
-💡 **أدخل رقم الكوبون الآن:**
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('❌ إلغاء', callback_data='cancel_coupon'),
-             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-        ]
-        
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-        
-    except Exception as e:
-        logger.error(f"Error in redeem coupon handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في شحن الكوبون.")
-
-async def process_coupon_redemption(update: Update, context: CallbackContext):
-    """معالجة استخدام الكوبون"""
-    try:
-        if not context.user_data.get('redeeming_coupon'):
-            return
-        
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.message.reply_text(f"{EMOJIS['error']} يرجى إرسال /start أولاً.")
-            context.user_data.clear()
-            return
-        
-        coupon_code = update.message.text.strip().upper()
-        
-        # التحقق من صحة تنسيق الكوبون
-        if not validate_coupon_format(coupon_code):
-            await update.message.reply_text(
-                "❌ **تنسيق الكوبون غير صحيح** ❌\n\n"
-                "📝 **التنسيق المطلوب:**\n"
-                "🔸 يجب أن يبدأ بالحرف A\n"
-                "🔸 متبوع بـ 8 أرقام\n"
-                "🔸 مثال: A12345678\n\n"
-                "💡 **يرجى إدخال رقم صحيح:**",
-                parse_mode='Markdown'
-            )
-            return
-        
-        # رسالة تأكيد التحقق
-        await update.message.reply_text(
-            "✅ **تنسيق الكوبون صحيح** ✅\n🔍 جاري التحقق من صحة الكوبون...",
-            parse_mode='Markdown'
-        )
-        
-        # البحث عن الكوبون في قاعدة البيانات
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT id, amount, is_used, used_by, expiry_date, description
-            FROM coupons 
-            WHERE coupon_code = ?
-        ''', (coupon_code,))
-        
-        coupon = cursor.fetchone()
-        
-        if not coupon:
-            conn.close()
-            await update.message.reply_text(
-                "❌ **كوبون غير صحيح** ❌\n\n"
-                "🔍 **رقم الكوبون غير موجود**\n\n"
-                "💡 **تأكد من:**\n"
-                "🔸 صحة رقم الكوبون\n"
-                "🔸 عدم وجود مسافات إضافية\n"
-                "🔸 استخدام الأرقام والحروف الصحيحة\n\n"
-                "🎟️ **أدخل رقم كوبون صحيح:**",
-                parse_mode='Markdown'
-            )
-            return
-        
-        # فحص إذا كان الكوبون مستخدم
-        if coupon['is_used']:
-            # الحصول على معلومات المستخدم الذي استخدم الكوبون
-            cursor.execute('SELECT full_name FROM users WHERE id = ?', (coupon['used_by'],))
-            used_by_user = cursor.fetchone()
-            used_by_name = used_by_user['full_name'] if used_by_user else "مستخدم غير معروف"
-            
-            conn.close()
-            await update.message.reply_text(
-                "❌ **كوبون مستخدم مسبقاً** ❌\n\n"
-                f"🎟️ **رقم الكوبون:** {coupon_code}\n"
-                f"👤 **مستخدم بواسطة:** {used_by_name}\n"
-                f"💰 **قيمة الكوبون:** {coupon['amount']:,.0f} ريال\n\n"
-                "🔍 **كل كوبون يُستخدم مرة واحدة فقط**\n"
-                "🎟️ **أدخل كوبون آخر:**",
-                parse_mode='Markdown'
-            )
-            return
-        
-        # فحص انتهاء الصلاحية
-        from datetime import datetime
-        if coupon['expiry_date']:
-            expiry_date = datetime.fromisoformat(coupon['expiry_date'].replace('Z', '+00:00'))
-            if datetime.now() > expiry_date:
-                conn.close()
-                await update.message.reply_text(
-                    "❌ **كوبون منتهي الصلاحية** ❌\n\n"
-                    f"🎟️ **رقم الكوبون:** {coupon_code}\n"
-                    f"💰 **قيمة الكوبون:** {coupon['amount']:,.0f} ريال\n"
-                    f"📅 **انتهى في:** {expiry_date.strftime('%Y-%m-%d')}\n\n"
-                    "⏰ **لا يمكن استخدام الكوبونات المنتهية الصلاحية**\n"
-                    "🎟️ **أدخل كوبون صالح:**",
-                    parse_mode='Markdown'
-                )
-                return
-        
-        # رسالة تأكيد قبل الاستخدام
-        await update.message.reply_text(
-            "✅ **كوبون صالح للاستخدام** ✅\n💳 جاري إضافة القيمة لرصيدك...",
-            parse_mode='Markdown'
-        )
-        
-        # تطبيق الكوبون
-        coupon_amount = coupon['amount']
-        old_balance = user['balance']
-        new_balance = old_balance + coupon_amount
-        
-        # تحديث رصيد المستخدم
-        cursor.execute('UPDATE users SET balance = ? WHERE id = ?', (new_balance, user['id']))
-        
-        # تسجيل استخدام الكوبون
-        cursor.execute('''
-            UPDATE coupons 
-            SET is_used = 1, used_by = ?, used_at = CURRENT_TIMESTAMP 
-            WHERE id = ?
-        ''', (user['id'], coupon['id']))
-        
-        # إنشاء معاملة في سجل المعاملات
-        cursor.execute('''
-            INSERT INTO transactions (from_user, to_user, amount, type, description, created_at)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ''', (None, user['id'], coupon_amount, 'coupon_redeem', f"شحن بكوبون {coupon_code}"))
-        
-        conn.commit()
-        conn.close()
-        
-        # رسالة النجاح
-        success_text = f"""
-🎉 **تم شحن الرصيد بنجاح!** 🎉
-
-👤 **اسم المستخدم:** {user['full_name']}
-🎟️ **رقم الكوبون:** {coupon_code}
-
-💰 **تفاصيل الشحن:**
-📊 رصيدك السابق: **{old_balance:,.2f}** ريال
-💎 قيمة الكوبون: **+{coupon_amount:,.2f}** ريال
-💳 رصيدك الجديد: **{new_balance:,.2f}** ريال
-
-📅 **تاريخ الاستخدام:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
-🔖 **وصف الكوبون:** {coupon.get('description', 'كوبون شحن رصيد')}
-
-✅ **تم إضافة المبلغ فوراً لرصيدك**
-🛒 **يمكنك الآن استخدام رصيدك لشراء الكروت**
-
-🎊 شكراً لك على استخدام خدماتنا!
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('💳 عرض محفظتي', callback_data='enhanced_wallet'),
-             InlineKeyboardButton('🛒 شراء كروت', callback_data='buy_cards')],
-            [InlineKeyboardButton('🎟️ شحن كوبون آخر', callback_data='redeem_coupon'),
-             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-        ]
-        
-        await update.message.reply_text(
-            success_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-        
-        # تنظيف الحالة
-        context.user_data.clear()
-        
-        # تسجيل العملية
-        logger.info(f"User {user['full_name']} redeemed coupon {coupon_code} worth {coupon_amount:,.2f}")
-        
-    except Exception as e:
-        logger.error(f"Error in process coupon redemption: {e}")
-        await update.message.reply_text(
-            f"❌ **حدث خطأ في استخدام الكوبون** ❌\n\n"
-            f"🔍 **تفاصيل الخطأ:** {str(e)}\n\n"
-            f"🔄 **يرجى المحاولة مرة أخرى**",
-            parse_mode='Markdown'
-        )
-        context.user_data.clear()
-
-def validate_coupon_format(coupon_code: str) -> bool:
-    """التحقق من صحة تنسيق الكوبون"""
-    try:
-        # يجب أن يكون 9 أحرف: A + 8 أرقام
-        if len(coupon_code) != 9:
-            return False
-        
-        # يجب أن يبدأ بالحرف A
-        if not coupon_code.startswith('A'):
-            return False
-        
-        # الباقي يجب أن يكون أرقام
-        if not coupon_code[1:].isdigit():
-            return False
-        
-        return True
-        
-    except Exception:
-        return False
-
-async def cancel_coupon_handler(update: Update, context: CallbackContext):
-    """إلغاء عملية شحن الكوبون"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        context.user_data.clear()
-        
-        await query.edit_message_text(
-            "❌ **تم إلغاء عملية شحن الكوبون** ❌\n\n"
-            "🏠 يمكنك العودة للقائمة الرئيسية",
-            parse_mode='Markdown'
-        )
-        
-    except Exception as e:
-        logger.error(f"Error in cancel coupon handler: {e}")
-        await query.edit_message_text("❌ حدث خطأ في الإلغاء.")
-
-# معالجات الميزات الجديدة
-async def agent_locations_handler(update: Update, context: CallbackContext):
-    """عرض مواقع الوكلاء"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        text = """
-🏪 **مواقع الوكلاء المعتمدين** 🏪
-
-📍 **الوكلاء المتاحون:**
-
-🏢 **صنعاء:**
-   • وكيل الحديدة - شارع الزبيري
-   • وكيل التحرير - ميدان التحرير
-   • وكيل الستين - شارع الستين
-
-🏢 **عدن:**
-   • وكيل كريتر - منطقة كريتر
-   • وكيل المعلا - منطقة المعلا
-
-🏢 **تعز:**
-   • وكيل وسط المدينة - شارع جمال
-
-📞 **للاستفسار:**
-   تواصل مع الدعم للحصول على معلومات محدثة
-
-💡 **كيفية الشحن:**
-   1️⃣ اذهب لأقرب وكيل
-   2️⃣ أعطه رقم محفظتك
-   3️⃣ ادفع المبلغ المطلوب
-   4️⃣ سيتم شحن حسابك فوراً
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('📞 التواصل مع الدعم', callback_data='contact_support'),
-             InlineKeyboardButton('🎟️ شحن بكوبون', callback_data='redeem_coupon')],
-            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-        ]
-        
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in agent locations handler: {e}")
-        await query.edit_message_text("❌ حدث خطأ في عرض مواقع الوكلاء.")
-
-async def contact_support_handler(update: Update, context: CallbackContext):
-    """التواصل مع الدعم"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        text = """
-📞 **التواصل مع الدعم** 📞
-
-🎯 **طرق التواصل:**
-
-📱 **واتساب:**
-   رقم الدعم: +967-77-777-7777
-   متاح: 24/7
-
-📧 **البريد الإلكتروني:**
-   support@yemennet.com
-   يتم الرد خلال 24 ساعة
-
-💬 **التلغرام:**
-   @YemenNetSupport
-   دعم فوري
-
-🕐 **أوقات العمل:**
-   السبت - الخميس: 8 صباحاً - 10 مساءً
-   الجمعة: 2 ظهراً - 10 مساءً
-
-❓ **الأسئلة الشائعة:**
-   • كيفية شحن الرصيد
-   • استخدام الكوبونات
-   • مشاكل الشراء
-   • استرداد الأموال
-
-💡 **للاستفسارات السريعة استخدم الواتساب**
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('📱 واتساب', url='https://wa.me/967777777777'),
-             InlineKeyboardButton('💬 تلغرام', url='https://t.me/YemenNetSupport')],
-            [InlineKeyboardButton('❓ الأسئلة الشائعة', callback_data='faq'),
-             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-        ]
-        
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in contact support handler: {e}")
-        await query.edit_message_text("❌ حدث خطأ في عرض معلومات الدعم.")
-
-async def process_supplier_network_creation(update: Update, context: CallbackContext):
-    """معالجة إضافة الشبكة للمزود خطوة بخطوة"""
+# State processing functions
+async def process_custom_price_input(update: Update, context: CallbackContext):
+    """Process custom price input from supplier"""
     try:
         text = update.message.text.strip()
-        user = get_user(update.effective_user.id)
-        step = context.user_data.get('network_step', 'name')
         
-        if step == 'name':
-            # حفظ اسم الشبكة
-            context.user_data['network_name'] = text
-            context.user_data['network_step'] = 'provider'
-            
-            await update.message.reply_text(
-                f"✅ **تم حفظ اسم الشبكة:** {text}\n\n🔸 **الخطوة 2 من 4**\n👤 **أدخل اسم المزود:**",
-                parse_mode='Markdown'
-            )
-            
-        elif step == 'provider':
-            # حفظ اسم المزود
-            context.user_data['network_provider'] = text
-            context.user_data['network_step'] = 'description'
-            
-            await update.message.reply_text(
-                f"✅ **تم حفظ اسم المزود:** {text}\n\n🔸 **الخطوة 3 من 4**\n📝 **أدخل وصف الشبكة:**",
-                parse_mode='Markdown'
-            )
-            
-        elif step == 'description':
-            # حفظ الوصف
-            context.user_data['network_description'] = text
-            context.user_data['network_step'] = 'location'
-            
-            await update.message.reply_text(
-                f"✅ **تم حفظ وصف الشبكة:** {text}\n\n�� **الخطوة 4 من 4**\n📍 **أدخل موقع الشبكة:**",
-                parse_mode='Markdown'
-            )
-            
-        elif step == 'location':
-            # إنشاء الشبكة
-            network_name = context.user_data.get('network_name')
-            provider = context.user_data.get('network_provider')
-            description = context.user_data.get('network_description')
-            
-            try:
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                
-                cursor.execute('''
-                    INSERT INTO networks (supplier_id, name, city, provider, description, location, created_by, is_active, is_approved, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, CURRENT_TIMESTAMP)
-                ''', (user['id'], network_name, text, provider, description, text, user['id']))
-                
-                network_id = cursor.lastrowid
-                conn.commit()
-                conn.close()
-                
-                context.user_data.clear()
-                
-                await update.message.reply_text(
-                    f"✅ **تم إنشاء الشبكة بنجاح!**\n\n🌐 **{network_name}**\n👤 {provider}\n📍 {text}\n🆔 معرف: #{network_id}",
-                    parse_mode='Markdown'
-                )
-                
-            except Exception as e:
-                await update.message.reply_text(f"❌ خطأ في إنشاء الشبكة: {e}")
-                context.user_data.clear()
-        
-    except Exception as e:
-        await update.message.reply_text(f"❌ خطأ في معالجة الشبكة: {e}")
-        context.user_data.clear()
-
-async def process_manual_card_input(update: Update, context: CallbackContext):
-    """معالجة الإدخال اليدوي للكروت من المزود"""
-    try:
-        user = get_user(update.effective_user.id)
-        
-        if user['role'] != 'supplier':
-            await update.message.reply_text("❌ هذه الميزة متاحة للمزودين فقط.")
-            return
-        
-        network_id = context.user_data.get('manual_network_id')
-        if not network_id:
-            await update.message.reply_text("❌ لم يتم اختيار الشبكة. يرجى البدء من جديد.")
-            return
-        
-        message_text = update.message.text.strip()
-        lines = message_text.split('\n')
-        
-        uploaded_cards = []
-        errors = []
-        
-        # الحصول على معلومات الشبكة
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT name FROM networks WHERE id = ?', (network_id,))
-        network = cursor.fetchone()
-        
-        if not network:
-            await update.message.reply_text("❌ لم يتم العثور على الشبكة المحددة.")
-            return
-        
-        network_name = network[0]
-        
-        # معالجة كل سطر
-        for line_num, line in enumerate(lines, 1):
-            line = line.strip()
-            if not line:
-                continue
-            
-            parts = line.split('|')
-            if len(parts) != 2:
-                errors.append(f"السطر {line_num}: تنسيق غير صحيح. استخدم: رقم_الكرت|الحجم")
-                continue
-            
-            card_number = parts[0].strip()
-            card_value_str = parts[1].strip()
-            
-            # فحص رقم الكرت
-            if len(card_number) < 8:
-                errors.append(f"السطر {line_num}: رقم الكرت قصير جداً. يجب أن يكون 8 أرقام على الأقل")
-                continue
-            
-            # فحص حجم الكرت
-            if not card_value_str.isdigit():
-                errors.append(f"السطر {line_num}: حجم الكرت يجب أن يكون رقماً صحيحاً")
-                continue
-            
-            card_value = int(card_value_str)
-            if card_value <= 0:
-                errors.append(f"السطر {line_num}: حجم الكرت يجب أن يكون أكبر من صفر")
-                continue
-            
-            # فحص إذا كان الكرت موجود مسبقاً
-            cursor.execute('SELECT id FROM cards WHERE card_number = ?', (card_number,))
-            if cursor.fetchone():
-                errors.append(f"السطر {line_num}: رقم الكرت {card_number} موجود مسبقاً")
-                continue
-            
-            # إضافة الكرت
-            try:
-                cursor.execute('''
-                    INSERT INTO cards (category_id, card_number, card_value, uploaded_by, uploaded_at)
-                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ''', (None, card_number, card_value, user['id']))
-                
-                uploaded_cards.append(f"{card_number} ({card_value}MB)")
-                
-            except Exception as e:
-                errors.append(f"السطر {line_num}: خطأ في إضافة الكرت - {e}")
-        
-        conn.commit()
-        conn.close()
-        
-        # رسالة النتائج
-        success_text = f"""
-🎉 **تم معالجة الكروت بنجاح!** 🎉
-
-🌐 **الشبكة:** {network_name}
-👤 **المزود:** {user['full_name']}
-
-📊 **النتائج:**
-✅ تم رفع: **{len(uploaded_cards)}** كرت
-❌ أخطاء: **{len(errors)}**
-
-"""
-        
-        if uploaded_cards:
-            success_text += "✅ **الكروت المرفوعة:**\n"
-            for card in uploaded_cards[:5]:  # عرض أول 5 كروت فقط
-                success_text += f"• {card}\n"
-            if len(uploaded_cards) > 5:
-                success_text += f"• ... و {len(uploaded_cards) - 5} كرت آخر\n"
-        
-        if errors:
-            success_text += "\n❌ **الأخطاء:**\n"
-            for error in errors[:5]:  # عرض أول 5 أخطاء فقط
-                success_text += f"• {error}\n"
-            if len(errors) > 5:
-                success_text += f"• ... و {len(errors) - 5} خطأ آخر\n"
-        
-        # إعادة تعيين الحالة
-        context.user_data.pop('awaiting_manual_card', None)
-        context.user_data.pop('manual_network_id', None)
-        
-        keyboard = [
-            [InlineKeyboardButton('✏️ إدخال كروت أخرى', callback_data='manual_card_input')],
-            [InlineKeyboardButton('📁 رفع ملف', callback_data='choose_upload_method')],
-            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
-        ]
-        
-        await update.message.reply_text(
-            success_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-        
-    except Exception as e:
-        logger.error(f"Error in manual card input: {e}")
-        await update.message.reply_text(f"❌ حدث خطأ في معالجة الكروت: {e}")
-        
-        # إعادة تعيين الحالة في حالة الخطأ
-        context.user_data.pop('awaiting_manual_card', None)
-        context.user_data.pop('manual_network_id', None)
-
-async def process_custom_price_input(update: Update, context: CallbackContext):
-    """معالجة إدخال السعر المخصص"""
-    try:
-        user = get_user(update.effective_user.id)
-        
-        if user['role'] != 'supplier':
-            await update.message.reply_text("❌ هذه الميزة متاحة للمزودين فقط.")
-            return
-        
-        price_text = update.message.text.strip()
-        
-        if not price_text.isdigit():
+        # Validate price
+        try:
+            price = int(text)
+            if price < 50:
+                await update.message.reply_text("❌ السعر يجب أن يكون 50 ريال أو أكثر.")
+                return
+        except ValueError:
             await update.message.reply_text("❌ يرجى إدخال رقم صحيح للسعر.")
             return
         
-        price = int(price_text)
-        if price <= 0:
-            await update.message.reply_text("❌ السعر يجب أن يكون أكبر من صفر.")
-            return
-        
-        # تخزين السعر
+        # Store price and move to card size
         context.user_data['selected_price'] = price
-        context.user_data['awaiting_custom_price'] = False
         context.user_data['awaiting_card_size'] = True
+        del context.user_data['awaiting_custom_price']
         
-        text = f"""
-✅ **تم حفظ السعر:** {price} ريال
+        await update.message.reply_text(f"""
+✅ **تم تحديد السعر:** {price} ريال
 
-📏 **الخطوة التالية: أدخل حجم الكرت**
+📏 **الآن أدخل حجم الكرت:**
+• مثال: `1 جيجا` → 1000 ميجابايت
+• مثال: `500 ميجابايت` → 500 ميجابايت
+• مثال: `2 جيجا` → 2000 ميجابايت
 
-💡 **أمثلة الأحجام:**
-• 1 جيجا
-• 500 ميجابايت
-• 2 جيجا
-• 5 جيجا
-
-📝 **أدخل حجم الكرت الآن:**
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('🔙 تغيير السعر', callback_data='manual_card_input')],
-            [InlineKeyboardButton('❌ إلغاء', callback_data='manual_card_input')]
-        ]
-        
-        await update.message.reply_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
+💡 **اكتب الحجم الآن:**
+""")
         
     except Exception as e:
-        logger.error(f"Error in custom price input: {e}")
-        await update.message.reply_text(f"❌ حدث خطأ في معالجة السعر: {e}")
-        context.user_data.pop('awaiting_custom_price', None)
+        logger.error(f"Error in process custom price input: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في معالجة السعر.")
 
 async def process_card_size_input(update: Update, context: CallbackContext):
-    """معالجة إدخال حجم الكرت"""
+    """Process card size input from supplier"""
     try:
-        user = get_user(update.effective_user.id)
+        text = update.message.text.strip().lower()
         
-        if user['role'] != 'supplier':
-            await update.message.reply_text("❌ هذه الميزة متاحة للمزودين فقط.")
-            return
-        
-        size_text = update.message.text.strip().lower()
-        network_id = context.user_data.get('manual_network_id')
-        price = context.user_data.get('selected_price')
-        
-        if not network_id or not price:
-            await update.message.reply_text("❌ بيانات غير مكتملة. يرجى البدء من جديد.")
-            return
-        
-        # تحويل النص إلى ميجابايت
-        card_value = convert_size_to_mb(size_text)
-        
-        if card_value is None:
-            await update.message.reply_text(
-                "❌ **حجم غير صحيح**\n\n"
-                "💡 **الأحجام المدعومة:**\n"
-                "• 1 جيجا = 1000 ميجابايت\n"
-                "• 500 ميجابايت\n"
-                "• 2 جيجا = 2000 ميجابايت\n"
-                "• 5 جيجا = 5000 ميجابايت\n\n"
-                "📝 **أدخل حجم الكرت مرة أخرى:**"
-            )
-            return
-        
-        # الحصول على معلومات الشبكة
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT name FROM networks WHERE id = ?', (network_id,))
-        network = cursor.fetchone()
-        conn.close()
-        
-        if not network:
-            await update.message.reply_text("❌ لم يتم العثور على الشبكة المحددة.")
-            return
-        
-        network_name = network[0]
-        
-        # إنشاء فئة الكروت
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                INSERT INTO card_categories (network_id, name, value, price, currency, is_available, stock_count, created_at)
-                VALUES (?, ?, ?, ?, 'YER', 1, 0, CURRENT_TIMESTAMP)
-            ''', (network_id, f"كرت {size_text}", card_value, price))
-            
-            category_id = cursor.lastrowid
-            conn.commit()
-            conn.close()
-            
-            # تخزين معرف الفئة
-            context.user_data['created_category_id'] = category_id
-            context.user_data['awaiting_card_size'] = False
-            context.user_data['awaiting_card_numbers'] = True
-            
-            text = f"""
-✅ **تم إنشاء فئة الكروت بنجاح!** ✅
+        # Parse size input
+        size_mb = parse_size_input(text)
+        if size_mb is None:
+            await update.message.reply_text("""
+❌ **تنسيق الحجم غير صحيح**
 
-🌐 **الشبكة:** {network_name}
-💳 **الفئة:** كرت {size_text}
-💰 **السعر:** {price} ريال
-📏 **الحجم:** {card_value} ميجابايت
+💡 **أمثلة صحيحة:**
+• `1 جيجا` أو `1 جيجابايت` → 1000 ميجابايت
+• `500 ميجابايت` → 500 ميجابايت
+• `2 جيجا` → 2000 ميجابايت
+• `1.5 جيجا` → 1500 ميجابايت
 
-📝 **الخطوة الأخيرة: أرسل أرقام الكروت**
+🔍 **اكتب الحجم مرة أخرى:**
+""")
+            return
+        
+        # Store size and move to card numbers
+        context.user_data['selected_size'] = size_mb
+        context.user_data['awaiting_card_numbers'] = True
+        del context.user_data['awaiting_card_size']
+        
+        await update.message.reply_text(f"""
+✅ **تم تحديد حجم الكرت:** {size_mb} ميجابايت
 
-💡 **طريقة الإدخال:**
-• كل رقم في سطر منفصل
+💳 **الآن أرسل أرقام الكروت:**
+• كل كرت في سطر منفصل
 • مثال:
 ```
 1234567890123456
@@ -3868,190 +268,242 @@ async def process_card_size_input(update: Update, context: CallbackContext):
 1111222233334444
 ```
 
-📝 **أرسل أرقام الكروت الآن:**
-"""
-            
-            keyboard = [
-                [InlineKeyboardButton('🔙 تغيير الحجم', callback_data=f'manual_network_{network_id}')],
-                [InlineKeyboardButton('❌ إلغاء', callback_data='manual_card_input')]
-            ]
-            
-            await update.message.reply_text(
-                text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
-            
-        except Exception as e:
-            await update.message.reply_text(f"❌ خطأ في إنشاء فئة الكروت: {e}")
-            context.user_data.pop('awaiting_card_size', None)
+💡 **أرسل أرقام الكروت الآن:**
+""")
         
     except Exception as e:
-        logger.error(f"Error in card size input: {e}")
-        await update.message.reply_text(f"❌ حدث خطأ في معالجة حجم الكرت: {e}")
-        context.user_data.pop('awaiting_card_size', None)
+        logger.error(f"Error in process card size input: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في معالجة حجم الكرت.")
 
-def convert_size_to_mb(size_text):
-    """تحويل نص الحجم إلى ميجابايت"""
+async def process_card_numbers_input(update: Update, context: CallbackContext):
+    """Process card numbers input from supplier"""
     try:
-        size_text = size_text.strip().lower()
+        text = update.message.text.strip()
+        lines = text.split('\n')
         
-        # إزالة المسافات والكلمات الزائدة
-        size_text = size_text.replace(' ', '').replace('جيجا', 'gb').replace('ميجا', 'mb')
+        # Validate card numbers
+        valid_cards = []
+        for line in lines:
+            card = line.strip()
+            if len(card) >= 10:  # Basic validation
+                valid_cards.append(card)
         
-        if 'gb' in size_text:
-            # جيجابايت
-            number = float(size_text.replace('gb', ''))
+        if not valid_cards:
+            await update.message.reply_text("❌ لم يتم العثور على أرقام كروت صحيحة.")
+            return
+        
+        # Process cards
+        await process_cards_upload(update, context, valid_cards)
+        
+        # Clear states
+        del context.user_data['awaiting_card_numbers']
+        del context.user_data['selected_price']
+        del context.user_data['selected_size']
+        del context.user_data['manual_network_id']
+        
+    except Exception as e:
+        logger.error(f"Error in process card numbers input: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في معالجة أرقام الكروت.")
+
+async def process_cards_upload(update: Update, context: CallbackContext, card_numbers: list):
+    """Process the actual cards upload"""
+    try:
+        user = get_user(update.effective_user.id)
+        network_id = context.user_data.get('manual_network_id')
+        price = context.user_data.get('selected_price')
+        size = context.user_data.get('selected_size')
+        
+        if not all([network_id, price, size]):
+            await update.message.reply_text("❌ بيانات غير مكتملة. يرجى المحاولة مرة أخرى.")
+            return
+        
+        # Upload cards to database
+        success_count = await upload_cards_to_database(user, network_id, price, size, card_numbers)
+        
+        success_text = f"""
+✅ **تم رفع الكروت بنجاح!** ✅
+
+📊 **تفاصيل الرفع:**
+🌐 **الشبكة:** {network_id}
+💰 **السعر:** {price} ريال
+📏 **الحجم:** {size} ميجابايت
+💳 **عدد الكروت:** {len(card_numbers)}
+✅ **تم رفع:** {success_count} كرت
+
+🎉 **تم إنشاء فئة كروت جديدة تلقائياً!**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🔄 رفع كروت أخرى', callback_data='upload_cards')],
+            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')],
+            [InlineKeyboardButton('🔙 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await update.message.reply_text(success_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in process cards upload: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في رفع الكروت.")
+
+# Helper functions
+def parse_size_input(text: str) -> int:
+    """Parse size input and convert to MB"""
+    try:
+        text = text.lower().replace('جيجابايت', 'جيجا').replace('ميجابايت', 'ميجا')
+        
+        if 'جيجا' in text:
+            # Extract number before جيجا
+            number = float(text.split('جيجا')[0].strip())
             return int(number * 1000)
-        elif 'mb' in size_text:
-            # ميجابايت
-            number = float(size_text.replace('mb', ''))
+        elif 'ميجا' in text:
+            # Extract number before ميجا
+            number = float(text.split('ميجا')[0].strip())
             return int(number)
         else:
-            # محاولة قراءة الرقم مباشرة
-            number = float(size_text)
-            if number >= 100:  # إذا كان الرقم كبير، نفترض أنه ميجابايت
-                return int(number)
-            else:  # إذا كان صغير، نفترض أنه جيجابايت
-                return int(number * 1000)
-                
+            # Try to extract just the number
+            import re
+            numbers = re.findall(r'\d+\.?\d*', text)
+            if numbers:
+                number = float(numbers[0])
+                if 'جيجا' in text or 'جيجابايت' in text:
+                    return int(number * 1000)
+                else:
+                    return int(number)
+        
+        return None
     except:
         return None
 
-async def process_card_numbers_input(update: Update, context: CallbackContext):
-    """معالجة إدخال أرقام الكروت"""
+async def upload_cards_to_database(user: dict, network_id: str, price: int, size: int, card_numbers: list) -> int:
+    """Upload cards to database and return success count"""
     try:
-        user = get_user(update.effective_user.id)
-        
-        if user['role'] != 'supplier':
-            await update.message.reply_text("❌ هذه الميزة متاحة للمزودين فقط.")
-            return
-        
-        category_id = context.user_data.get('created_category_id')
-        network_id = context.user_data.get('manual_network_id')
-        
-        if not category_id or not network_id:
-            await update.message.reply_text("❌ بيانات غير مكتملة. يرجى البدء من جديد.")
-            return
-        
-        message_text = update.message.text.strip()
-        lines = message_text.split('\n')
-        
-        uploaded_cards = []
-        errors = []
-        
-        # الحصول على معلومات الفئة والشبكة
         conn = get_db_connection()
         cursor = conn.cursor()
+        
+        # Check if category exists, create if not
         cursor.execute('''
-            SELECT cc.name, cc.value, cc.price, n.name as network_name
-            FROM card_categories cc
-            JOIN networks n ON cc.network_id = n.id
-            WHERE cc.id = ?
-        ''', (category_id,))
-        category_info = cursor.fetchone()
+            SELECT id FROM card_categories 
+            WHERE network_id = ? AND price = ? AND value = ?
+        ''', (network_id, price, size))
         
-        if not category_info:
-            await update.message.reply_text("❌ لم يتم العثور على فئة الكروت المحددة.")
-            return
+        category = cursor.fetchone()
+        if category:
+            category_id = category[0]
+        else:
+            # Create new category
+            cursor.execute('''
+                INSERT INTO card_categories (network_id, name, price, value, stock_count, is_available)
+                VALUES (?, ?, ?, ?, 0, 1)
+            ''', (network_id, f"{size} ميجابايت - {price} ريال", price, size))
+            category_id = cursor.lastrowid
         
-        category_name, card_value, price, network_name = category_info
-        
-        # معالجة كل سطر
-        for line_num, line in enumerate(lines, 1):
-            line = line.strip()
-            if not line:
-                continue
-            
-            card_number = line
-            
-            # فحص رقم الكرت
-            if len(card_number) < 8:
-                errors.append(f"السطر {line_num}: رقم الكرت قصير جداً. يجب أن يكون 8 أرقام على الأقل")
-                continue
-            
-            # فحص إذا كان الكرت موجود مسبقاً
-            cursor.execute('SELECT id FROM cards WHERE card_number = ?', (card_number,))
-            if cursor.fetchone():
-                errors.append(f"السطر {line_num}: رقم الكرت {card_number} موجود مسبقاً")
-                continue
-            
-            # إضافة الكرت
+        # Upload cards
+        success_count = 0
+        for card_number in card_numbers:
             try:
                 cursor.execute('''
-                    INSERT INTO cards (category_id, card_number, card_value, uploaded_by, uploaded_at)
-                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ''', (category_id, card_number, card_value, user['id']))
-                
-                uploaded_cards.append(card_number)
-                
-            except Exception as e:
-                errors.append(f"السطر {line_num}: خطأ في إضافة الكرت - {e}")
+                    INSERT INTO cards (card_number, category_id, is_used, uploaded_by)
+                    VALUES (?, ?, 0, ?)
+                ''', (card_number, category_id, user['id']))
+                success_count += 1
+            except:
+                # Card might already exist
+                continue
         
-        # تحديث عدد الكروت في الفئة
-        if uploaded_cards:
-            cursor.execute('''
-                UPDATE card_categories 
-                SET stock_count = stock_count + ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            ''', (len(uploaded_cards), category_id))
+        # Update stock count
+        cursor.execute('''
+            UPDATE card_categories 
+            SET stock_count = (SELECT COUNT(*) FROM cards WHERE category_id = ? AND is_used = 0)
+            WHERE id = ?
+        ''', (category_id, category_id))
         
         conn.commit()
         conn.close()
         
-        # رسالة النتائج
-        success_text = f"""
-🎉 **تم إضافة الكروت بنجاح!** 🎉
-
-🌐 **الشبكة:** {network_name}
-💳 **الفئة:** {category_name}
-💰 **السعر:** {price} ريال
-📏 **الحجم:** {card_value} ميجابايت
-
-📊 **النتائج:**
-✅ تم إضافة: **{len(uploaded_cards)}** كرت
-❌ أخطاء: **{len(errors)}**
-
-"""
-        
-        if uploaded_cards:
-            success_text += "✅ **الكروت المضافة:**\n"
-            for card in uploaded_cards[:5]:  # عرض أول 5 كروت فقط
-                success_text += f"• {card}\n"
-            if len(uploaded_cards) > 5:
-                success_text += f"• ... و {len(uploaded_cards) - 5} كرت آخر\n"
-        
-        if errors:
-            success_text += "\n❌ **الأخطاء:**\n"
-            for error in errors[:5]:  # عرض أول 5 أخطاء فقط
-                success_text += f"• {error}\n"
-            if len(errors) > 5:
-                success_text += f"• ... و {len(errors) - 5} خطأ آخر\n"
-        
-        # إعادة تعيين الحالة
-        context.user_data.pop('awaiting_card_numbers', None)
-        context.user_data.pop('created_category_id', None)
-        context.user_data.pop('manual_network_id', None)
-        context.user_data.pop('selected_price', None)
-        
-        keyboard = [
-            [InlineKeyboardButton('✏️ إضافة كروت أخرى', callback_data='manual_card_input')],
-            [InlineKeyboardButton('📁 رفع ملف', callback_data='choose_upload_method')],
-            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
-        ]
-        
-        await update.message.reply_text(
-            success_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
+        return success_count
         
     except Exception as e:
-        logger.error(f"Error in card numbers input: {e}")
-        await update.message.reply_text(f"❌ حدث خطأ في معالجة أرقام الكروت: {e}")
+        logger.error(f"Error uploading cards to database: {e}")
+        if 'conn' in locals():
+            conn.rollback()
+            conn.close()
+        raise
+
+# Main menu function
+async def show_main_menu(update: Update, context: CallbackContext, user_role: str):
+    """Show main menu based on user role"""
+    try:
+        user = get_user(update.effective_user.id)
         
-        # إعادة تعيين الحالة في حالة الخطأ
-        context.user_data.pop('awaiting_card_numbers', None)
-        context.user_data.pop('created_category_id', None)
-        context.user_data.pop('manual_network_id', None)
-        context.user_data.pop('selected_price', None)
+        if not user:
+            await update.message.reply_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
+            return
+        
+        # Build menu text
+        menu_text = f"""
+🏠 **القائمة الرئيسية** 🏠
+
+👤 **{user['full_name']}**
+💰 **رصيدك:** {user['balance']:,.2f} ريال
+👑 **دورك:** {get_role_name(user_role)}
+
+💡 **اختر الخدمة المطلوبة:**
+"""
+        
+        # Build keyboard based on role
+        keyboard = []
+        
+        if user_role == 'customer':
+            keyboard.extend([
+                [InlineKeyboardButton('🛒 شراء كروت', callback_data='buy_cards')],
+                [InlineKeyboardButton('💰 محفظتي', callback_data='enhanced_wallet')],
+                [InlineKeyboardButton('👤 الملف الشخصي', callback_data='profile')]
+            ])
+        elif user_role == 'supplier':
+            keyboard.extend([
+                [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')],
+                [InlineKeyboardButton('💰 محفظتي', callback_data='enhanced_wallet')],
+                [InlineKeyboardButton('👤 الملف الشخصي', callback_data='profile')]
+            ])
+        elif user_role == 'super_admin':
+            keyboard.extend([
+                [InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel')],
+                [InlineKeyboardButton('💰 محفظتي', callback_data='enhanced_wallet')],
+                [InlineKeyboardButton('👤 الملف الشخصي', callback_data='profile')]
+            ])
+        
+        # Add common buttons
+        keyboard.extend([
+            [InlineKeyboardButton('❓ المساعدة', callback_data='help')],
+            [InlineKeyboardButton('📞 الدعم الفني', callback_data='support')]
+        ])
+        
+        await update.message.reply_text(menu_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in show main menu: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في عرض القائمة الرئيسية.")
+
+def get_role_name(role: str) -> str:
+    """Get Arabic role name"""
+    role_names = {
+        'customer': '👤 عميل',
+        'supplier': '🏪 مزود',
+        'super_admin': '👑 مشرف أعلى'
+    }
+    return role_names.get(role, role)
+
+# Setup handlers function
+def setup_handlers(application):
+    """Setup all command and message handlers"""
+    # Command handlers
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("wallet", wallet_command))
+    application.add_handler(CommandHandler("buy", buy_command))
+    application.add_handler(CommandHandler("profile", profile_command))
+    
+    # Message handlers
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
+    
+    logger.info("All handlers setup completed successfully")
