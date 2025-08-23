@@ -3766,18 +3766,19 @@ async def admin_upload_single_card_handler(update: Update, context: CallbackCont
 
 💡 **تنسيق الإدخال:**
 ```
-رقم_الكرت|الرقم_التسلسلي|تاريخ_الانتهاء
+رقم_الكرت|الرقم_التسلسلي|تاريخ_الانتهاء|حجم_الكرت_بالميجابايت
 ```
 
 🎯 **مثال:**
 ```
-1234567890123456|ABC123DEF|2025-12-31
+1234567890123456|ABC123DEF|2025-12-31|1000
 ```
 
 📋 **ملاحظات:**
 • رقم الكرت مطلوب
 • الرقم التسلسلي اختياري
 • تاريخ الانتهاء اختياري
+• حجم الكرت بالميجابايت (مطلوب)
 • استخدم | للفصل بين البيانات
 
 📝 **أدخل معلومات الكرت:**
@@ -3845,9 +3846,19 @@ async def admin_process_card_upload(update: Update, context: CallbackContext):
             card_number = parts[0].strip()
             serial_number = parts[1].strip() if len(parts) > 1 else None
             expiry_date = parts[2].strip() if len(parts) > 2 else None
+            card_value = parts[3].strip() if len(parts) > 3 else None
             
             if len(card_number) < 8:
                 await update.message.reply_text("❌ رقم الكرت قصير جداً. يجب أن يكون 8 أرقام على الأقل.")
+                return
+            
+            if not card_value or not card_value.isdigit():
+                await update.message.reply_text("❌ حجم الكرت مطلوب ويجب أن يكون رقماً صحيحاً (مثال: 1000 للميجابايت).")
+                return
+            
+            card_value = int(card_value)
+            if card_value <= 0:
+                await update.message.reply_text("❌ حجم الكرت يجب أن يكون أكبر من صفر.")
                 return
             
             # فحص إذا كان الكرت موجود مسبقاً
@@ -3858,11 +3869,11 @@ async def admin_process_card_upload(update: Update, context: CallbackContext):
             
             # إضافة الكرت
             cursor.execute('''
-                INSERT INTO cards (category_id, card_number, serial_number, expiry_date, uploaded_by)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (category_id, card_number, serial_number, expiry_date, user['id']))
+                INSERT INTO cards (category_id, card_number, serial_number, expiry_date, card_value, uploaded_by)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (category_id, card_number, serial_number, expiry_date, card_value, user['id']))
             
-            uploaded_cards.append(card_number)
+            uploaded_cards.append(f"{card_number} ({card_value}MB)")
             
         elif upload_type == 'multiple':
             # رفع كروت متعددة
@@ -3877,9 +3888,19 @@ async def admin_process_card_upload(update: Update, context: CallbackContext):
                 card_number = parts[0].strip()
                 serial_number = parts[1].strip() if len(parts) > 1 else None
                 expiry_date = parts[2].strip() if len(parts) > 2 else None
+                card_value = parts[3].strip() if len(parts) > 3 else None
                 
                 if len(card_number) < 8:
                     errors.append(f"السطر {line_num}: رقم الكرت قصير جداً")
+                    continue
+                
+                if not card_value or not card_value.isdigit():
+                    errors.append(f"السطر {line_num}: حجم الكرت مطلوب ويجب أن يكون رقماً صحيحاً")
+                    continue
+                
+                card_value = int(card_value)
+                if card_value <= 0:
+                    errors.append(f"السطر {line_num}: حجم الكرت يجب أن يكون أكبر من صفر")
                     continue
                 
                 # فحص إذا كان الكرت موجود مسبقاً
@@ -3890,11 +3911,11 @@ async def admin_process_card_upload(update: Update, context: CallbackContext):
                 
                 # إضافة الكرت
                 cursor.execute('''
-                    INSERT INTO cards (category_id, card_number, serial_number, expiry_date, uploaded_by)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (category_id, card_number, serial_number, expiry_date, user['id']))
+                    INSERT INTO cards (category_id, card_number, serial_number, expiry_date, card_value, uploaded_by)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (category_id, card_number, serial_number, expiry_date, card_value, user['id']))
                 
-                uploaded_cards.append(card_number)
+                uploaded_cards.append(f"{card_number} ({card_value}MB)")
         
         # تحديث عدد الكروت في الفئة
         cursor.execute('''
