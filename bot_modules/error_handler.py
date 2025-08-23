@@ -143,26 +143,28 @@ class ErrorHandler:
         
         return "❌ حدث خطأ غير متوقع"
 
-def safe_execute(func: Callable, error_message: str = "حدث خطأ", 
-                fallback_response: str = "❌ حدث خطأ في تنفيذ العملية") -> Callable:
+def safe_execute(error_message: str = "حدث خطأ", 
+                fallback_response: str = "❌ حدث خطأ في تنفيذ العملية"):
     """
     مزخرف لتنفيذ آمن للدوال
     
     Usage:
         @safe_execute("شراء الكرت", "❌ فشل في شراء الكرت")
-        async def buy_card(update, context):
+        def buy_card(update, context):
             # كود الشراء
     """
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            logger.error(f"{error_message}: {e}", exc_info=True)
-            return fallback_response
-    return wrapper
+    def decorator(func: Callable) -> Callable:
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                logger.error(f"{error_message}: {e}", exc_info=True)
+                return fallback_response
+        return wrapper
+    return decorator
 
-def safe_async_execute(func: Callable, error_message: str = "حدث خطأ", 
-                      fallback_response: str = "❌ حدث خطأ في تنفيذ العملية") -> Callable:
+def safe_async_execute(error_message: str = "حدث خطأ", 
+                      fallback_response: str = "❌ حدث خطأ في تنفيذ العملية"):
     """
     مزخرف لتنفيذ آمن للدوال غير المتزامنة
     
@@ -171,13 +173,15 @@ def safe_async_execute(func: Callable, error_message: str = "حدث خطأ",
         async def buy_card(update, context):
             # كود الشراء
     """
-    async def wrapper(*args, **kwargs):
-        try:
-            return await func(*args, **kwargs)
-        except Exception as e:
-            logger.error(f"{error_message}: {e}", exc_info=True)
-            return fallback_response
-    return wrapper
+    def decorator(func: Callable) -> Callable:
+        async def wrapper(*args, **kwargs):
+            try:
+                return await func(*args, **kwargs)
+            except Exception as e:
+                logger.error(f"{error_message}: {e}", exc_info=True)
+                return fallback_response
+        return wrapper
+    return decorator
 
 # دوال مساعدة سريعة
 def log_and_handle_error(error: Exception, operation: str, user_id: Optional[int] = None) -> str:

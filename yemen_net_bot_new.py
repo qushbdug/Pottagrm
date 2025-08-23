@@ -1809,9 +1809,9 @@ async def show_network_categories(update: Update, context, network_id):
 """
             
             # إضافة زر الشراء
-                                keyboard.append([
-                        InlineKeyboardButton(f'🛒 شراء {cat_name} - {price_text}', callback_data=create_callback('buy_card', category_id=cat_id))
-                    ])
+            keyboard.append([
+                InlineKeyboardButton(f'🛒 شراء {cat_name} - {price_text}', callback_data=create_callback('buy_card', category_id=cat_id))
+            ])
         
         # إضافة أزرار إضافية
         keyboard.extend([
