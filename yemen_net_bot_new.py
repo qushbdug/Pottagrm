@@ -139,6 +139,10 @@ async def button_click_handler(update: Update, context):
             from network_handler import handle_out_of_stock
             category_id = callback_data.split('_')[2]
             return await handle_out_of_stock(update, context, category_id)
+        elif callback_data.startswith('error_category_'):
+            from network_handler import handle_category_error
+            category_id = callback_data.split('_')[2]
+            return await handle_category_error(update, context, category_id)
         elif callback_data.startswith('skip_location_'):
             from handlers import skip_network_location
             network_id = callback_data.split('_')[2]

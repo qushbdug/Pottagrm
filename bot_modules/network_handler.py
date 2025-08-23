@@ -36,28 +36,40 @@ async def show_network_details_enhanced(update: Update, context: CallbackContext
             return
         
         # الحصول على فئات الكروت مع ترتيب أفضل
+        # ملاحظة: جدول card_categories لا يحتوي على عمود description
         cursor.execute('''
-            SELECT id, name, value, price, stock_count, description
+            SELECT id, name, value, price, stock_count
             FROM card_categories 
             WHERE network_id = ? AND is_available = 1
             ORDER BY value ASC, price ASC
         ''', (network_id,))
         
         categories = cursor.fetchall()
-        conn.close()
+        
+        # إغلاق الاتصال بقاعدة البيانات بشكل آمن
+        try:
+            conn.close()
+        except Exception as close_error:
+            logger.warning(f"Error closing database connection: {close_error}")
         
         # تنسيق معلومات الشبكة
         # network = (id, name, provider, description, location)
+        # معالجة البيانات الفارغة بشكل آمن
+        network_name = network[1] if network[1] else "اسم غير محدد"
+        network_provider = network[2] if network[2] else "مزود غير محدد"
+        network_description = network[3] if network[3] else "شبكة إنترنت موثوقة وسريعة"
+        network_location = network[4] if network[4] else "غير محدد"
+        
         text = f"""
-🏢 **{network[1]}** - {network[2]}
+🏢 **{network_name}** - {network_provider}
 
 👤 **{user['full_name']}**
 💰 رصيدك: **{user['balance']:,.2f}** ريال
 
 📝 **الوصف:**
-{network[3] or 'شبكة إنترنت موثوقة وسريعة'}
+{network_description}
 
-📍 **الموقع:** {network[4] or 'غير محدد'}
+📍 **الموقع:** {network_location}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -69,7 +81,14 @@ async def show_network_details_enhanced(update: Update, context: CallbackContext
         
         if categories:
             for i, category in enumerate(categories):
-                cat_id, cat_name, cat_value, cat_price, cat_stock, cat_desc = category
+                # ملاحظة: تم إزالة عمود description من الاستعلام
+                cat_id, cat_name, cat_value, cat_price, cat_stock = category
+                
+                # معالجة البيانات الفارغة بشكل آمن
+                cat_name = cat_name if cat_name else "اسم غير محدد"
+                cat_value = cat_value if cat_value is not None else 0
+                cat_price = cat_price if cat_price is not None else 0
+                cat_stock = cat_stock if cat_stock is not None else 0
                 
                 # تحديد حالة التوفر
                 availability = "✅ متوفر" if cat_stock > 0 else "❌ نفذ"
@@ -89,31 +108,48 @@ async def show_network_details_enhanced(update: Update, context: CallbackContext
 📊 القيمة: {value_text}
 💰 السعر: **{cat_price:,.0f}** ريال
 📦 {stock_info}
+━━━━━━━━━━━━━━━━━━━━━━━━━
 """
                 
-                if cat_desc:
-                    text += f"📝 {cat_desc}\n"
-                
-                text += "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                
                 # إضافة زر شراء إذا كان متوفراً
-                if cat_stock > 0 and user['balance'] >= cat_price:
+                try:
+                    if cat_stock > 0 and user['balance'] >= cat_price:
+                        keyboard.append([InlineKeyboardButton(
+                            f"🛒 شراء {cat_name} - {cat_price:,.0f} ريال",
+                            callback_data=f"buy_card_{cat_id}"
+                        )])
+                    elif cat_stock > 0:
+                        keyboard.append([InlineKeyboardButton(
+                            f"💰 رصيد غير كافي - {cat_price:,.0f} ريال",
+                            callback_data=f"insufficient_balance"
+                        )])
+                    else:
+                        keyboard.append([InlineKeyboardButton(
+                            f"❌ نفذ - {cat_name}",
+                            callback_data=f"out_of_stock_{cat_id}"
+                        )])
+                except Exception as button_error:
+                    # تسجيل خطأ في إنشاء الأزرار
+                    logger.warning(f"Error creating button for category {cat_id}: {button_error}")
+                    # إضافة زر بديل
                     keyboard.append([InlineKeyboardButton(
-                        f"🛒 شراء {cat_name} - {cat_price:,.0f} ريال",
-                        callback_data=f"buy_card_{cat_id}"
-                    )])
-                elif cat_stock > 0:
-                    keyboard.append([InlineKeyboardButton(
-                        f"💰 رصيد غير كافي - {cat_price:,.0f} ريال",
-                        callback_data=f"insufficient_balance"
-                    )])
-                else:
-                    keyboard.append([InlineKeyboardButton(
-                        f"❌ نفذ - {cat_name}",
-                        callback_data=f"out_of_stock_{cat_id}"
+                        f"❓ {cat_name} - خطأ في العرض",
+                        callback_data=f"error_category_{cat_id}"
                     )])
         else:
-            text += "❌ لا توجد فئات متاحة حالياً\n"
+            text += """
+❌ **لا توجد فئات كروت متاحة حالياً**
+
+💡 **الأسباب المحتملة:**
+• لم يتم إضافة فئات كروت لهذه الشبكة بعد
+• جميع الفئات غير متاحة مؤقتاً
+• الشبكة جديدة وتحتاج لإعداد
+
+🔧 **الحلول:**
+• تواصل مع المزود لإضافة فئات كروت
+• تحقق لاحقاً من توفر فئات جديدة
+• اختر شبكة أخرى لشراء الكروت
+"""
 
         # إضافة أزرار إضافية
         keyboard.extend([
@@ -122,15 +158,38 @@ async def show_network_details_enhanced(update: Update, context: CallbackContext
             [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ])
 
-        await update.callback_query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
+        # إرسال الرسالة مع معالجة الأخطاء
+        try:
+            await update.callback_query.edit_message_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+        except Exception as send_error:
+            logger.error(f"Error sending network details message: {send_error}")
+            # محاولة إرسال رسالة بديلة بدون تنسيق
+            try:
+                await update.callback_query.edit_message_text(
+                    f"🏢 {network_name}\n\n"
+                    f"❌ حدث خطأ في عرض التفاصيل الكاملة\n"
+                    f"💡 يرجى المحاولة مرة أخرى"
+                )
+            except Exception as fallback_error:
+                logger.error(f"Failed to send fallback message: {fallback_error}")
 
     except Exception as e:
-        logger.error(f"Error in show network details enhanced: {e}")
-        await update.callback_query.edit_message_text("❌ حدث خطأ في عرض تفاصيل الشبكة")
+        # تسجيل الخطأ الكامل في السجل للمطورين
+        logger.error(f"Error in show network details enhanced: {e}", exc_info=True)
+        
+        # إرسال رسالة مفهومة للمستخدم
+        try:
+            await update.callback_query.edit_message_text(
+                "❌ حدث خطأ في عرض تفاصيل الشبكة.\n"
+                "💡 يرجى المحاولة مرة أخرى أو التواصل مع الدعم الفني."
+            )
+        except Exception as display_error:
+            # إذا فشل في عرض رسالة الخطأ، سجل ذلك أيضاً
+            logger.error(f"Failed to display error message: {display_error}")
 
 async def process_card_purchase_enhanced(update: Update, context: CallbackContext, category_id: str):
     """معالجة شراء الكرت مع رسالة تأكيد محسنة"""
@@ -437,3 +496,43 @@ async def handle_out_of_stock(update: Update, context: CallbackContext, category
     except Exception as e:
         logger.error(f"Error in handle out of stock: {e}")
         await update.callback_query.edit_message_text("❌ حدث خطأ في معالجة الطلب")
+
+async def handle_category_error(update: Update, context: CallbackContext, category_id: str):
+    """معالجة أخطاء عرض فئات الكروت"""
+    try:
+        text = """
+❌ **خطأ في عرض فئة الكرت** ❌
+
+🔍 **السبب المحتمل:**
+• مشكلة في قاعدة البيانات
+• بيانات الفئة غير مكتملة
+• خطأ في معالجة البيانات
+
+💡 **الحلول:**
+• اختر فئة كرت أخرى
+• تحقق لاحقاً من توفر الفئة
+• تواصل مع الدعم الفني إذا استمرت المشكلة
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🔍 شبكات أخرى', callback_data='all_networks')],
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await update.callback_query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+        # تسجيل الخطأ للمطورين
+        logger.warning(f"Category display error for category ID: {category_id}")
+        
+    except Exception as e:
+        logger.error(f"Error in handle category error: {e}")
+        try:
+            await update.callback_query.edit_message_text(
+                "❌ حدث خطأ في معالجة الطلب\n💡 يرجى المحاولة مرة أخرى"
+            )
+        except Exception:
+            pass
