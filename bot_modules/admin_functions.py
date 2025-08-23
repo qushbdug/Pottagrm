@@ -12,6 +12,8 @@ from telegram.ext import CallbackContext
 from bot_modules.config import *
 from bot_modules.database import get_db_connection
 from bot_modules.utils import *
+from bot_modules.callback_utils import create_callback, get_callback_data
+from bot_modules.error_handler import ErrorHandler, safe_database_transaction
 
 logger = logging.getLogger(__name__)
 
@@ -436,7 +438,7 @@ async def activate_suppliers_handler(update: Update, context: CallbackContext):
             keyboard.append([
                 InlineKeyboardButton(
                     f"✅ {supplier_info}", 
-                    callback_data=f'activate_supplier_{supplier["id"]}'
+                    callback_data=create_callback('activate_supplier', supplier_id=supplier["id"])
                 )
             ])
         
@@ -475,19 +477,17 @@ async def activate_single_supplier(update: Update, context: CallbackContext, sup
             await query.edit_message_text(f"{EMOJIS['error']} لم يتم العثور على المزود.")
             return
         
-        # Activate the supplier
-        cursor.execute('UPDATE users SET is_active = 1 WHERE id = ?', (supplier_id,))
-        
-        # Log the activation
-        log_system_action(user['id'], 'supplier_activation', f'Activated supplier {supplier["full_name"]} (ID: {supplier_id})')
-        log_activity(user['id'], 'admin_supplier_activation', f'Activated supplier {supplier["full_name"]}', {
-            'supplier_id': supplier_id,
-            'supplier_name': supplier['full_name'],
-            'supplier_phone': supplier['phone']
-        })
-        
-        conn.commit()
-        conn.close()
+        # Activate the supplier using safe transaction
+        with safe_database_transaction(conn) as cursor:
+            cursor.execute('UPDATE users SET is_active = 1 WHERE id = ?', (supplier_id,))
+            
+            # Log the activation
+            log_system_action(user['id'], 'supplier_activation', f'Activated supplier {supplier["full_name"]} (ID: {supplier_id})')
+            log_activity(user['id'], 'admin_supplier_activation', f'Activated supplier {supplier["full_name"]}', {
+                'supplier_id': supplier_id,
+                'supplier_name': supplier['full_name'],
+                'supplier_phone': supplier['phone']
+            })
         
         # Send notification to supplier
         send_smart_notification(

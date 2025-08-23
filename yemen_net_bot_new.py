@@ -31,6 +31,8 @@ try:
     from utils import *
     from handlers import COMMAND_HANDLERS, CONVERSATION_STATES, handle_text_message, show_main_menu
     from admin_functions import ADMIN_CALLBACKS, activate_single_supplier
+    from bot_modules.callback_utils import create_callback, get_callback_data
+    from bot_modules.error_handler import safe_database_transaction, ErrorHandler
 except ImportError as e:
     print(f"Error importing modules: {e}")
     print("Make sure all module files are in the bot_modules directory")
@@ -215,8 +217,29 @@ async def button_click_handler(update: Update, context):
         elif callback_data == 'buy_cards':
             await buy_cards_handler(update, context)
         elif callback_data.startswith('buy_from_network_'):
-            network_id = callback_data.split('_')[3]
-            await show_network_categories(update, context, network_id)
+            # استرجاع البيانات من callback manager
+            callback_info = get_callback_data(callback_data)
+            if callback_info and 'network_id' in callback_info['data']:
+                network_id = callback_info['data']['network_id']
+                await show_network_categories(update, context, network_id)
+            else:
+                await query.edit_message_text(f"{EMOJIS['error']} بيانات غير صحيحة")
+        elif callback_data.startswith('buy_card_'):
+            # استرجاع البيانات من callback manager
+            callback_info = get_callback_data(callback_data)
+            if callback_info and 'category_id' in callback_info['data']:
+                category_id = callback_info['data']['category_id']
+                await process_card_purchase_enhanced(update, context, category_id)
+            else:
+                await query.edit_message_text(f"{EMOJIS['error']} بيانات غير صحيحة")
+        elif callback_data.startswith('activate_supplier_'):
+            # استرجاع البيانات من callback manager
+            callback_info = get_callback_data(callback_data)
+            if callback_info and 'supplier_id' in callback_info['data']:
+                supplier_id = callback_info['data']['supplier_id']
+                await activate_single_supplier(update, context, supplier_id)
+            else:
+                await query.edit_message_text(f"{EMOJIS['error']} بيانات غير صحيحة")
         elif callback_data.startswith('quick_search_'):
             search_term = callback_data.split('_')[2]
             await perform_quick_search(update, context, search_term)
@@ -740,11 +763,11 @@ async def buy_cards_handler(update: Update, context):
                 # إضافة أزرار مختلفة حسب توفر فئات الكروت
                 if cat_count > 0:
                     keyboard.append([
-                        InlineKeyboardButton(f'🛒 شراء من {name}', callback_data=f'buy_from_network_{net_id}')
+                        InlineKeyboardButton(f'🛒 شراء من {name}', callback_data=create_callback('buy_from_network', network_id=net_id))
                     ])
                 else:
                     keyboard.append([
-                        InlineKeyboardButton(f'👁️ عرض {name} (لا توجد فئات)', callback_data=f'network_{net_id}')
+                        InlineKeyboardButton(f'👁️ عرض {name} (لا توجد فئات)', callback_data=create_callback('network', network_id=net_id))
                     ])
         
         keyboard.extend([
@@ -1647,7 +1670,7 @@ async def perform_quick_search(update: Update, context, search_term):
                     
                     # أزرار للشراء
                     keyboard.append([
-                        InlineKeyboardButton(f'🛒 شراء من {name}', callback_data=f'buy_from_network_{net_id}')
+                        InlineKeyboardButton(f'🛒 شراء من {name}', callback_data=create_callback('buy_from_network', network_id=net_id))
                     ])
                 else:
                     categories_text = "💳 لا توجد فئات كروت بعد"
@@ -1655,7 +1678,7 @@ async def perform_quick_search(update: Update, context, search_term):
                     
                     # أزرار للعرض فقط
                     keyboard.append([
-                        InlineKeyboardButton(f'👁️ عرض {name} (لا توجد فئات)', callback_data=f'network_{net_id}')
+                        InlineKeyboardButton(f'👁️ عرض {name} (لا توجد فئات)', callback_data=create_callback('network', network_id=net_id))
                     ])
                 
                 search_results += f"""
@@ -1786,9 +1809,9 @@ async def show_network_categories(update: Update, context, network_id):
 """
             
             # إضافة زر الشراء
-            keyboard.append([
-                InlineKeyboardButton(f'🛒 شراء {cat_name} - {price_text}', callback_data=f'buy_card_{cat_id}')
-            ])
+                                keyboard.append([
+                        InlineKeyboardButton(f'🛒 شراء {cat_name} - {price_text}', callback_data=create_callback('buy_card', category_id=cat_id))
+                    ])
         
         # إضافة أزرار إضافية
         keyboard.extend([
@@ -1853,7 +1876,7 @@ async def perform_customer_network_search(update: Update, context):
                     
                     # أزرار للشراء
                     keyboard.append([
-                        InlineKeyboardButton(f'🛒 شراء من {name}', callback_data=f'buy_from_network_{net_id}')
+                        InlineKeyboardButton(f'🛒 شراء من {name}', callback_data=create_callback('buy_from_network', network_id=net_id))
                     ])
                 else:
                     categories_text = "💳 لا توجد فئات كروت بعد"
@@ -1861,7 +1884,7 @@ async def perform_customer_network_search(update: Update, context):
                     
                     # أزرار للعرض فقط
                     keyboard.append([
-                        InlineKeyboardButton(f'👁️ عرض {name} (لا توجد فئات)', callback_data=f'network_{net_id}')
+                        InlineKeyboardButton(f'👁️ عرض {name} (لا توجد فئات)', callback_data=create_callback('network', network_id=net_id))
                     ])
                 
                 search_results += f"""
@@ -3198,7 +3221,7 @@ async def show_network_details(update: Update, context: CallbackContext, network
             details_text += "❌ لا توجد فئات متاحة حالياً"
         
         keyboard = [
-            [InlineKeyboardButton(f'🛒 شراء من {name}', callback_data=f'buy_from_network_{net_id}')],
+            [InlineKeyboardButton(f'🛒 شراء من {name}', callback_data=create_callback('buy_from_network', network_id=net_id))],
             [InlineKeyboardButton('🔙 العودة للشبكات', callback_data='search_networks'),
              InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
