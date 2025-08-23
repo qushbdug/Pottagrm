@@ -10,7 +10,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext
 from bot_modules.config import *
 from bot_modules.utils import *
-from bot_modules.database import get_db_connection, update_user_balance, log_transaction
+from bot_modules.database import get_db_connection, update_user_balance
+from bot_modules.utils import log_transaction
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +148,11 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, tra
     except Exception as e:
         logger.error(f"Error in confirm transfer handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تأكيد التحويل.")
+
+def setup_transfer_handlers(application):
+    """Setup transfer handlers"""
+    # Transfer handlers are called via callback handlers
+    pass
 
 async def execute_transfer_handler(update: Update, context: CallbackContext, target_user_id: int, amount: float):
     """Execute the transfer"""

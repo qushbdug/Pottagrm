@@ -332,3 +332,8 @@ async def admin_system_reports_handler(update: Update, context: CallbackContext)
     except Exception as e:
         logger.error(f"Error in admin system reports handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض تقارير النظام.")
+
+def setup_admin_handlers(application):
+    """Setup admin handlers"""
+    # Admin handlers are called via callback handlers
+    pass

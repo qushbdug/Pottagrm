@@ -37,6 +37,31 @@ async def start_command(update: Update, context: CallbackContext):
         logger.error(f"Error in start command: {e}")
         await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في بدء البوت.")
 
+async def register_new_user(update: Update, context: CallbackContext):
+    """Register new user"""
+    try:
+        user = update.effective_user
+        user_id = user.id
+        
+        # Create new user with default values
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO users (telegram_id, full_name, phone, role, balance, is_active)
+            VALUES (?, ?, ?, 'customer', 0.0, 1)
+        ''', (user_id, user.full_name or f"User{user_id}", "000000000"))
+        
+        conn.commit()
+        conn.close()
+        
+        # Show main menu
+        await show_main_menu(update, context, 'customer')
+        
+    except Exception as e:
+        logger.error(f"Error registering new user: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في التسجيل. يرجى المحاولة مرة أخرى.")
+
 async def help_command(update: Update, context: CallbackContext):
     """Handle /help command"""
     try:

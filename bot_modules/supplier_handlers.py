@@ -357,3 +357,8 @@ async def custom_price_handler(update: Update, context: CallbackContext, network
     except Exception as e:
         logger.error(f"Error in custom price handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إعداد السعر المخصص.")
+
+def setup_supplier_handlers(application):
+    """Setup supplier handlers"""
+    # Supplier handlers are called via callback handlers
+    pass

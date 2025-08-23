@@ -267,6 +267,58 @@ def get_user_permissions(user_id: int) -> List[str]:
         logger.error(f"Error getting user permissions: {e}")
         return []
 
+def get_user_by_phone(phone: str):
+    """Get user by phone number"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # الحصول على أسماء الأعمدة
+        cursor.execute('PRAGMA table_info(users)')
+        columns = [col[1] for col in cursor.fetchall()]
+        
+        # تنفيذ الاستعلام
+        cursor.execute('SELECT * FROM users WHERE phone = ?', (phone,))
+        user_data = cursor.fetchone()
+        conn.close()
+        
+        if user_data:
+            # تحويل النتيجة إلى dict
+            user_dict = dict(zip(columns, user_data))
+            return user_dict
+        else:
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error getting user by phone: {e}")
+        return None
+
+def get_user_by_id(user_id: int):
+    """Get user by ID"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # الحصول على أسماء الأعمدة
+        cursor.execute('PRAGMA table_info(users)')
+        columns = [col[1] for col in cursor.fetchall()]
+        
+        # تنفيذ الاستعلام
+        cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
+        user_data = cursor.fetchone()
+        conn.close()
+        
+        if user_data:
+            # تحويل النتيجة إلى dict
+            user_dict = dict(zip(columns, user_data))
+            return user_dict
+        else:
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error getting user by ID: {e}")
+        return None
+
 def has_permission(user_id: int, permission: str) -> bool:
     """Check if user has specific permission"""
     permissions = get_user_permissions(user_id)

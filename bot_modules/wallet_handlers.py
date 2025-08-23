@@ -98,6 +98,34 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
             wallet_text = build_wallet_text(user, recent_transactions, total_transactions, 
                                           sent_amount, received_amount, rating_data)
             logger.info("تم بناء نص المحفظة بنجاح")
+        
+        # Build keyboard
+        keyboard = [
+            [InlineKeyboardButton('💰 تحويل رصيد', callback_data='transfer_to_friend')],
+            [InlineKeyboardButton('📊 تقارير المعاملات', callback_data='transaction_reports')],
+            [InlineKeyboardButton('🔙 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        # Send response
+        if is_callback:
+            await query.edit_message_text(wallet_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        else:
+            await update.message.reply_text(wallet_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            
+        logger.info("تم إرسال المحفظة بنجاح")
+        
+    except Exception as e:
+        logger.error(f"خطأ في معالجة المحفظة: {e}", exc_info=True)
+        error_msg = f"{EMOJIS['error']} حدث خطأ في عرض المحفظة. يرجى المحاولة مرة أخرى."
+        if is_callback:
+            await query.edit_message_text(error_msg)
+        else:
+            await update.message.reply_text(error_msg)
+
+def setup_wallet_handlers(application):
+    """Setup wallet handlers"""
+    # Wallet handlers are called via callback handlers
+    pass
             
         except Exception as text_error:
             logger.error(f"خطأ في بناء نص المحفظة: {text_error}", exc_info=True)

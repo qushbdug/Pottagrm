@@ -114,6 +114,11 @@ async def show_network_details(update: Update, context: CallbackContext, network
         logger.error(f"Error in show network details: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض تفاصيل الشبكة.")
 
+def setup_network_handlers(application):
+    """Setup network handlers"""
+    # Network handlers are called via callback handlers
+    pass
+
 async def view_networks_handler(update: Update, context: CallbackContext):
     """View all available networks"""
     try:
