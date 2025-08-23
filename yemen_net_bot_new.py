@@ -4228,6 +4228,249 @@ def main():
                     )
             except Exception:
                 pass
+
+        # Enhanced wallet handler
+        async def enhanced_wallet_handler(update: Update, context: CallbackContext):
+            """معالج المحفظة المحسنة - مُصحح مع معالجة أخطاء مفصلة"""
+            try:
+                logger.info("بدء معالجة طلب المحفظة المطورة")
+                
+                # تحديد نوع التحديث (callback أو message)
+                if hasattr(update, 'callback_query') and update.callback_query:
+                    query = update.callback_query
+                    user = get_user(query.from_user.id)
+                    is_callback = True
+                    logger.info(f"طلب callback من المستخدم {query.from_user.id}")
+                else:
+                    user = get_user(update.effective_user.id)
+                    is_callback = False
+                    logger.info(f"طلب message من المستخدم {update.effective_user.id}")
+                
+                if not user:
+                    logger.warning(f"مستخدم غير مسجل يحاول الوصول للمحفظة")
+                    error_msg = f"{EMOJIS['error']} يرجى التسجيل أولاً."
+                    if is_callback:
+                        await update.callback_query.edit_message_text(error_msg)
+                    else:
+                        await update.message.reply_text(error_msg)
+                    return
+                
+                logger.info(f"معالجة محفظة المستخدم: {user['full_name']} (ID: {user['id']})")
+                
+                # الحصول على المعاملات الحديثة
+                try:
+                    conn = get_db_connection()
+                    cursor = conn.cursor()
+                    logger.info("تم الاتصال بقاعدة البيانات")
+                    
+                    # آخر المعاملات
+                    cursor.execute('''
+                        SELECT id, from_user, to_user, amount, type, description, created_at
+                        FROM transactions 
+                        WHERE from_user = ? OR to_user = ?
+                        ORDER BY created_at DESC
+                        LIMIT 8
+                    ''', (user['id'], user['id']))
+                    
+                    recent_transactions = cursor.fetchall()
+                    logger.info(f"تم جلب {len(recent_transactions)} معاملة حديثة")
+                    
+                    # إحصائيات المعاملات
+                    cursor.execute('''
+                        SELECT 
+                            COUNT(*) as total_count,
+                            COALESCE(SUM(CASE WHEN from_user = ? THEN amount END), 0) as sent_total,
+                            COALESCE(SUM(CASE WHEN to_user = ? THEN amount END), 0) as received_total
+                        FROM transactions 
+                        WHERE from_user = ? OR to_user = ?
+                    ''', (user['id'], user['id'], user['id'], user['id']))
+                    
+                    stats = cursor.fetchone()
+                    total_transactions, sent_amount, received_amount = stats
+                    logger.info(f"إحصائيات المعاملات: إجمالي {total_transactions}, مرسل {sent_amount}, مستلم {received_amount}")
+                    
+                    conn.close()
+                    
+                except Exception as db_error:
+                    logger.error(f"خطأ في قاعدة البيانات: {db_error}", exc_info=True)
+                    # استخدام قيم افتراضية في حالة خطأ قاعدة البيانات
+                    recent_transactions = []
+                    total_transactions = 0
+                    sent_amount = 0.0
+                    received_amount = 0.0
+                
+                # حساب التقييم مع معالجة الأخطاء
+                try:
+                    logger.info("بدء حساب تقييم المستخدم")
+                    rating_data = calculate_user_rating(user['id'])
+                    logger.info(f"تم حساب التقييم: {rating_data}")
+                except Exception as rating_error:
+                    logger.error(f"خطأ في حساب التقييم: {rating_error}", exc_info=True)
+                    # استخدام قيم افتراضية في حالة خطأ التقييم
+                    rating_data = {'total_ratings': 0, 'average_rating': 0.0, 'rating_distribution': {}}
+                
+                # بناء نص المحفظة
+                try:
+                    wallet_text = f"""
+💳 **محفظتي المطورة** 💳
+
+👤 **{user['full_name']}**
+💰 **الرصيد:** {user['balance']:,.2f} ريال
+💳 **رقم المحفظة:** {user.get('wallet_number', 'غير محدد')}
+
+📊 **إحصائيات المحفظة:**
+📤 المرسل: **{sent_amount:,.2f}** ريال ({total_transactions} معاملة)
+📥 المستلم: **{received_amount:,.2f}** ريال
+💵 صافي الحركة: **{received_amount - sent_amount:+,.2f}** ريال
+⭐ تقييمي: **{rating_data.get('average_rating', 0.0)}/5** ({rating_data.get('total_ratings', 0)} تقييم)
+
+📋 **آخر المعاملات:**
+
+"""
+                    
+                    if recent_transactions:
+                        for transaction in recent_transactions:
+                            try:
+                                trans_id, from_user_id, to_user_id, amount, trans_type, description, created_at = transaction
+                                
+                                # تحديد اتجاه المعاملة
+                                if from_user_id == user['id']:
+                                    direction = "📤 مرسل"
+                                    color = "🔴"
+                                else:
+                                    direction = "📥 مستلم"
+                                    color = "🟢"
+                                
+                                # نوع المعاملة
+                                type_names = {
+                                    'transfer': 'تحويل رصيد',
+                                    'card_purchase': 'شراء كرت',
+                                    'coupon_redeem': 'شحن بكوبون',
+                                    'commission': 'عمولة'
+                                }
+                                type_name = type_names.get(trans_type, 'معاملة')
+                                
+                                # معالجة التاريخ بشكل آمن
+                                date_str = 'غير محدد'
+                                if created_at:
+                                    try:
+                                        if isinstance(created_at, str):
+                                            date_str = created_at[:16]
+                                        else:
+                                            date_str = str(created_at)[:16]
+                                    except:
+                                        date_str = 'غير محدد'
+                                
+                                wallet_text += f"""
+{color} **{direction} - {type_name}**
+💰 {amount:,.2f} ريال
+📅 {date_str}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+                            except Exception as trans_error:
+                                logger.error(f"خطأ في معالجة معاملة {transaction}: {trans_error}")
+                                continue
+                    else:
+                        wallet_text += "📭 لا توجد معاملات حتى الآن"
+                    
+                    logger.info("تم بناء نص المحفظة بنجاح")
+                    
+                except Exception as text_error:
+                    logger.error(f"خطأ في بناء نص المحفظة: {text_error}", exc_info=True)
+                    wallet_text = f"""
+💳 **محفظتي المطورة** 💳
+
+👤 **{user['full_name']}**
+💰 **الرصيد:** {user['balance']:,.2f} ريال
+
+❌ حدث خطأ في عرض التفاصيل الكاملة
+💡 يمكنك استخدام الأزرار أدناه للوصول للميزات المختلفة
+"""
+                
+                # إنشاء لوحة المفاتيح
+                try:
+                    keyboard = [
+                        [InlineKeyboardButton('💸 تحويل رصيد', callback_data='transfer_to_friend'),
+                         InlineKeyboardButton('🛒 شراء كروت', callback_data='buy_cards')],
+                        [InlineKeyboardButton('🎟️ شحن بكوبون', callback_data='redeem_coupon'),
+                         InlineKeyboardButton('📊 تفاصيل المعاملات', callback_data='transaction_details')],
+                        [InlineKeyboardButton('📈 إحصائيات المحفظة', callback_data='wallet_stats'),
+                         InlineKeyboardButton('🔄 تحديث الرصيد', callback_data='refresh_balance')],
+                        [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+                    ]
+                    logger.info("تم إنشاء لوحة المفاتيح بنجاح")
+                    
+                except Exception as keyboard_error:
+                    logger.error(f"خطأ في إنشاء لوحة المفاتيح: {keyboard_error}", exc_info=True)
+                    keyboard = [[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]
+                
+                # إرسال الرسالة
+                try:
+                    if is_callback:
+                        await update.callback_query.edit_message_text(
+                            wallet_text, 
+                            reply_markup=InlineKeyboardMarkup(keyboard), 
+                            parse_mode='Markdown'
+                        )
+                    else:
+                        await update.message.reply_text(
+                            wallet_text, 
+                            reply_markup=InlineKeyboardMarkup(keyboard), 
+                            parse_mode='Markdown'
+                        )
+                    
+                    logger.info("تم إرسال المحفظة المطورة بنجاح")
+                    
+                except Exception as send_error:
+                    logger.error(f"خطأ في إرسال الرسالة: {send_error}", exc_info=True)
+                    # محاولة إرسال رسالة خطأ بسيطة
+                    error_msg = f"{EMOJIS['error']} حدث خطأ في عرض المحفظة. يرجى المحاولة مرة أخرى."
+                    try:
+                        if is_callback:
+                            await update.callback_query.edit_message_text(error_msg)
+                        else:
+                            await update.message.reply_text(error_msg)
+                    except Exception as final_error:
+                        logger.error(f"خطأ نهائي في إرسال رسالة الخطأ: {final_error}", exc_info=True)
+                
+            except Exception as e:
+                logger.error(f"خطأ عام في enhanced wallet handler: {e}", exc_info=True)
+                
+                # رسالة خطأ مفصلة للمطورين
+                error_details = f"""
+❌ **خطأ في المحفظة المطورة**
+
+🔍 **تفاصيل الخطأ:**
+{str(e)}
+
+📱 **نوع الطلب:** {'Callback' if hasattr(update, 'callback_query') and update.callback_query else 'Message'}
+👤 **المستخدم:** {getattr(update.effective_user, 'id', 'غير محدد') if hasattr(update, 'effective_user') else 'غير محدد'}
+
+💡 **الحلول المقترحة:**
+• تأكد من وجود جميع الجداول المطلوبة
+• تحقق من صحة بيانات المستخدم
+• راجع سجلات الخطأ للحصول على تفاصيل أكثر
+"""
+                
+                # تسجيل الخطأ المفصل
+                logger.error(error_details)
+                
+                # رسالة بسيطة للمستخدم
+                user_error_msg = f"{EMOJIS['error']} حدث خطأ في عرض المحفظة. تم تسجيل المشكلة وسيتم حلها قريباً."
+                
+                try:
+                    if hasattr(update, 'callback_query') and update.callback_query:
+                        await update.callback_query.edit_message_text(
+                            user_error_msg,
+                            reply_markup=InlineKeyboardMarkup([[
+                                InlineKeyboardButton('🔄 إعادة المحاولة', callback_data='enhanced_wallet'),
+                                InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')
+                            ]])
+                        )
+                    else:
+                        await update.message.reply_text(user_error_msg)
+                except Exception as final_error:
+                    logger.error(f"فشل في إرسال رسالة الخطأ النهائية: {final_error}", exc_info=True)
         
         # Add handlers
         application.add_handler(conv_handler)
@@ -4559,7 +4802,6 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
                 await update.message.reply_text(user_error_msg)
         except Exception as final_error:
             logger.error(f"فشل في إرسال رسالة الخطأ النهائية: {final_error}", exc_info=True)
-
 
 # معالجات إدارة الشبكات للمشرف الأعلى
 async def admin_manage_networks_handler(update: Update, context: CallbackContext):
