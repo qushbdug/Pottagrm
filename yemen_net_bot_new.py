@@ -1919,8 +1919,9 @@ async def perform_customer_network_search(update: Update, context):
             [InlineKeyboardButton('🔙 عودة لشراء الكروت', callback_data='buy_cards')]
         ])
         
-        # إزالة حالة البحث
-        context.user_data['customer_searching_network'] = False
+        # إزالة حالة البحث نهائياً
+        if 'customer_searching_network' in context.user_data:
+            del context.user_data['customer_searching_network']
         
         await update.message.reply_text(search_results, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
@@ -2781,6 +2782,12 @@ async def manual_network_selection_handler(update: Update, context: CallbackCont
         if not network:
             await query.edit_message_text("❌ شبكة غير صحيحة أو غير مفعلة.")
             return
+        
+        # مسح أي حالات بحث سابقة لتجنب التداخل
+        if 'customer_searching_network' in context.user_data:
+            del context.user_data['customer_searching_network']
+        if 'searching_network' in context.user_data:
+            del context.user_data['searching_network']
         
         # تخزين معرف الشبكة
         context.user_data['manual_network_id'] = network_id

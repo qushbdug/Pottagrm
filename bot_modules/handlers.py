@@ -551,6 +551,20 @@ async def handle_text_message(update: Update, context: CallbackContext):
         if context.user_data.get('awaiting_network_location'):
             return await process_network_location(update, context, update.message.text)
         
+        # ===== HIGH PRIORITY STATES (Card input flow) =====
+        # Check if supplier is entering custom price (PRIORITY HIGH)
+        if context.user_data.get('awaiting_custom_price'):
+            return await process_custom_price_input(update, context)
+        
+        # Check if supplier is entering card size (PRIORITY HIGH)
+        if context.user_data.get('awaiting_card_size'):
+            return await process_card_size_input(update, context)
+        
+        # Check if supplier is entering card numbers (PRIORITY HIGH)
+        if context.user_data.get('awaiting_card_numbers'):
+            return await process_card_numbers_input(update, context)
+        
+        # ===== NETWORK SEARCH STATES =====
         # Check if waiting for network search
         if context.user_data.get('awaiting_network_search'):
             return await process_network_search(update, context, update.message.text)
@@ -595,18 +609,6 @@ async def handle_text_message(update: Update, context: CallbackContext):
         # Check if supplier is manually entering cards
         if context.user_data.get('awaiting_manual_card'):
             return await process_manual_card_input(update, context)
-        
-        # Check if supplier is entering custom price
-        if context.user_data.get('awaiting_custom_price'):
-            return await process_custom_price_input(update, context)
-        
-        # Check if supplier is entering card size
-        if context.user_data.get('awaiting_card_size'):
-            return await process_card_size_input(update, context)
-        
-        # Check if supplier is entering card numbers
-        if context.user_data.get('awaiting_card_numbers'):
-            return await process_card_numbers_input(update, context)
         
         # Check if waiting for user search
         if context.user_data.get('awaiting_user_search'):
