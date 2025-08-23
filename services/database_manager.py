@@ -149,7 +149,7 @@ class DatabaseManager:
             """
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER UNIQUE NOT NULL,
+                telegram_id INTEGER UNIQUE NOT NULL,
                 username TEXT,
                 first_name TEXT,
                 last_name TEXT,
@@ -227,13 +227,13 @@ class DatabaseManager:
             """
             CREATE TABLE IF NOT EXISTS notifications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
+                telegram_id INTEGER NOT NULL,
                 title TEXT NOT NULL,
                 message TEXT NOT NULL,
                 type TEXT DEFAULT 'info',
                 is_read BOOLEAN DEFAULT 0,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id)
+                FOREIGN KEY (telegram_id) REFERENCES users(telegram_id)
             )
             """,
             """
@@ -247,32 +247,31 @@ class DatabaseManager:
             """
             CREATE TABLE IF NOT EXISTS audit_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
+                telegram_id INTEGER,
                 action TEXT NOT NULL,
                 entity_type TEXT,
                 entity_id INTEGER,
                 old_values TEXT,
                 new_values TEXT,
                 ip_address TEXT,
-                user_agent TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id)
+                FOREIGN KEY (telegram_id) REFERENCES users(telegram_id)
             )
             """
         ]
         
         # Create indexes
         indexes_sql = [
-            "CREATE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id)",
             "CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)",
             "CREATE INDEX IF NOT EXISTS idx_cards_category_id ON cards(category_id)",
             "CREATE INDEX IF NOT EXISTS idx_cards_is_sold ON cards(is_sold)",
             "CREATE INDEX IF NOT EXISTS idx_transactions_from_user ON transactions(from_user)",
             "CREATE INDEX IF NOT EXISTS idx_transactions_to_user ON transactions(to_user)",
             "CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type)",
-            "CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_notifications_telegram_id ON notifications(telegram_id)",
             "CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read)",
-            "CREATE INDEX IF NOT EXISTS idx_audit_log_user_id ON audit_log(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_audit_log_telegram_id ON audit_log(telegram_id)",
             "CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action)"
         ]
         
