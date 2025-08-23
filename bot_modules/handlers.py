@@ -579,6 +579,10 @@ async def handle_text_message(update: Update, context: CallbackContext):
             from bot_modules.admin_functions import admin_process_card_upload
             return await admin_process_card_upload(update, context)
         
+        # Check if supplier is manually entering cards
+        if context.user_data.get('awaiting_manual_card'):
+            return await process_manual_card_input(update, context)
+        
         # Check if admin is creating coupon
         if context.user_data.get('admin_creating_coupon'):
             from bot_modules.admin_functions import process_coupon_creation
@@ -587,6 +591,10 @@ async def handle_text_message(update: Update, context: CallbackContext):
         # Check if user is redeeming coupon
         if context.user_data.get('redeeming_coupon'):
             return await process_coupon_redemption(update, context)
+        
+        # Check if supplier is manually entering cards
+        if context.user_data.get('awaiting_manual_card'):
+            return await process_manual_card_input(update, context)
         
         # Check if waiting for user search
         if context.user_data.get('awaiting_user_search'):
@@ -3574,3 +3582,136 @@ async def process_supplier_network_creation(update: Update, context: CallbackCon
     except Exception as e:
         await update.message.reply_text(f"❌ خطأ في معالجة الشبكة: {e}")
         context.user_data.clear()
+
+async def process_manual_card_input(update: Update, context: CallbackContext):
+    """معالجة الإدخال اليدوي للكروت من المزود"""
+    try:
+        user = get_user(update.effective_user.id)
+        
+        if user['role'] != 'supplier':
+            await update.message.reply_text("❌ هذه الميزة متاحة للمزودين فقط.")
+            return
+        
+        network_id = context.user_data.get('manual_network_id')
+        if not network_id:
+            await update.message.reply_text("❌ لم يتم اختيار الشبكة. يرجى البدء من جديد.")
+            return
+        
+        message_text = update.message.text.strip()
+        lines = message_text.split('\n')
+        
+        uploaded_cards = []
+        errors = []
+        
+        # الحصول على معلومات الشبكة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT name FROM networks WHERE id = ?', (network_id,))
+        network = cursor.fetchone()
+        
+        if not network:
+            await update.message.reply_text("❌ لم يتم العثور على الشبكة المحددة.")
+            return
+        
+        network_name = network[0]
+        
+        # معالجة كل سطر
+        for line_num, line in enumerate(lines, 1):
+            line = line.strip()
+            if not line:
+                continue
+            
+            parts = line.split('|')
+            if len(parts) != 2:
+                errors.append(f"السطر {line_num}: تنسيق غير صحيح. استخدم: رقم_الكرت|الحجم")
+                continue
+            
+            card_number = parts[0].strip()
+            card_value_str = parts[1].strip()
+            
+            # فحص رقم الكرت
+            if len(card_number) < 8:
+                errors.append(f"السطر {line_num}: رقم الكرت قصير جداً. يجب أن يكون 8 أرقام على الأقل")
+                continue
+            
+            # فحص حجم الكرت
+            if not card_value_str.isdigit():
+                errors.append(f"السطر {line_num}: حجم الكرت يجب أن يكون رقماً صحيحاً")
+                continue
+            
+            card_value = int(card_value_str)
+            if card_value <= 0:
+                errors.append(f"السطر {line_num}: حجم الكرت يجب أن يكون أكبر من صفر")
+                continue
+            
+            # فحص إذا كان الكرت موجود مسبقاً
+            cursor.execute('SELECT id FROM cards WHERE card_number = ?', (card_number,))
+            if cursor.fetchone():
+                errors.append(f"السطر {line_num}: رقم الكرت {card_number} موجود مسبقاً")
+                continue
+            
+            # إضافة الكرت
+            try:
+                cursor.execute('''
+                    INSERT INTO cards (category_id, card_number, card_value, uploaded_by, uploaded_at)
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ''', (None, card_number, card_value, user['id']))
+                
+                uploaded_cards.append(f"{card_number} ({card_value}MB)")
+                
+            except Exception as e:
+                errors.append(f"السطر {line_num}: خطأ في إضافة الكرت - {e}")
+        
+        conn.commit()
+        conn.close()
+        
+        # رسالة النتائج
+        success_text = f"""
+🎉 **تم معالجة الكروت بنجاح!** 🎉
+
+🌐 **الشبكة:** {network_name}
+👤 **المزود:** {user['full_name']}
+
+📊 **النتائج:**
+✅ تم رفع: **{len(uploaded_cards)}** كرت
+❌ أخطاء: **{len(errors)}**
+
+"""
+        
+        if uploaded_cards:
+            success_text += "✅ **الكروت المرفوعة:**\n"
+            for card in uploaded_cards[:5]:  # عرض أول 5 كروت فقط
+                success_text += f"• {card}\n"
+            if len(uploaded_cards) > 5:
+                success_text += f"• ... و {len(uploaded_cards) - 5} كرت آخر\n"
+        
+        if errors:
+            success_text += "\n❌ **الأخطاء:**\n"
+            for error in errors[:5]:  # عرض أول 5 أخطاء فقط
+                success_text += f"• {error}\n"
+            if len(errors) > 5:
+                success_text += f"• ... و {len(errors) - 5} خطأ آخر\n"
+        
+        # إعادة تعيين الحالة
+        context.user_data.pop('awaiting_manual_card', None)
+        context.user_data.pop('manual_network_id', None)
+        
+        keyboard = [
+            [InlineKeyboardButton('✏️ إدخال كروت أخرى', callback_data='manual_card_input')],
+            [InlineKeyboardButton('📁 رفع ملف', callback_data='choose_upload_method')],
+            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
+        ]
+        
+        await update.message.reply_text(
+            success_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in manual card input: {e}")
+        await update.message.reply_text(f"❌ حدث خطأ في معالجة الكروت: {e}")
+        
+        # إعادة تعيين الحالة في حالة الخطأ
+        context.user_data.pop('awaiting_manual_card', None)
+        context.user_data.pop('manual_network_id', None)

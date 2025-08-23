@@ -309,6 +309,10 @@ async def button_click_handler(update: Update, context):
             await notification_settings_handler(update, context)
         elif callback_data == 'choose_upload_method':
             await choose_upload_method_handler(update, context)
+        elif callback_data == 'manual_card_input':
+            await manual_card_input_handler(update, context)
+        elif callback_data.startswith('manual_network_'):
+            await manual_network_selection_handler(update, context)
         elif callback_data == 'network_details':
             await network_details_handler(update, context)
         elif callback_data == 'privacy_settings':
@@ -1380,27 +1384,24 @@ async def upload_cards_handler(update: Update, context):
         upload_text = f"""
 📤 **رفع كروت الشبكة** 📤
 
-🎯 **طريقة رفع الكروت:**
+🎯 **طرق رفع الكروت:**
 
-📋 **الصيغة المدعومة:**
-1️⃣ **ملف نصي (.txt)** - كل رقم في سطر منفصل
-2️⃣ **ملف إكسل (.xlsx)** - عمود الأرقام
+📋 **1. رفع ملف:**
+• ملف نصي (.txt) - كل رقم في سطر منفصل
+• ملف إكسل (.xlsx) - عمود الأرقام
+• صيغة: `رقم_الكارت,القيمة` (مثال: `123456789012,1000`)
 
-📝 **صيغة الأرقام:**
-• كل رقم من 6 إلى 14 رقم
-• يمكن إضافة القيمة: `رقم_الكارت,القيمة`
-• مثال: `123456789012,50`
+✏️ **2. إدخال يدوي:**
+• إدخال أرقام الكروت واحداً تلو الآخر
+• تحديد حجم كل كرت (مثال: 1 جيجا = 1000 ميجابايت)
+• مناسب للكميات الصغيرة
 
-⚡ **خطوات الرفع:**
-1. أرسل الملف (نصي أو إكسل)
-2. اختر الشبكة المرتبطة
-3. تأكيد الرفع والمعالجة
-
-🚀 **ابدأ برفع ملف الكروت الآن!**
+⚡ **اختر الطريقة المناسبة:**
 """
         
         keyboard = [
-            [InlineKeyboardButton('📁 اختر طريقة الرفع', callback_data='choose_upload_method')],
+            [InlineKeyboardButton('📁 رفع ملف', callback_data='choose_upload_method')],
+            [InlineKeyboardButton('✏️ إدخال يدوي', callback_data='manual_card_input')],
             [InlineKeyboardButton('📋 عرض سجل الرفع', callback_data='upload_history')],
             [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
         ]
@@ -2664,6 +2665,171 @@ async def notification_settings_handler(update: Update, context: CallbackContext
     except Exception as e:
         logger.error(f"Error in notification settings handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إعدادات الإشعارات.")
+
+async def manual_card_input_handler(update: Update, context: CallbackContext):
+    """معالج الإدخال اليدوي للكروت"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        if user['role'] != 'supplier':
+            await query.edit_message_text("❌ هذه الميزة متاحة للمزودين فقط.")
+            return
+        
+        # الحصول على شبكات المزود
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, name, provider, city
+            FROM networks 
+            WHERE supplier_id = ? AND is_active = 1 AND is_approved = 1
+            ORDER BY name
+        ''', (user['id'],))
+        networks = cursor.fetchall()
+        conn.close()
+        
+        if not networks:
+            await query.edit_message_text(
+                "❌ **لا توجد شبكات مفعلة ومعتمدة**\n\n"
+                "🔧 **يجب عليك:**\n"
+                "1️⃣ إنشاء شبكة جديدة\n"
+                "2️⃣ انتظار موافقة المشرف\n"
+                "3️⃣ تفعيل الشبكة\n\n"
+                "💡 يمكنك إضافة شبكة جديدة من لوحة المزود",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton('➕ إضافة شبكة جديدة', callback_data='add_network')],
+                    [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
+                ]),
+                parse_mode='Markdown'
+            )
+            return
+        
+        text = f"""
+✏️ **الإدخال اليدوي للكروت** ✏️
+
+👤 **المزود:** {user['full_name']}
+
+📋 **طريقة الإدخال:**
+```
+رقم_الكرت|حجم_الكرت_بالميجابايت
+```
+
+💡 **أمثلة:**
+• `1234567890123456|1000` (1 جيجا)
+• `9876543210987654|500` (500 ميجابايت)
+• `1111222233334444|2000` (2 جيجا)
+
+📊 **أحجام الكروت الشائعة:**
+• 100 ميجابايت = 0.1 جيجا
+• 500 ميجابايت = 0.5 جيجا
+• 1000 ميجابايت = 1 جيجا
+• 2000 ميجابايت = 2 جيجا
+• 5000 ميجابايت = 5 جيجا
+
+🔽 **اختر الشبكة لإضافة الكروت إليها:**
+"""
+        
+        keyboard = []
+        for network in networks:
+            net_id, name, provider, city = network
+            button_text = f"🌐 {name} - {provider}"
+            if city:
+                button_text += f" ({city})"
+            
+            keyboard.append([InlineKeyboardButton(
+                button_text[:50] + "..." if len(button_text) > 50 else button_text,
+                callback_data=f'manual_network_{net_id}'
+            )])
+        
+        keyboard.extend([
+            [InlineKeyboardButton('➕ إضافة شبكة جديدة', callback_data='add_network')],
+            [InlineKeyboardButton('🔙 عودة', callback_data='upload_cards')],
+            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
+        ])
+        
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in manual card input handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في الإدخال اليدوي.")
+
+async def manual_network_selection_handler(update: Update, context: CallbackContext):
+    """معالج اختيار الشبكة للإدخال اليدوي"""
+    try:
+        query = update.callback_query
+        network_id = query.data.split('_')[-1]
+        user = get_user(query.from_user.id)
+        
+        if user['role'] != 'supplier':
+            await query.edit_message_text("❌ هذه الميزة متاحة للمزودين فقط.")
+            return
+        
+        # الحصول على معلومات الشبكة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT name, provider, city, description
+            FROM networks 
+            WHERE id = ? AND supplier_id = ? AND is_active = 1 AND is_approved = 1
+        ''', (network_id, user['id']))
+        network = cursor.fetchone()
+        conn.close()
+        
+        if not network:
+            await query.edit_message_text("❌ شبكة غير صحيحة أو غير مفعلة.")
+            return
+        
+        # تخزين معرف الشبكة
+        context.user_data['manual_network_id'] = network_id
+        context.user_data['awaiting_manual_card'] = True
+        
+        text = f"""
+✏️ **الإدخال اليدوي للكروت** ✏️
+
+🌐 **الشبكة:** {network[0]}
+👤 **المزود:** {network[1]}
+🏙️ **المدينة:** {network[2] or 'غير محدد'}
+📝 **الوصف:** {network[3] or 'غير محدد'}
+
+📋 **أدخل الكروت الآن:**
+
+💡 **التنسيق المطلوب:**
+```
+رقم_الكرت|حجم_الكرت_بالميجابايت
+```
+
+🎯 **أمثلة:**
+• `1234567890123456|1000`
+• `9876543210987654|500`
+• `1111222233334444|2000`
+
+⚠️ **ملاحظات:**
+• كل كرت في سطر منفصل
+• استخدم | للفصل بين الرقم والحجم
+• الحجم بالميجابايت (1000 = 1 جيجا)
+• يمكنك إدخال عدة كروت مرة واحدة
+
+📝 **أدخل الكروت الآن:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('❌ إلغاء', callback_data='upload_cards')],
+            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
+        ]
+        
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in manual network selection handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في اختيار الشبكة.")
 
 async def choose_upload_method_handler(update: Update, context: CallbackContext):
     """Handle upload method selection"""
