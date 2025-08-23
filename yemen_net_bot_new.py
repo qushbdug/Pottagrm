@@ -26,11 +26,11 @@ from telegram.ext import (
 
 # Import our modular components
 try:
-    from config import *
-    from database import init_db
-    from utils import *
-    from handlers import COMMAND_HANDLERS, CONVERSATION_STATES, handle_text_message, show_main_menu
-    from admin_functions import ADMIN_CALLBACKS, activate_single_supplier
+    from bot_modules.config import *
+    from bot_modules.database import init_db
+    from bot_modules.utils import *
+    from bot_modules.handlers import COMMAND_HANDLERS, CONVERSATION_STATES, handle_text_message, show_main_menu
+    from bot_modules.admin_functions import ADMIN_CALLBACKS, activate_single_supplier
     from bot_modules.callback_utils import create_callback, get_callback_data
     from bot_modules.error_handler import safe_database_transaction, ErrorHandler
 except ImportError as e:
@@ -3178,7 +3178,7 @@ async def show_network_details(update: Update, context: CallbackContext, network
         
         # الحصول على فئات الكروت
         cursor.execute('''
-            SELECT name, price, description
+            SELECT name, price, value
             FROM card_categories
             WHERE network_id = ? AND is_available = 1
             ORDER BY price ASC
@@ -3210,11 +3210,11 @@ async def show_network_details(update: Update, context: CallbackContext, network
 """
         
         if categories:
-            for cat_name, price, cat_desc in categories:
+            for cat_name, price, cat_value in categories:
                 details_text += f"""
 🎫 **{cat_name}**
 💰 السعر: **{price:,.0f}** ريال
-📝 الوصف: {cat_desc or 'غير متاح'}
+📊 الحجم: **{cat_value}** ميجابايت
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
         else:
