@@ -648,6 +648,7 @@ async def buy_cards_handler(update: Update, context):
         conn = get_db_connection()
         cursor = conn.cursor()
         
+        # إصلاح: إزالة شرط HAVING categories_count > 0 لعرض جميع الشبكات حتى لو لم تحتوي على فئات كروت
         cursor.execute('''
             SELECT n.id, n.name, n.provider, n.location, COUNT(cc.id) as categories_count,
                    MIN(cc.price) as min_price, MAX(cc.price) as max_price
@@ -655,11 +656,19 @@ async def buy_cards_handler(update: Update, context):
             LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
             WHERE n.is_active = 1 AND n.is_approved = 1
             GROUP BY n.id, n.name, n.provider, n.location
-            HAVING categories_count > 0
             ORDER BY n.name
         ''')
         networks = cursor.fetchall()
         conn.close()
+        
+        # تسجيل مفصل لمساعدة المطورين في التشخيص
+        logger.info(f"جلب الشبكات: تم العثور على {len(networks)} شبكة")
+        if len(networks) == 0:
+            logger.warning("لا توجد شبكات متاحة! تحقق من: 1) وجود شبكات في جدول networks 2) قيم is_active و is_approved")
+        else:
+            networks_with_categories = sum(1 for n in networks if n[4] > 0)
+            networks_without_categories = len(networks) - networks_with_categories
+            logger.info(f"الشبكات مع فئات كروت: {networks_with_categories}, بدون فئات: {networks_without_categories}")
         
         buy_text = f"""
 🛒 **شراء كروت الإنترنت** 🛒
@@ -675,17 +684,34 @@ async def buy_cards_handler(update: Update, context):
             for network in networks:
                 net_id, name, provider, location, cat_count, min_price, max_price = network
                 location_text = f"📍 {location}" if location else ""
-                price_range = f"{min_price:,.0f} - {max_price:,.0f}" if min_price != max_price else f"{min_price:,.0f}"
+                
+                # معالجة محسنة للشبكات بدون فئات كروت
+                if cat_count > 0:
+                    price_range = f"{min_price:,.0f} - {max_price:,.0f}" if min_price != max_price else f"{min_price:,.0f}"
+                    categories_text = f"💳 {cat_count} فئة متاحة"
+                    price_text = f"💰 {price_range} ريال"
+                else:
+                    categories_text = "💳 لا توجد فئات كروت بعد"
+                    price_text = "💰 لم يتم تحديد الأسعار"
                 
                 buy_text += f"""
 🌐 **{name}**
 👤 {provider} {location_text}
-💳 {cat_count} فئة متاحة
-💰 {price_range} ريال
+{categories_text}
+{price_text}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 """
         else:
-            buy_text += "❌ لا توجد شبكات متاحة حالياً"
+            buy_text += """❌ **لا توجد شبكات متاحة حالياً**
+
+🔍 **الأسباب المحتملة:**
+• لم يتم إضافة شبكات بعد
+• جميع الشبكات غير نشطة أو غير معتمدة
+• مشكلة في قاعدة البيانات
+
+💡 **الحلول:**
+• تواصل مع المشرف لإضافة شبكات
+• تحقق لاحقاً من توفر شبكات جديدة"""
         
         keyboard = []
         
@@ -694,9 +720,17 @@ async def buy_cards_handler(update: Update, context):
             for network in networks[:6]:  # أول 6 شبكات
                 net_id = network[0]
                 name = network[1]
-                keyboard.append([
-                    InlineKeyboardButton(f'🛒 شراء من {name}', callback_data=f'buy_from_network_{net_id}')
-                ])
+                cat_count = network[4]  # عدد فئات الكروت
+                
+                # إضافة أزرار مختلفة حسب توفر فئات الكروت
+                if cat_count > 0:
+                    keyboard.append([
+                        InlineKeyboardButton(f'🛒 شراء من {name}', callback_data=f'buy_from_network_{net_id}')
+                    ])
+                else:
+                    keyboard.append([
+                        InlineKeyboardButton(f'👁️ عرض {name} (لا توجد فئات)', callback_data=f'network_{net_id}')
+                    ])
         
         keyboard.extend([
             [InlineKeyboardButton(f'📊 جميع الشبكات', callback_data='view_all_networks'),
