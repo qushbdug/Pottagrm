@@ -107,14 +107,14 @@ async def button_click_handler(update: Update, context):
             from bot_modules.handlers import cancel_coupon_handler
             return await cancel_coupon_handler(update, context)
         elif callback_data == 'quick_transfer':
-            from handlers import quick_transfer_handler
+            from bot_modules.handlers import quick_transfer_handler
             return await quick_transfer_handler(update, context)
         elif callback_data.startswith('select_user_'):
-            from handlers import select_user_for_transfer
+            from bot_modules.handlers import select_user_for_transfer
             user_id = callback_data.split('_')[2]
             return await select_user_for_transfer(update, context, user_id)
         elif callback_data.startswith('amount_'):
-            from handlers import process_amount_selection
+            from bot_modules.handlers import process_amount_selection
             parts = callback_data.split('_')
             amount = parts[1]
             user_id = parts[2]
@@ -122,11 +122,11 @@ async def button_click_handler(update: Update, context):
         
         # Purchase handlers
         elif callback_data.startswith('buy_card_'):
-            from handlers import process_card_purchase
+            from bot_modules.handlers import process_card_purchase
             category_id = callback_data.split('_')[2]
             return await process_card_purchase(update, context, category_id)
         elif callback_data.startswith('confirm_purchase_'):
-            from network_handler import confirm_card_purchase
+            from bot_modules.network_handler import confirm_card_purchase
             category_id = callback_data.split('_')[2]
             return await confirm_card_purchase(update, context, category_id)
         elif callback_data.startswith('confirm_transfer_'):
@@ -135,18 +135,18 @@ async def button_click_handler(update: Update, context):
             amount = parts[3]
             return await confirm_user_transfer(update, context, user_id, amount)
         elif callback_data == 'insufficient_balance':
-            from network_handler import handle_insufficient_balance
+            from bot_modules.network_handler import handle_insufficient_balance
             return await handle_insufficient_balance(update, context)
         elif callback_data.startswith('out_of_stock_'):
-            from network_handler import handle_out_of_stock
+            from bot_modules.network_handler import handle_out_of_stock
             category_id = callback_data.split('_')[2]
             return await handle_out_of_stock(update, context, category_id)
         elif callback_data.startswith('error_category_'):
-            from network_handler import handle_category_error
+            from bot_modules.network_handler import handle_category_error
             category_id = callback_data.split('_')[2]
             return await handle_category_error(update, context, category_id)
         elif callback_data.startswith('skip_location_'):
-            from handlers import skip_network_location
+            from bot_modules.handlers import skip_network_location
             network_id = callback_data.split('_')[2]
             return await skip_network_location(update, context, network_id)
         elif callback_data.startswith('edit_comm_'):
@@ -172,14 +172,14 @@ async def button_click_handler(update: Update, context):
         
         # Search by type handlers
         elif callback_data.startswith('search_by_'):
-            from handlers import search_by_type_handler
+            from bot_modules.handlers import search_by_type_handler
             search_type = callback_data.split('_')[2]
             return await search_by_type_handler(update, context, search_type)
         
         # Admin panel routing
         elif callback_data == 'admin_panel':
             if user['role'] in ['admin', 'super_admin']:
-                from admin_functions import admin_panel_handler
+                from bot_modules.admin_functions import admin_panel_handler
                 return await admin_panel_handler(update, context)
             else:
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية للوصول لهذه اللوحة.")

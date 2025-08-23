@@ -8,8 +8,8 @@ import logging
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext
-from database import get_db_connection, get_user, update_user_balance, update_inventory_stock
-from utils import generate_card_code, log_transaction
+from bot_modules.database import get_db_connection, update_user_balance, update_inventory_stock
+from bot_modules.utils import get_user, generate_card_code, log_transaction
 
 logger = logging.getLogger(__name__)
 
