@@ -254,6 +254,8 @@ async def button_click_handler(update: Update, context):
             await upload_cards_handler(update, context)
         elif callback_data == 'manage_networks':
             await manage_networks_handler(update, context)
+        elif callback_data == 'search_network':
+            await search_network_handler(update, context)
         elif callback_data == 'cards_reports':
             await cards_reports_handler(update, context)
         elif callback_data == 'sales_stats':
@@ -1382,7 +1384,12 @@ async def manage_networks_handler(update: Update, context):
         # Get user's networks
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT * FROM networks WHERE supplier_id = ? ORDER BY id DESC', (user['id'],))
+        cursor.execute('''
+            SELECT id, name, city, provider, description, location, is_active, is_approved, created_at
+            FROM networks 
+            WHERE supplier_id = ? 
+            ORDER BY id DESC
+        ''', (user['id'],))
         networks = cursor.fetchall()
         conn.close()
         
@@ -1397,11 +1404,13 @@ async def manage_networks_handler(update: Update, context):
         
         if networks:
             for network in networks[:5]:  # Show first 5
-                status = "✅ مفعلة" if network['is_active'] else "⏸️ متوقفة"
-                approval = "✅ معتمدة" if network['is_approved'] else "⏳ في انتظار الموافقة"
+                net_id, name, city, provider, description, location, is_active, is_approved, created_at = network
+                status = "✅ مفعلة" if is_active else "⏸️ متوقفة"
+                approval = "✅ معتمدة" if is_approved else "⏳ في انتظار الموافقة"
                 networks_text += f"""
-📶 **{network['name']}**
-🏙️ المدينة: {network['city']}
+📶 **{name}**
+🏙️ المدينة: {city or 'غير محدد'}
+👤 المزود: {provider or 'غير محدد'}
 📊 الحالة: {status}
 ✅ الاعتماد: {approval}
 ---"""
@@ -1410,6 +1419,7 @@ async def manage_networks_handler(update: Update, context):
         
         keyboard = [
             [InlineKeyboardButton('➕ إضافة شبكة جديدة', callback_data='add_network')],
+            [InlineKeyboardButton('🔍 البحث عن شبكة', callback_data='search_network')],
             [InlineKeyboardButton('📊 تفاصيل الشبكات', callback_data='network_details')],
             [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
         ]
@@ -1419,6 +1429,111 @@ async def manage_networks_handler(update: Update, context):
     except Exception as e:
         logger.error(f"Error in manage networks handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إدارة الشبكات.")
+
+async def search_network_handler(update: Update, context):
+    """Handle network search"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        # إرسال رسالة تطلب البحث
+        search_text = f"""
+🔍 **البحث عن الشبكات** 🔍
+
+👤 **{user['full_name']}**
+
+💡 **كيفية البحث:**
+• اكتب اسم الشبكة (مثل: يمنتل)
+• اكتب معرف الشبكة (مثل: 21)
+• اكتب اسم المزود (مثل: MTN)
+
+📝 **أرسل كلمة البحث الآن:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🔙 عودة لإدارة الشبكات', callback_data='manage_networks')]
+        ]
+        
+        # حفظ حالة البحث
+        context.user_data['searching_network'] = True
+        
+        await query.edit_message_text(search_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in search network handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في البحث عن الشبكات.")
+
+async def perform_network_search(update: Update, context):
+    """Perform actual network search"""
+    try:
+        user = get_user(update.message.from_user.id)
+        search_query = update.message.text.strip()
+        
+        if not search_query:
+            await update.message.reply_text("❌ يرجى إدخال كلمة بحث صحيحة.")
+            return
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # البحث في الشبكات
+        cursor.execute('''
+            SELECT id, name, city, provider, description, location, is_active, is_approved, created_at
+            FROM networks 
+            WHERE (name LIKE ? OR provider LIKE ? OR id = ?) AND supplier_id = ?
+            ORDER BY name
+        ''', (f'%{search_query}%', f'%{search_query}%', search_query, user['id']))
+        
+        networks = cursor.fetchall()
+        conn.close()
+        
+        if networks:
+            search_results = f"""
+🔍 **نتائج البحث عن: "{search_query}"**
+
+📊 **تم العثور على {len(networks)} شبكة:**
+
+"""
+            
+            for network in networks:
+                net_id, name, city, provider, description, location, is_active, is_approved, created_at = network
+                status = "✅ مفعلة" if is_active else "⏸️ متوقفة"
+                approval = "✅ معتمدة" if is_approved else "⏳ في انتظار الموافقة"
+                
+                search_results += f"""
+📶 **{name}** (ID: {net_id})
+🏙️ المدينة: {city or 'غير محدد'}
+👤 المزود: {provider or 'غير محدد'}
+📍 الموقع: {location or 'غير محدد'}
+📊 الحالة: {status}
+✅ الاعتماد: {approval}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+        else:
+            search_results = f"""
+🔍 **نتائج البحث عن: "{search_query}"**
+
+❌ **لم يتم العثور على شبكات تطابق البحث**
+
+💡 **اقتراحات:**
+• تأكد من كتابة الاسم بشكل صحيح
+• جرب البحث باسم المزود
+• تحقق من معرف الشبكة
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🔍 بحث جديد', callback_data='search_network')],
+            [InlineKeyboardButton('🔙 عودة لإدارة الشبكات', callback_data='manage_networks')]
+        ]
+        
+        # إزالة حالة البحث
+        context.user_data['searching_network'] = False
+        
+        await update.message.reply_text(search_results, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in perform network search: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في البحث.")
 
 async def cards_reports_handler(update: Update, context):
     """Handle cards reports"""

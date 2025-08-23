@@ -555,6 +555,11 @@ async def handle_text_message(update: Update, context: CallbackContext):
         if context.user_data.get('awaiting_network_search'):
             return await process_network_search(update, context, update.message.text)
         
+        # Check if searching for networks (new search feature)
+        if context.user_data.get('searching_network'):
+            from yemen_net_bot_new import perform_network_search
+            return await perform_network_search(update, context)
+        
         # Check if admin is adding network
         if context.user_data.get('admin_adding_network'):
             from bot_modules.admin_functions import admin_process_network_creation
