@@ -124,6 +124,7 @@ async def button_click_handler(update: Update, context):
             category_id = callback_data.split('_')[2]
             return await process_card_purchase(update, context, category_id)
         elif callback_data.startswith('confirm_purchase_'):
+            from network_handler import confirm_card_purchase
             category_id = callback_data.split('_')[2]
             return await confirm_card_purchase(update, context, category_id)
         elif callback_data.startswith('confirm_transfer_'):
@@ -131,6 +132,13 @@ async def button_click_handler(update: Update, context):
             user_id = parts[2]
             amount = parts[3]
             return await confirm_user_transfer(update, context, user_id, amount)
+        elif callback_data == 'insufficient_balance':
+            from network_handler import handle_insufficient_balance
+            return await handle_insufficient_balance(update, context)
+        elif callback_data.startswith('out_of_stock_'):
+            from network_handler import handle_out_of_stock
+            category_id = callback_data.split('_')[2]
+            return await handle_out_of_stock(update, context, category_id)
         elif callback_data.startswith('skip_location_'):
             from handlers import skip_network_location
             network_id = callback_data.split('_')[2]

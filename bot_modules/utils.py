@@ -700,3 +700,57 @@ def get_cards_stats_by_category(supplier_id):
     stats = cursor.fetchall()
     conn.close()
     return stats
+
+def generate_card_code():
+    """Generate unique card code"""
+    import random
+    import string
+    from datetime import datetime
+    
+    # Generate timestamp-based prefix
+    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    
+    # Generate random suffix
+    random_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    
+    # Combine to create unique card code
+    card_code = f"{timestamp}{random_suffix}"
+    
+    return card_code
+
+def log_transaction(transaction_id, user_id, transaction_type, amount, description, status='pending'):
+    """Log transaction to database"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if transactions table exists, if not create it
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS transactions (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER,
+                transaction_type TEXT,
+                amount REAL,
+                description TEXT,
+                status TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Insert transaction record
+        cursor.execute('''
+            INSERT OR REPLACE INTO transactions 
+            (id, user_id, transaction_type, amount, description, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ''', (transaction_id, user_id, transaction_type, amount, description, status))
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"Transaction logged: {transaction_id} - {transaction_type} - {amount} - {status}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error logging transaction: {e}")
+        return False

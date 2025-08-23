@@ -681,3 +681,32 @@ def init_db():
         raise
     finally:
         conn.close()
+
+def update_user_balance(user_id, new_balance):
+    """Update user balance"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE users 
+            SET balance = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (new_balance, user_id))
+        
+        if cursor.rowcount > 0:
+            conn.commit()
+            conn.close()
+            logger.info(f"Updated balance for user {user_id} to {new_balance}")
+            return True
+        else:
+            conn.close()
+            logger.warning(f"User {user_id} not found for balance update")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error updating user balance: {e}")
+        if 'conn' in locals():
+            conn.rollback()
+            conn.close()
+        return False

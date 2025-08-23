@@ -2055,101 +2055,10 @@ async def show_all_networks(update: Update, context: CallbackContext):
         await update.callback_query.edit_message_text("❌ حدث خطأ في عرض الشبكات")
 
 async def show_network_details(update: Update, context: CallbackContext, network_id: str):
-    """عرض تفاصيل شبكة معينة"""
+    """عرض تفاصيل شبكة معينة - يستخدم الوظيفة المحسنة"""
     try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # الحصول على بيانات الشبكة
-        cursor.execute('SELECT * FROM networks WHERE id = ? AND is_active = 1', (network_id,))
-        network = cursor.fetchone()
-        
-        if not network:
-            await update.callback_query.edit_message_text("❌ الشبكة غير موجودة أو غير متاحة")
-            return
-        
-        # الحصول على فئات الكروت
-        cursor.execute('''
-            SELECT id, name, value, price, stock_count
-            FROM card_categories 
-            WHERE network_id = ? AND is_available = 1
-            ORDER BY price
-        ''', (network_id,))
-        
-        categories = cursor.fetchall()
-        conn.close()
-        
-        # تنسيق معلومات الشبكة
-        text = f"""
-🏢 **{network[1]}** - {network[2]}
-
-👤 **{user['full_name']}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
-
-📝 **الوصف:**
-{network[3] or 'شبكة إنترنت موثوقة وسريعة'}
-
-💳 **فئات الكروت المتاحة:**
-
-"""
-
-        keyboard = []
-        
-        if categories:
-            for category in categories:
-                cat_id, cat_name, cat_value, cat_price, cat_stock = category
-                
-                # تحديد حالة التوفر
-                availability = "✅ متوفر" if cat_stock > 0 else "❌ نفذ"
-                stock_info = f"({cat_stock} كرت)" if cat_stock > 0 else "(نفذ)"
-                
-                # تنسيق القيمة
-                if cat_value >= 1024:
-                    value_text = f"{cat_value/1024:.0f} جيجا" if cat_value >= 1024 else f"{cat_value} ميجا"
-                else:
-                    value_text = f"{cat_value} ريال" if cat_value >= 100 else f"{cat_value} ميجا"
-                
-                text += f"""
-💳 **{cat_name}**
-📊 القيمة: {value_text}
-💰 السعر: **{cat_price:,.0f}** ريال
-📦 {availability} {stock_info}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-
-"""
-                
-                # إضافة زر شراء إذا كان متوفراً
-                if cat_stock > 0 and user['balance'] >= cat_price:
-                    keyboard.append([InlineKeyboardButton(
-                        f"🛒 شراء {cat_name} - {cat_price:,.0f} ريال",
-                        callback_data=f"buy_card_{cat_id}"
-                    )])
-                elif cat_stock > 0:
-                    keyboard.append([InlineKeyboardButton(
-                        f"💰 رصيد غير كافي - {cat_price:,.0f} ريال",
-                        callback_data=f"insufficient_balance"
-                    )])
-        else:
-            text += "❌ لا توجد فئات متاحة حالياً\n"
-
-        # إضافة أزرار إضافية
-        keyboard.extend([
-            [InlineKeyboardButton('🔙 جميع الشبكات', callback_data='all_networks'),
-             InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet')],
-            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-        ])
-
-        await update.callback_query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-
+        from network_handler import show_network_details_enhanced
+        await show_network_details_enhanced(update, context, network_id)
     except Exception as e:
         logger.error(f"Error in show network details: {e}")
         await update.callback_query.edit_message_text("❌ حدث خطأ في عرض تفاصيل الشبكة")
@@ -2505,86 +2414,10 @@ async def process_amount_selection(update: Update, context: CallbackContext, amo
         await update.callback_query.edit_message_text("❌ حدث خطأ في معالجة المبلغ")
 
 async def process_card_purchase(update: Update, context: CallbackContext, category_id: str):
-    """معالجة شراء الكرت"""
+    """معالجة شراء الكرت - يستخدم الوظيفة المحسنة"""
     try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # الحصول على بيانات فئة الكرت
-        cursor.execute('''
-            SELECT cc.*, n.name as network_name
-            FROM card_categories cc
-            JOIN networks n ON cc.network_id = n.id
-            WHERE cc.id = ? AND cc.is_available = 1
-        ''', (category_id,))
-        
-        category = cursor.fetchone()
-        
-        if not category:
-            await update.callback_query.edit_message_text("❌ فئة الكرت غير متاحة")
-            return
-        
-        cat_id, network_id, cat_name, cat_value, cat_price, currency, is_available, stock_count, created_at, updated_at, network_name = category
-        
-        # التحقق من التوفر
-        if stock_count <= 0:
-            await update.callback_query.edit_message_text(
-                f"❌ **الكرت غير متوفر**\n\n"
-                f"💳 {cat_name}\n"
-                f"🏢 {network_name}\n"
-                f"📦 المخزون: نفذ\n\n"
-                f"💡 تحقق لاحقاً أو اختر فئة أخرى"
-            )
-            return
-        
-        # التحقق من الرصيد
-        if user['balance'] < cat_price:
-            await update.callback_query.edit_message_text(
-                f"❌ **رصيد غير كافي**\n\n"
-                f"💳 {cat_name}\n"
-                f"💰 السعر: {cat_price:,.2f} ريال\n"
-                f"💵 رصيدك: {user['balance']:,.2f} ريال\n"
-                f"💡 تحتاج {cat_price - user['balance']:,.2f} ريال إضافية"
-            )
-            return
-        
-        # عرض تأكيد الشراء
-        confirmation_text = f"""
-🛒 **تأكيد الشراء** 🛒
-
-👤 **المشتري:** {user['full_name']}
-💳 محفظتك: {user['wallet_number']}
-
-🛒 **تفاصيل الشراء:**
-🏢 الشبكة: **{network_name}**
-💳 الكرت: **{cat_name}**
-📊 القيمة: {cat_value} {"جيجا" if cat_value >= 1024 else "ميجا" if cat_value < 100 else "ريال"}
-💰 السعر: **{cat_price:,.2f}** ريال
-
-💰 **رصيدك بعد الشراء:** {user['balance'] - cat_price:,.2f} ريال
-
-⚠️ **هل تريد إتمام الشراء؟**
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('✅ تأكيد الشراء', callback_data=f'confirm_purchase_{category_id}'),
-             InlineKeyboardButton('❌ إلغاء', callback_data='cancel')],
-            [InlineKeyboardButton('🔙 اختيار كرت آخر', callback_data=f'network_{network_id}')]
-        ]
-        
-        await update.callback_query.edit_message_text(
-            confirmation_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-        
-        conn.close()
-        
+        from network_handler import process_card_purchase_enhanced
+        await process_card_purchase_enhanced(update, context, category_id)
     except Exception as e:
         logger.error(f"Error in process card purchase: {e}")
         await update.callback_query.edit_message_text("❌ حدث خطأ في معالجة الشراء")
