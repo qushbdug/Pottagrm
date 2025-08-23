@@ -98,6 +98,10 @@ def get_callback_data(callback_key: str) -> Optional[Dict[str, Any]]:
     """دالة مساعدة لاسترجاع بيانات callback"""
     return callback_manager.get_callback_data(callback_key)
 
+def parse_callback(callback_data: str) -> Optional[Dict[str, Any]]:
+    """دالة مساعدة لتحليل بيانات callback (مثل get_callback_data)"""
+    return callback_manager.get_callback_data(callback_data)
+
 def cleanup_callbacks():
     """تنظيف بيانات callback القديمة"""
     callback_manager.cleanup_old_callbacks()
