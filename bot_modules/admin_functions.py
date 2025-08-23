@@ -85,8 +85,7 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
              InlineKeyboardButton(f'💸 إرسال رصيد', callback_data='admin_send_money')],
             [InlineKeyboardButton(f'💼 إدارة العمولات', callback_data='commission_management'),
              InlineKeyboardButton(f'🏛️ إدارة المنصة', callback_data='super_platform_management')],
-            [InlineKeyboardButton(f'🌐 إضافة شبكة جديدة', callback_data='admin_add_network'),
-             InlineKeyboardButton(f'🗑️ إدارة الشبكات', callback_data='admin_manage_networks'),
+            [InlineKeyboardButton(f'🗑️ إدارة الشبكات', callback_data='admin_manage_networks'),
              InlineKeyboardButton(f'💳 رفع كروت', callback_data='admin_upload_cards')],
             [InlineKeyboardButton(f'🎁 إضافة عروض', callback_data='admin_add_offers'),
              InlineKeyboardButton(f'✅ تفعيل مزودين', callback_data='super_activate_suppliers')],
@@ -3018,7 +3017,6 @@ ADMIN_CALLBACKS.update({
     'executive_reports': executive_reports_handler,
     
     # Admin network and card management  
-    'admin_add_network': lambda u, c: admin_add_network_handler(u, c),
     'admin_upload_cards': lambda u, c: admin_upload_cards_handler(u, c),
     'admin_add_offers': lambda u, c: admin_add_offers_handler(u, c),
     'accounting_system': lambda u, c: accounting_system_handler(u, c),
@@ -3087,65 +3085,7 @@ ADMIN_CALLBACKS.update({
     'export_excel': lambda u, c: placeholder_handler(u, c, "تصدير Excel"),
 })
 
-async def admin_add_network_handler(update: Update, context: CallbackContext):
-    """إضافة شبكة جديدة للمشرف الأعلى"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        user = get_user(query.from_user.id)
-        if not user or user['role'] != 'super_admin':
-            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
-            return
-        
-        # تنظيف أي حالات سابقة لتجنب التداخل
-        context.user_data.clear()
-        
-        # إعداد حالة إنشاء الشبكة فقط
-        context.user_data['admin_adding_network'] = True
-        context.user_data['network_step'] = 'name'
-        
-        text = f"""
-🌐 **إضافة شبكة جديدة** 🌐
 
-{EMOJIS['admin']} مرحباً **{user['full_name']}**
-
-📝 **سنقوم بإضافة الشبكة خطوة بخطوة**
-
-🔸 **الخطوة 1 من 4**
-
-📋 **أدخل اسم الشبكة:**
-
-💡 **أمثلة:**
-• شبكة الرحمن للإنترنت
-• شبكة النور للواي فاي
-• إنترنت البركة السريع
-• شبكة الأمل المنزلية
-
-⚠️ **ملاحظات:**
-• يجب أن يكون الاسم واضح ومميز
-• لا يقل عن 3 أحرف
-• يفضل أن يحتوي على كلمة "شبكة" أو "إنترنت"
-
-📝 **اكتب اسم الشبكة:**
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('❌ إلغاء', callback_data='super_admin_panel')]
-        ]
-        
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-        
-        context.user_data['admin_adding_network'] = True
-        context.user_data['network_step'] = 'name'
-        
-    except Exception as e:
-        logger.error(f"Error in admin add network handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إضافة الشبكة.")
 async def admin_upload_cards_handler(update: Update, context: CallbackContext):
     """رفع كروت للمشرف الأعلى"""
     try:
@@ -3192,8 +3132,7 @@ async def admin_upload_cards_handler(update: Update, context: CallbackContext):
 🌐 **أضف شبكة جديدة أولاً:**
 """
             keyboard = [
-                [InlineKeyboardButton('🌐 إضافة شبكة جديدة', callback_data='admin_add_network'),
-             InlineKeyboardButton(f'🗑️ إدارة الشبكات', callback_data='admin_manage_networks'),
+                [InlineKeyboardButton(f'🗑️ إدارة الشبكات', callback_data='admin_manage_networks'),
                  InlineKeyboardButton('🔙 عودة', callback_data='super_admin_panel')]
             ]
         else:
@@ -3231,8 +3170,7 @@ async def admin_upload_cards_handler(update: Update, context: CallbackContext):
                 )])
             
             keyboard.extend([
-                [InlineKeyboardButton('🌐 إضافة شبكة جديدة', callback_data='admin_add_network'),
-             InlineKeyboardButton(f'🗑️ إدارة الشبكات', callback_data='admin_manage_networks'),
+                [InlineKeyboardButton(f'🗑️ إدارة الشبكات', callback_data='admin_manage_networks'),
                  InlineKeyboardButton('🔙 عودة', callback_data='super_admin_panel')]
             ])
         
@@ -5009,8 +4947,7 @@ async def admin_manage_networks_handler(update: Update, context: CallbackContext
 🔧 **يجب إضافة شبكة أولاً**
 """
             keyboard = [
-                [InlineKeyboardButton('🌐 إضافة شبكة جديدة', callback_data='admin_add_network'),
-             InlineKeyboardButton(f'🗑️ إدارة الشبكات', callback_data='admin_manage_networks')],
+                [InlineKeyboardButton(f'🗑️ إدارة الشبكات', callback_data='admin_manage_networks')],
                 [InlineKeyboardButton('🔙 عودة', callback_data='super_admin_panel')]
             ]
         else:
@@ -5040,8 +4977,7 @@ async def admin_manage_networks_handler(update: Update, context: CallbackContext
                 )])
             
             keyboard.extend([
-                [InlineKeyboardButton('🌐 إضافة شبكة جديدة', callback_data='admin_add_network'),
-             InlineKeyboardButton(f'🗑️ إدارة الشبكات', callback_data='admin_manage_networks')],
+                [InlineKeyboardButton(f'🗑️ إدارة الشبكات', callback_data='admin_manage_networks')],
                 [InlineKeyboardButton('🔙 عودة', callback_data='super_admin_panel')]
             ])
         
@@ -5306,8 +5242,7 @@ async def admin_confirm_delete_network_handler(update: Update, context: Callback
             
             keyboard = [
                 [InlineKeyboardButton('🗑️ إدارة شبكات أخرى', callback_data='admin_manage_networks')],
-                [InlineKeyboardButton('🌐 إضافة شبكة جديدة', callback_data='admin_add_network'),
-             InlineKeyboardButton(f'🗑️ إدارة الشبكات', callback_data='admin_manage_networks')],
+                [InlineKeyboardButton(f'🗑️ إدارة الشبكات', callback_data='admin_manage_networks')],
                 [InlineKeyboardButton('🏠 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
             ]
             

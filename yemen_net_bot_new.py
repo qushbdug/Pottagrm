@@ -4602,10 +4602,9 @@ async def admin_manage_networks_handler(update: Update, context: CallbackContext
 
 ❌ **لا توجد شبكات للإدارة**
 
-🔧 **يجب إضافة شبكة أولاً**
+🔧 **يمكنك إدارة الشبكات الموجودة**
 """
             keyboard = [
-                [InlineKeyboardButton('🌐 إضافة شبكة جديدة', callback_data='admin_add_network')],
                 [InlineKeyboardButton('🔙 عودة', callback_data='super_admin_panel')]
             ]
         else:
