@@ -596,6 +596,18 @@ async def handle_text_message(update: Update, context: CallbackContext):
         if context.user_data.get('awaiting_manual_card'):
             return await process_manual_card_input(update, context)
         
+        # Check if supplier is entering custom price
+        if context.user_data.get('awaiting_custom_price'):
+            return await process_custom_price_input(update, context)
+        
+        # Check if supplier is entering card size
+        if context.user_data.get('awaiting_card_size'):
+            return await process_card_size_input(update, context)
+        
+        # Check if supplier is entering card numbers
+        if context.user_data.get('awaiting_card_numbers'):
+            return await process_card_numbers_input(update, context)
+        
         # Check if waiting for user search
         if context.user_data.get('awaiting_user_search'):
             return await process_user_search(update, context, update.message.text)
@@ -3715,3 +3727,329 @@ async def process_manual_card_input(update: Update, context: CallbackContext):
         # إعادة تعيين الحالة في حالة الخطأ
         context.user_data.pop('awaiting_manual_card', None)
         context.user_data.pop('manual_network_id', None)
+
+async def process_custom_price_input(update: Update, context: CallbackContext):
+    """معالجة إدخال السعر المخصص"""
+    try:
+        user = get_user(update.effective_user.id)
+        
+        if user['role'] != 'supplier':
+            await update.message.reply_text("❌ هذه الميزة متاحة للمزودين فقط.")
+            return
+        
+        price_text = update.message.text.strip()
+        
+        if not price_text.isdigit():
+            await update.message.reply_text("❌ يرجى إدخال رقم صحيح للسعر.")
+            return
+        
+        price = int(price_text)
+        if price <= 0:
+            await update.message.reply_text("❌ السعر يجب أن يكون أكبر من صفر.")
+            return
+        
+        # تخزين السعر
+        context.user_data['selected_price'] = price
+        context.user_data['awaiting_custom_price'] = False
+        context.user_data['awaiting_card_size'] = True
+        
+        text = f"""
+✅ **تم حفظ السعر:** {price} ريال
+
+📏 **الخطوة التالية: أدخل حجم الكرت**
+
+💡 **أمثلة الأحجام:**
+• 1 جيجا
+• 500 ميجابايت
+• 2 جيجا
+• 5 جيجا
+
+📝 **أدخل حجم الكرت الآن:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🔙 تغيير السعر', callback_data='manual_card_input')],
+            [InlineKeyboardButton('❌ إلغاء', callback_data='manual_card_input')]
+        ]
+        
+        await update.message.reply_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in custom price input: {e}")
+        await update.message.reply_text(f"❌ حدث خطأ في معالجة السعر: {e}")
+        context.user_data.pop('awaiting_custom_price', None)
+
+async def process_card_size_input(update: Update, context: CallbackContext):
+    """معالجة إدخال حجم الكرت"""
+    try:
+        user = get_user(update.effective_user.id)
+        
+        if user['role'] != 'supplier':
+            await update.message.reply_text("❌ هذه الميزة متاحة للمزودين فقط.")
+            return
+        
+        size_text = update.message.text.strip().lower()
+        network_id = context.user_data.get('manual_network_id')
+        price = context.user_data.get('selected_price')
+        
+        if not network_id or not price:
+            await update.message.reply_text("❌ بيانات غير مكتملة. يرجى البدء من جديد.")
+            return
+        
+        # تحويل النص إلى ميجابايت
+        card_value = convert_size_to_mb(size_text)
+        
+        if card_value is None:
+            await update.message.reply_text(
+                "❌ **حجم غير صحيح**\n\n"
+                "💡 **الأحجام المدعومة:**\n"
+                "• 1 جيجا = 1000 ميجابايت\n"
+                "• 500 ميجابايت\n"
+                "• 2 جيجا = 2000 ميجابايت\n"
+                "• 5 جيجا = 5000 ميجابايت\n\n"
+                "📝 **أدخل حجم الكرت مرة أخرى:**"
+            )
+            return
+        
+        # الحصول على معلومات الشبكة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT name FROM networks WHERE id = ?', (network_id,))
+        network = cursor.fetchone()
+        conn.close()
+        
+        if not network:
+            await update.message.reply_text("❌ لم يتم العثور على الشبكة المحددة.")
+            return
+        
+        network_name = network[0]
+        
+        # إنشاء فئة الكروت
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                INSERT INTO card_categories (network_id, name, value, price, currency, is_available, stock_count, created_at)
+                VALUES (?, ?, ?, ?, 'YER', 1, 0, CURRENT_TIMESTAMP)
+            ''', (network_id, f"كرت {size_text}", card_value, price))
+            
+            category_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            
+            # تخزين معرف الفئة
+            context.user_data['created_category_id'] = category_id
+            context.user_data['awaiting_card_size'] = False
+            context.user_data['awaiting_card_numbers'] = True
+            
+            text = f"""
+✅ **تم إنشاء فئة الكروت بنجاح!** ✅
+
+🌐 **الشبكة:** {network_name}
+💳 **الفئة:** كرت {size_text}
+💰 **السعر:** {price} ريال
+📏 **الحجم:** {card_value} ميجابايت
+
+📝 **الخطوة الأخيرة: أرسل أرقام الكروت**
+
+💡 **طريقة الإدخال:**
+• كل رقم في سطر منفصل
+• مثال:
+```
+1234567890123456
+9876543210987654
+1111222233334444
+```
+
+📝 **أرسل أرقام الكروت الآن:**
+"""
+            
+            keyboard = [
+                [InlineKeyboardButton('🔙 تغيير الحجم', callback_data=f'manual_network_{network_id}')],
+                [InlineKeyboardButton('❌ إلغاء', callback_data='manual_card_input')]
+            ]
+            
+            await update.message.reply_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ خطأ في إنشاء فئة الكروت: {e}")
+            context.user_data.pop('awaiting_card_size', None)
+        
+    except Exception as e:
+        logger.error(f"Error in card size input: {e}")
+        await update.message.reply_text(f"❌ حدث خطأ في معالجة حجم الكرت: {e}")
+        context.user_data.pop('awaiting_card_size', None)
+
+def convert_size_to_mb(size_text):
+    """تحويل نص الحجم إلى ميجابايت"""
+    try:
+        size_text = size_text.strip().lower()
+        
+        # إزالة المسافات والكلمات الزائدة
+        size_text = size_text.replace(' ', '').replace('جيجا', 'gb').replace('ميجا', 'mb')
+        
+        if 'gb' in size_text:
+            # جيجابايت
+            number = float(size_text.replace('gb', ''))
+            return int(number * 1000)
+        elif 'mb' in size_text:
+            # ميجابايت
+            number = float(size_text.replace('mb', ''))
+            return int(number)
+        else:
+            # محاولة قراءة الرقم مباشرة
+            number = float(size_text)
+            if number >= 100:  # إذا كان الرقم كبير، نفترض أنه ميجابايت
+                return int(number)
+            else:  # إذا كان صغير، نفترض أنه جيجابايت
+                return int(number * 1000)
+                
+    except:
+        return None
+
+async def process_card_numbers_input(update: Update, context: CallbackContext):
+    """معالجة إدخال أرقام الكروت"""
+    try:
+        user = get_user(update.effective_user.id)
+        
+        if user['role'] != 'supplier':
+            await update.message.reply_text("❌ هذه الميزة متاحة للمزودين فقط.")
+            return
+        
+        category_id = context.user_data.get('created_category_id')
+        network_id = context.user_data.get('manual_network_id')
+        
+        if not category_id or not network_id:
+            await update.message.reply_text("❌ بيانات غير مكتملة. يرجى البدء من جديد.")
+            return
+        
+        message_text = update.message.text.strip()
+        lines = message_text.split('\n')
+        
+        uploaded_cards = []
+        errors = []
+        
+        # الحصول على معلومات الفئة والشبكة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT cc.name, cc.value, cc.price, n.name as network_name
+            FROM card_categories cc
+            JOIN networks n ON cc.network_id = n.id
+            WHERE cc.id = ?
+        ''', (category_id,))
+        category_info = cursor.fetchone()
+        
+        if not category_info:
+            await update.message.reply_text("❌ لم يتم العثور على فئة الكروت المحددة.")
+            return
+        
+        category_name, card_value, price, network_name = category_info
+        
+        # معالجة كل سطر
+        for line_num, line in enumerate(lines, 1):
+            line = line.strip()
+            if not line:
+                continue
+            
+            card_number = line
+            
+            # فحص رقم الكرت
+            if len(card_number) < 8:
+                errors.append(f"السطر {line_num}: رقم الكرت قصير جداً. يجب أن يكون 8 أرقام على الأقل")
+                continue
+            
+            # فحص إذا كان الكرت موجود مسبقاً
+            cursor.execute('SELECT id FROM cards WHERE card_number = ?', (card_number,))
+            if cursor.fetchone():
+                errors.append(f"السطر {line_num}: رقم الكرت {card_number} موجود مسبقاً")
+                continue
+            
+            # إضافة الكرت
+            try:
+                cursor.execute('''
+                    INSERT INTO cards (category_id, card_number, card_value, uploaded_by, uploaded_at)
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ''', (category_id, card_number, card_value, user['id']))
+                
+                uploaded_cards.append(card_number)
+                
+            except Exception as e:
+                errors.append(f"السطر {line_num}: خطأ في إضافة الكرت - {e}")
+        
+        # تحديث عدد الكروت في الفئة
+        if uploaded_cards:
+            cursor.execute('''
+                UPDATE card_categories 
+                SET stock_count = stock_count + ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (len(uploaded_cards), category_id))
+        
+        conn.commit()
+        conn.close()
+        
+        # رسالة النتائج
+        success_text = f"""
+🎉 **تم إضافة الكروت بنجاح!** 🎉
+
+🌐 **الشبكة:** {network_name}
+💳 **الفئة:** {category_name}
+💰 **السعر:** {price} ريال
+📏 **الحجم:** {card_value} ميجابايت
+
+📊 **النتائج:**
+✅ تم إضافة: **{len(uploaded_cards)}** كرت
+❌ أخطاء: **{len(errors)}**
+
+"""
+        
+        if uploaded_cards:
+            success_text += "✅ **الكروت المضافة:**\n"
+            for card in uploaded_cards[:5]:  # عرض أول 5 كروت فقط
+                success_text += f"• {card}\n"
+            if len(uploaded_cards) > 5:
+                success_text += f"• ... و {len(uploaded_cards) - 5} كرت آخر\n"
+        
+        if errors:
+            success_text += "\n❌ **الأخطاء:**\n"
+            for error in errors[:5]:  # عرض أول 5 أخطاء فقط
+                success_text += f"• {error}\n"
+            if len(errors) > 5:
+                success_text += f"• ... و {len(errors) - 5} خطأ آخر\n"
+        
+        # إعادة تعيين الحالة
+        context.user_data.pop('awaiting_card_numbers', None)
+        context.user_data.pop('created_category_id', None)
+        context.user_data.pop('manual_network_id', None)
+        context.user_data.pop('selected_price', None)
+        
+        keyboard = [
+            [InlineKeyboardButton('✏️ إضافة كروت أخرى', callback_data='manual_card_input')],
+            [InlineKeyboardButton('📁 رفع ملف', callback_data='choose_upload_method')],
+            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
+        ]
+        
+        await update.message.reply_text(
+            success_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in card numbers input: {e}")
+        await update.message.reply_text(f"❌ حدث خطأ في معالجة أرقام الكروت: {e}")
+        
+        # إعادة تعيين الحالة في حالة الخطأ
+        context.user_data.pop('awaiting_card_numbers', None)
+        context.user_data.pop('created_category_id', None)
+        context.user_data.pop('manual_network_id', None)
+        context.user_data.pop('selected_price', None)

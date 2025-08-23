@@ -313,6 +313,10 @@ async def button_click_handler(update: Update, context):
             await manual_card_input_handler(update, context)
         elif callback_data.startswith('manual_network_'):
             await manual_network_selection_handler(update, context)
+        elif callback_data.startswith('price_'):
+            await price_selection_handler(update, context)
+        elif callback_data.startswith('custom_price_'):
+            await custom_price_handler(update, context)
         elif callback_data == 'network_details':
             await network_details_handler(update, context)
         elif callback_data == 'privacy_settings':
@@ -2705,26 +2709,21 @@ async def manual_card_input_handler(update: Update, context: CallbackContext):
             return
         
         text = f"""
-✏️ **الإدخال اليدوي للكروت** ✏️
+✏️ **إضافة كروت جديدة** ✏️
 
 👤 **المزود:** {user['full_name']}
 
-📋 **طريقة الإدخال:**
-```
-رقم_الكرت|حجم_الكرت_بالميجابايت
-```
+🚀 **الطريقة السريعة:**
+1️⃣ اختر الشبكة
+2️⃣ اختر سعر الكرت
+3️⃣ أدخل حجم الكرت (مثال: 1 جيجا)
+4️⃣ أرسل أرقام الكروت
 
-💡 **أمثلة:**
-• `1234567890123456|1000` (1 جيجا)
-• `9876543210987654|500` (500 ميجابايت)
-• `1111222233334444|2000` (2 جيجا)
-
-📊 **أحجام الكروت الشائعة:**
-• 100 ميجابايت = 0.1 جيجا
-• 500 ميجابايت = 0.5 جيجا
-• 1000 ميجابايت = 1 جيجا
-• 2000 ميجابايت = 2 جيجا
-• 5000 ميجابايت = 5 جيجا
+💡 **أمثلة الأحجام:**
+• 1 جيجا
+• 500 ميجابايت
+• 2 جيجا
+• 5 جيجا
 
 🔽 **اختر الشبكة لإضافة الكروت إليها:**
 """
@@ -2785,39 +2784,27 @@ async def manual_network_selection_handler(update: Update, context: CallbackCont
         
         # تخزين معرف الشبكة
         context.user_data['manual_network_id'] = network_id
-        context.user_data['awaiting_manual_card'] = True
         
         text = f"""
-✏️ **الإدخال اليدوي للكروت** ✏️
+✏️ **إضافة كروت جديدة** ✏️
 
 🌐 **الشبكة:** {network[0]}
 👤 **المزود:** {network[1]}
 🏙️ **المدينة:** {network[2] or 'غير محدد'}
-📝 **الوصف:** {network[3] or 'غير محدد'}
 
-📋 **أدخل الكروت الآن:**
-
-💡 **التنسيق المطلوب:**
-```
-رقم_الكرت|حجم_الكرت_بالميجابايت
-```
-
-🎯 **أمثلة:**
-• `1234567890123456|1000`
-• `9876543210987654|500`
-• `1111222233334444|2000`
-
-⚠️ **ملاحظات:**
-• كل كرت في سطر منفصل
-• استخدم | للفصل بين الرقم والحجم
-• الحجم بالميجابايت (1000 = 1 جيجا)
-• يمكنك إدخال عدة كروت مرة واحدة
-
-📝 **أدخل الكروت الآن:**
+💰 **اختر سعر الكرت:**
 """
         
+        # أزرار الأسعار الشائعة
         keyboard = [
-            [InlineKeyboardButton('❌ إلغاء', callback_data='upload_cards')],
+            [InlineKeyboardButton('💳 100 ريال', callback_data=f'price_100_{network_id}'),
+             InlineKeyboardButton('💳 200 ريال', callback_data=f'price_200_{network_id}')],
+            [InlineKeyboardButton('💳 300 ريال', callback_data=f'price_300_{network_id}'),
+             InlineKeyboardButton('💳 500 ريال', callback_data=f'price_500_{network_id}')],
+            [InlineKeyboardButton('💳 1000 ريال', callback_data=f'price_1000_{network_id}'),
+             InlineKeyboardButton('💳 2000 ريال', callback_data=f'price_2000_{network_id}')],
+            [InlineKeyboardButton('✏️ سعر مخصص', callback_data=f'custom_price_{network_id}')],
+            [InlineKeyboardButton('🔙 عودة', callback_data='manual_card_input')],
             [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
         ]
         
@@ -2830,6 +2817,102 @@ async def manual_network_selection_handler(update: Update, context: CallbackCont
     except Exception as e:
         logger.error(f"Error in manual network selection handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في اختيار الشبكة.")
+
+async def price_selection_handler(update: Update, context: CallbackContext):
+    """معالج اختيار السعر"""
+    try:
+        query = update.callback_query
+        parts = query.data.split('_')
+        price = int(parts[1])
+        network_id = parts[2]
+        user = get_user(query.from_user.id)
+        
+        if user['role'] != 'supplier':
+            await query.edit_message_text("❌ هذه الميزة متاحة للمزودين فقط.")
+            return
+        
+        # تخزين السعر والشبكة
+        context.user_data['selected_price'] = price
+        context.user_data['manual_network_id'] = network_id
+        context.user_data['awaiting_card_size'] = True
+        
+        # الحصول على معلومات الشبكة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT name FROM networks WHERE id = ?', (network_id,))
+        network = cursor.fetchone()
+        conn.close()
+        
+        text = f"""
+💰 **اختيار السعر** 💰
+
+🌐 **الشبكة:** {network[0]}
+💳 **السعر المختار:** {price} ريال
+
+📏 **الخطوة التالية: أدخل حجم الكرت**
+
+💡 **أمثلة الأحجام:**
+• 1 جيجا
+• 500 ميجابايت
+• 2 جيجا
+• 5 جيجا
+
+📝 **أدخل حجم الكرت الآن:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🔙 تغيير السعر', callback_data=f'manual_network_{network_id}')],
+            [InlineKeyboardButton('❌ إلغاء', callback_data='manual_card_input')]
+        ]
+        
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in price selection handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في اختيار السعر.")
+
+async def custom_price_handler(update: Update, context: CallbackContext):
+    """معالج السعر المخصص"""
+    try:
+        query = update.callback_query
+        network_id = query.data.split('_')[-1]
+        user = get_user(query.from_user.id)
+        
+        if user['role'] != 'supplier':
+            await query.edit_message_text("❌ هذه الميزة متاحة للمزودين فقط.")
+            return
+        
+        # تخزين معرف الشبكة
+        context.user_data['manual_network_id'] = network_id
+        context.user_data['awaiting_custom_price'] = True
+        
+        text = f"""
+✏️ **سعر مخصص** ✏️
+
+💰 **أدخل السعر بالريال:**
+مثال: 750
+
+📝 **أدخل السعر الآن:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🔙 عودة', callback_data=f'manual_network_{network_id}')],
+            [InlineKeyboardButton('❌ إلغاء', callback_data='manual_card_input')]
+        ]
+        
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in custom price handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في السعر المخصص.")
 
 async def choose_upload_method_handler(update: Update, context: CallbackContext):
     """Handle upload method selection"""
