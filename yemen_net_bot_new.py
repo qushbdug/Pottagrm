@@ -34,6 +34,8 @@ try:
     from unified_network_manager import UNIFIED_NETWORK_CALLBACKS
     from unified_search_manager import UNIFIED_SEARCH_CALLBACKS
     from fixed_network_display import FIXED_NETWORK_CALLBACKS, handle_fixed_network_details_callback
+    from simplified_network_display import SIMPLE_NETWORK_CALLBACKS, handle_simple_network_callbacks
+    from unified_card_upload import UNIFIED_UPLOAD_CALLBACKS, handle_unified_upload_callbacks
 except ImportError as e:
     print(f"Error importing unified modules: {e}")
     print("Make sure all module files are in the bot_modules directory")
@@ -81,7 +83,19 @@ async def button_click_handler(update: Update, context):
         elif callback_data == 'enhanced_wallet':
             return await enhanced_wallet_handler(update, context)
         
-        # Fixed Network Display handlers (PRIORITY - fixes the main issues)
+        # Simplified Network Display handlers (PRIORITY - fixes all issues)
+        elif callback_data in SIMPLE_NETWORK_CALLBACKS:
+            return await SIMPLE_NETWORK_CALLBACKS[callback_data](update, context)
+        elif callback_data.startswith(('simple_details_', 'simple_buy_from_')):
+            return await handle_simple_network_callbacks(update, context, callback_data)
+        
+        # Unified Card Upload handlers
+        elif callback_data in UNIFIED_UPLOAD_CALLBACKS:
+            return await UNIFIED_UPLOAD_CALLBACKS[callback_data](update, context)
+        elif callback_data.startswith('unified_upload_to_'):
+            return await handle_unified_upload_callbacks(update, context, callback_data)
+        
+        # Fixed Network Display handlers (fallback)
         elif callback_data in FIXED_NETWORK_CALLBACKS:
             return await FIXED_NETWORK_CALLBACKS[callback_data](update, context)
         elif callback_data.startswith('fixed_network_details_') or callback_data.startswith('view_network_'):
@@ -212,10 +226,10 @@ async def button_click_handler(update: Update, context):
             from handlers import choose_role
             return await choose_role(update, context)
         
-        # Core features - FIXED VERSION
+        # Core features - SIMPLIFIED VERSION (FIXES PHONE_NUMBER ERROR)
         elif callback_data == 'buy_cards':
-            from fixed_network_display import fixed_buy_cards_handler
-            await fixed_buy_cards_handler(update, context)
+            from simplified_network_display import simple_buy_cards_handler
+            await simple_buy_cards_handler(update, context)
         elif callback_data == 'transfer_to_friend':
             await transfer_handler(update, context)
         
@@ -1678,13 +1692,10 @@ async def handle_document(update: Update, context: CallbackContext):
             'size': file_size
         }
         
-        # Check if uploading to specific network
+        # Check if uploading to specific network (UNIFIED SYSTEM)
         if context.user_data.get('uploading_to_network'):
-            # Direct upload to specific network
-            network_id = context.user_data.get('uploading_to_network')
-            context.user_data['selected_network_id'] = network_id
-            await show_category_selection_for_network(update, context, network_id)
-            return
+            from unified_card_upload import unified_process_card_upload
+            return await unified_process_card_upload(update, context)
         
         # Get user's networks for selection
         conn = get_db_connection()

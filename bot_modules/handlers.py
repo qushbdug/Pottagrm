@@ -578,6 +578,11 @@ async def handle_text_message(update: Update, context: CallbackContext):
             from unified_search_manager import process_unified_search
             return await process_unified_search(update, context, update.message.text)
         
+        # Check if uploading to network (unified system)
+        if context.user_data.get('uploading_to_network'):
+            # Handle file upload through document handler
+            return
+        
         # Check if admin is uploading cards
         if context.user_data.get('admin_uploading_card'):
             from bot_modules.admin_functions import admin_process_card_upload
@@ -2622,7 +2627,7 @@ COMMAND_HANDLERS = {
     'my_commissions': lambda u, c: enhanced_placeholder_handler(u, c, "💰 عمولاتي", "عرض العمولات والأرباح"),
     'supplier_panel': lambda u, c: enhanced_placeholder_handler(u, c, "🏪 لوحة المزود", "لوحة تحكم خاصة بالمزودين"),
     'manage_networks': lambda u, c: supplier_manage_networks(u, c),
-    'upload_cards': lambda u, c: enhanced_placeholder_handler(u, c, "📤 رفع كروت", "رفع وإدارة كروت الشحن"),
+    'upload_cards': 'UNIFIED_IN_MAIN_BOT',  # Now handled by unified_card_upload.py
     'sales_reports': lambda u, c: enhanced_placeholder_handler(u, c, "📈 تقارير المبيعات", "تقارير مفصلة عن مبيعاتك"),
     'buy_cards': 'FIXED_IN_MAIN_BOT',  # Now handled by fixed_network_display.py
     'help': help_handler,
