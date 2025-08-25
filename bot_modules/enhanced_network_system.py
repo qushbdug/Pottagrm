@@ -1348,13 +1348,13 @@ async def enhanced_execute_purchase_handler(update: Update, context: CallbackCon
                 WHERE id = ?
             ''', (category_id,))
             
-            # 4. Record transaction
+            # 4. Record transaction (adjusted for actual table structure)
             cursor.execute('''
-                INSERT INTO transactions (user_id, type, amount, description, created_at, card_id)
-                VALUES (?, 'purchase', ?, ?, ?, ?)
+                INSERT INTO transactions (from_user, amount, type, description, created_at, reference_id)
+                VALUES (?, ?, 'purchase', ?, ?, ?)
             ''', (user['id'], category['price'], 
                   f"شراء كرت {category['network_name']} - {category['name']}", 
-                  purchase_time, card['id']))
+                  purchase_time, f"card_{card['id']}"))
             
             conn.commit()
             
