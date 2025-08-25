@@ -444,7 +444,7 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
 💳 **محفظتي المطورة** 💳
 
 👤 **{user['full_name']}**
-🏷️ نوع الحساب: **{USER_ROLES.get(user['role'] if 'role' in user.keys() else 'customer', 'عميل')}**
+🏷️ نوع الحساب: **{USER_ROLES.get(user['role'] if user['role'] else 'customer', 'عميل')}**
 ⚡ حالة الحساب: **{"✅ مفعل" if user['is_active'] else "⏳ في انتظار التفعيل"}**
 
 💰 **الرصيد والإحصائيات:**
