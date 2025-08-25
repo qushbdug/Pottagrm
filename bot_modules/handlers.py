@@ -14,6 +14,9 @@ from bot_modules.utils import *
 
 logger = logging.getLogger(__name__)
 
+# Import new unified functions
+from bot_modules.network_handlers import process_unified_network_creation, process_category_addition
+
 # Command handlers
 async def start(update: Update, context: CallbackContext) -> int:
     """Handle /start command"""
@@ -560,9 +563,13 @@ async def handle_text_message(update: Update, context: CallbackContext):
             from bot_modules.admin_functions import admin_process_network_creation
             return await admin_process_network_creation(update, context)
         
-        # Check if supplier is adding network
+        # Check if supplier is adding network (unified)
         if context.user_data.get('adding_network'):
-            return await process_supplier_network_creation(update, context)
+            return await process_unified_network_creation(update, context)
+        
+        # Check if adding categories to network
+        if context.user_data.get('adding_categories'):
+            return await process_category_addition(update, context)
         
         # Check if admin is uploading cards
         if context.user_data.get('admin_uploading_card'):
