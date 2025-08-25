@@ -2621,7 +2621,7 @@ COMMAND_HANDLERS = {
     'cancel': cancel,
     'wifi_search': wifi_search_handler,
     'send_balance': send_balance_handler,
-    'search_networks': wifi_search_handler,
+    'search_networks': 'HANDLED_IN_MAIN_BOT',  # Now handled by enhanced_network_system
     'transfer_to_friend': send_balance_handler,
     'personal_reports': personal_reports_handler,
     'promotions': promotions_handler,

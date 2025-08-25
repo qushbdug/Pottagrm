@@ -97,17 +97,11 @@ async def button_click_handler(update: Update, context):
               callback_data.startswith('unified_upload_')):
             return await handle_simple_network_callbacks(update, context, callback_data)
         
-        # Unified Card Upload handlers
-        elif callback_data in UNIFIED_UPLOAD_CALLBACKS:
-            return await UNIFIED_UPLOAD_CALLBACKS[callback_data](update, context)
-        elif callback_data.startswith('unified_upload_to_'):
-            return await handle_unified_upload_callbacks(update, context, callback_data)
+        # Unified Card Upload handlers (integrated in enhanced system)
+        # Note: Upload functionality is now handled by enhanced_network_system
         
-        # Fixed Network Display handlers (fallback)
-        elif callback_data in FIXED_NETWORK_CALLBACKS:
-            return await FIXED_NETWORK_CALLBACKS[callback_data](update, context)
-        elif callback_data.startswith('fixed_network_details_') or callback_data.startswith('view_network_'):
-            return await handle_fixed_network_details_callback(update, context, callback_data)
+        # Legacy handlers (preserved for compatibility)
+        # Note: Fixed network display functionality is now handled by enhanced_network_system
         
         # Unified Network and Search handlers
         elif callback_data in UNIFIED_NETWORK_CALLBACKS:
@@ -115,7 +109,8 @@ async def button_click_handler(update: Update, context):
         elif callback_data in UNIFIED_SEARCH_CALLBACKS:
             return await UNIFIED_SEARCH_CALLBACKS[callback_data](update, context)
         elif callback_data == 'search_networks':
-            return await search_networks_handler(update, context)
+            from enhanced_network_system import enhanced_search_networks_handler
+            return await enhanced_search_networks_handler(update, context)
         elif callback_data.startswith('network_'):
             network_id = callback_data.split('_')[1]
             return await show_network_details(update, context, network_id)
@@ -309,9 +304,7 @@ async def button_click_handler(update: Update, context):
             await network_details_handler(update, context)
         elif callback_data == 'privacy_settings':
             await privacy_settings_handler(update, context)
-        elif callback_data == 'search_networks':
-            from enhanced_network_system import enhanced_search_networks_handler
-            await enhanced_search_networks_handler(update, context)
+        # search_networks is now handled in the main callback handler above
         elif callback_data == 'filter_by_category':
             await filter_by_category_handler(update, context)
         elif callback_data == 'sales_reports':
