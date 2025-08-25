@@ -87,7 +87,16 @@ async def button_click_handler(update: Update, context):
             from handlers import show_network_details
             network_id = callback_data.split('_')[1]
             return await show_network_details(update, context, network_id)
+        elif callback_data.startswith('view_network_categories_'):
+            # عرض الفئات لشبكة
+            from handlers import view_network_categories
+            network_id = callback_data.split('_')[-1]
+            return await view_network_categories(update, context, network_id)
         elif callback_data == 'all_networks':
+            from handlers import show_all_networks
+            return await show_all_networks(update, context)
+        elif callback_data.startswith('all_networks_page_'):
+            # ترقيم صفحات الشبكات
             from handlers import show_all_networks
             return await show_all_networks(update, context)
         elif callback_data == 'mobile_networks':
@@ -191,6 +200,11 @@ async def button_click_handler(update: Update, context):
             await filter_by_category_handler(update, context)
         elif callback_data == 'privacy_settings':
             await privacy_settings_handler(update, context)
+        elif callback_data.startswith('add_card_category_'):
+            # بدء إضافة فئة لشبكة
+            from handlers import add_card_category_handler
+            network_id = callback_data.split('_')[-1]
+            return await add_card_category_handler(update, context, network_id)
         
         # Admin panel routing
         elif callback_data == 'admin_panel':

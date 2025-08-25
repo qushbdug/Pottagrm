@@ -67,6 +67,10 @@ class DatabaseManager:
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
+                # Initialize or migrate schema as needed. We wrap non-critical
+                # index creation in try/except because existing DB shipped with
+                # the project may not have the exact same columns as the new
+                # schema. This minimizes impact while keeping compatibility.
                 self._create_tables(cursor)
                 conn.commit()
                 logger.info("Database initialized successfully")
@@ -147,15 +151,18 @@ class DatabaseManager:
             )
         ''')
         
-        # Transactions table
+        # Transactions table (note: existing DB in repo uses a different
+        # schema with from_user/to_user instead of user_id. We keep the
+        # creation here for fresh databases, and handle indexes defensively
+        # below for compatibility.)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS transactions (
                 id TEXT PRIMARY KEY,
-                user_id INTEGER NOT NULL,
-                transaction_type TEXT NOT NULL,
-                amount REAL NOT NULL,
-                balance_before REAL NOT NULL,
-                balance_after REAL NOT NULL,
+                user_id INTEGER,
+                transaction_type TEXT,
+                amount REAL,
+                balance_before REAL,
+                balance_after REAL,
                 description TEXT,
                 reference_id TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -168,7 +175,12 @@ class DatabaseManager:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_networks_supplier ON networks(supplier_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_cards_category ON cards(category_id)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id)')
+        # Defensive index creation: Only create index if column exists
+        try:
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id)')
+        except sqlite3.OperationalError:
+            # Existing DB may not have user_id; ignore to keep backward compatibility
+            pass
     
     @contextmanager
     def get_connection(self):
@@ -301,6 +313,43 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to update user activity: {e}")
             return False
+    
+    def get_user_by_phone(self, phone: str) -> Optional[User]:
+        """Get user by phone number.
+        This is used by registration flow to avoid duplicates.
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT * FROM users WHERE phone = ?', (phone,))
+                row = cursor.fetchone()
+                if row:
+                    return self._row_to_user(row)
+                return None
+        except Exception as e:
+            logger.error(f"Failed to get user by phone {phone}: {e}")
+            return None
+
+    def get_user_transactions(self, user_id: int, limit: int = 5) -> List[Dict[str, Any]]:
+        """Return recent wallet transactions for a user.
+        Note: We use wallet_transactions which exists in the shipped database
+        and includes 'transaction_type' and 'amount' columns expected by UI.
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT transaction_type, amount, description, created_at, reference_id
+                    FROM wallet_transactions
+                    WHERE user_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                ''', (user_id, limit))
+                rows = cursor.fetchall()
+                return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"Failed to get user {user_id} transactions: {e}")
+            return []
     
     def _generate_invite_code(self) -> str:
         """Generate unique invite code."""

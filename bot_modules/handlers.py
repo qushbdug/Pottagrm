@@ -520,6 +520,10 @@ async def handle_text_message(update: Update, context: CallbackContext):
         # Check if waiting for WiFi search
         if context.user_data.get('awaiting_wifi_search'):
             return await process_wifi_search(update, context)
+
+        # Check if awaiting new card category input (إصلاح مسار إضافة الفئة)
+        if context.user_data.get('awaiting_new_category_input'):
+            return await process_add_card_category_input(update, context)
         
         # Check if waiting for transfer step 1 (wallet number)
         if context.user_data.get('awaiting_transfer_step1'):
@@ -567,7 +571,9 @@ async def handle_text_message(update: Update, context: CallbackContext):
 # Enhanced User Features
 
 async def wifi_search_handler(update: Update, context: CallbackContext):
-    """البحث عن الشبكات المتاحة"""
+    """البحث عن الشبكات المتاحة
+    تم تبسيط الرسالة الافتتاحية لتوجيه المستخدم بشكل واضح وفق المتطلبات.
+    """
     try:
         user = get_user(update.effective_user.id)
         if not user:
@@ -576,108 +582,23 @@ async def wifi_search_handler(update: Update, context: CallbackContext):
             else:
                 await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
             return
-        
-        # الحصول على الشبكات المتاحة
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # احصل على عدد الشبكات النشطة
-        cursor.execute('SELECT COUNT(*) FROM networks WHERE is_active = 1')
-        active_networks_count = cursor.fetchone()[0]
-        
-        # احصل على عدد فئات الكروت المتاحة
-        cursor.execute('''
-            SELECT COUNT(*) FROM card_categories cc 
-            JOIN networks n ON cc.network_id = n.id 
-            WHERE n.is_active = 1 AND cc.is_available = 1
-        ''')
-        available_categories_count = cursor.fetchone()[0]
-        
-        # احصه على إجمالي المخزون
-        cursor.execute('''
-            SELECT SUM(cc.stock_count) FROM card_categories cc 
-            JOIN networks n ON cc.network_id = n.id 
-            WHERE n.is_active = 1 AND cc.is_available = 1
-        ''')
-        total_stock = cursor.fetchone()[0] or 0
-        
-        conn.close()
-        
-        if active_networks_count == 0:
-            text = f"""
-📶 **البحث عن شبكات الواي فاي** 📶
 
-👤 مرحباً **{user['full_name']}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
+        # رسالة إرشادية مبسطة حسب المطلوب
+        text = (
+            "🔍 يمكنك البحث عن الشبكة باستخدام رقم المعرف (ID) أو اسم الشبكة.\n\n"
+            "اختر أحد الخيارات أدناه للمتابعة."
+        )
 
-🏪 **لا توجد شبكات متاحة حالياً**
+        keyboard = [
+            [InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks')],
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
 
-📋 **نحن نتعامل حصرياً مع:**
-• 🌐 كروت شبكات الواي فاي المنزلية
-• 💳 كروت الخدمات المقدمة من المزودين المعتمدين
-• 📶 شبكات الإنترنت اللاسلكي
-
-⏳ **الشبكات ستظهر عندما:**
-• يقوم المزودون بإضافة شبكاتهم
-• يتم رفع كروت الواي فاي المتاحة
-• يتم تفعيل الخدمات الجديدة
-
-💡 **للمزودين:**
-يمكنكم إضافة شبكاتكم من لوحة المزود
-
-🔔 **سيتم إشعارك فور توفر شبكات جديدة!**
-"""
-        else:
-            text = f"""
-📶 **البحث عن شبكات الواي فاي** 📶
-
-👤 مرحباً **{user['full_name']}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
-
-📊 **إحصائيات الشبكات:**
-🌐 الشبكات المتاحة: **{active_networks_count}** شبكة
-💳 فئات الكروت: **{available_categories_count}** فئة
-📦 إجمالي المخزون: **{total_stock:,}** كرت
-
-🔍 **خيارات البحث:**
-
-1️⃣ **عرض جميع الشبكات**
-   استعرض كافة الشبكات المضافة من المزودين
-
-2️⃣ **البحث بالاسم**
-   ابحث عن شبكة واي فاي معينة
-
-3️⃣ **حسب نوع الخدمة**
-   شبكات الواي فاي المنزلية
-
-4️⃣ **حسب السعر**
-   اختر حسب ميزانيتك
-"""
-        
-        if active_networks_count == 0:
-            keyboard = [
-                [InlineKeyboardButton('🔄 تحديث الشبكات', callback_data='search_networks'),
-                 InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')],
-                [InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet'),
-                 InlineKeyboardButton('📞 الدعم الفني', callback_data='help')],
-                [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-            ]
-        else:
-            keyboard = [
-                [InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks'),
-                 InlineKeyboardButton('🔍 بحث بالاسم', callback_data='search_by_network_name')],
-                [InlineKeyboardButton('📶 شبكات الواي فاي', callback_data='wifi_networks'),
-                 InlineKeyboardButton('🏠 شبكات منزلية', callback_data='home_networks')],
-                [InlineKeyboardButton('💰 حسب السعر', callback_data='networks_by_price'),
-                 InlineKeyboardButton('⭐ الأكثر طلباً', callback_data='popular_networks')],
-                [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-            ]
-        
         if update.message:
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         else:
-            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
+            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
     except Exception as e:
         logger.error(f"Error in WiFi search: {e}")
         error_msg = "❌ حدث خطأ في البحث"
@@ -1781,91 +1702,120 @@ async def select_user_for_transfer(update: Update, context: CallbackContext, sel
         await update.callback_query.edit_message_text("❌ حدث خطأ في اختيار المستخدم")
 
 async def show_all_networks(update: Update, context: CallbackContext):
-    """عرض جميع الشبكات المتاحة"""
+    """عرض جميع الشبكات المتاحة مع ترقيم الصفحات (4 شبكات في الصفحة)
+    - إصلاح يعتمد على مخطط الجداول الفعلي: يستخدم أعمدة networks (id, name, city, supplier_id, is_active)
+    - احتساب عدد الفئات والمخزون مع دعم بديل من network_cards عند غياب card_categories
+    """
     try:
         user = get_user(update.effective_user.id)
         if not user:
             await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
             return
 
+        query = update.callback_query
+        data = query.data if query else ''
+
+        # إعداد الترقيم
+        PER_PAGE = 4
+        page = 1
+        if data.startswith('all_networks_page_'):
+            try:
+                page = int(data.split('_')[-1])
+            except Exception:
+                page = 1
+
+        offset = (page - 1) * PER_PAGE
+
         conn = get_db_connection()
         cursor = conn.cursor()
-        
-        # الحصول على جميع الشبكات مع فئات الكروت
+
+        # إجمالي الشبكات النشطة (لا نُقيّد بالموافقة لأن بعض قواعد البيانات
+        # القديمة لا تحتوي على عمود الموافقة أو تستخدمه بشكل غير موثوق)
+        cursor.execute('SELECT COUNT(*) FROM networks WHERE is_active = 1')
+        total_networks = cursor.fetchone()[0] or 0
+        total_pages = max(1, (total_networks + PER_PAGE - 1) // PER_PAGE)
+
+        # جلب شبكات الصفحة مع إحصائيات دقيقة من الجداول المتوفرة
         cursor.execute('''
-            SELECT 
-                n.id, n.name, n.provider, n.description,
-                COUNT(cc.id) as card_types,
-                SUM(cc.stock_count) as total_stock,
-                MIN(cc.price) as min_price,
-                MAX(cc.price) as max_price
+            SELECT n.id, n.name, n.city, n.is_active, COALESCE(u.full_name, '') AS supplier_name,
+                   (
+                     SELECT COUNT(*) FROM card_categories cc
+                     WHERE cc.network_id = n.id AND cc.is_available = 1
+                   ) AS cat_count,
+                   (
+                     SELECT COALESCE(SUM(cc.stock_count), 0) FROM card_categories cc
+                     WHERE cc.network_id = n.id AND cc.is_available = 1
+                   ) AS cc_stock,
+                   (
+                     SELECT COUNT(DISTINCT nc.card_category) FROM network_cards nc
+                     WHERE nc.network_id = n.id AND nc.is_sold = 0
+                   ) AS nc_cat_count,
+                   (
+                     SELECT COUNT(*) FROM network_cards nc
+                     WHERE nc.network_id = n.id AND nc.is_sold = 0
+                   ) AS nc_stock
             FROM networks n
-            LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
+            LEFT JOIN users u ON n.supplier_id = u.id
             WHERE n.is_active = 1
-            GROUP BY n.id, n.name, n.provider, n.description
             ORDER BY n.name
-        ''')
-        
+            LIMIT ? OFFSET ?
+        ''', (PER_PAGE, offset))
+
         networks = cursor.fetchall()
         conn.close()
-        
-        if not networks:
+
+        if total_networks == 0:
             await update.callback_query.edit_message_text(
                 "❌ **لا توجد شبكات متاحة حالياً**\n\n"
-                "تحقق لاحقاً للحصول على التحديثات"
+                "تحقق لاحقاً للحصول على التحديثات",
+                parse_mode='Markdown'
             )
             return
 
-        text = f"""
-🌐 **جميع الشبكات المتاحة** 🌐
-
-👤 **{user['full_name']}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
-
-📊 **عدد الشبكات:** {len(networks)} شبكة
-
-"""
+        text = (
+            f"🌐 **جميع الشبكات المتاحة** 🌐\n\n"
+            f"👤 **{user['full_name']}**\n"
+            f"💰 رصيدك: **{user['balance']:,.2f}** ريال\n\n"
+            f"📊 **عدد الشبكات:** {total_networks} شبكة\n"
+            f"📄 الصفحة: {page}/{total_pages}\n\n"
+        )
 
         keyboard = []
-        for network in networks:
-            network_id, name, provider, description, card_types, total_stock, min_price, max_price = network
-            
-            # تنسيق معلومات الشبكة
-            stock_status = "📦" if total_stock and total_stock > 0 else "❌"
-            price_range = ""
-            if min_price and max_price:
-                if min_price == max_price:
-                    price_range = f"{min_price:,.0f} ريال"
-                else:
-                    price_range = f"{min_price:,.0f} - {max_price:,.0f} ريال"
-            
-            text += f"""
-🏢 **{name}**
-📝 {description or 'شبكة إنترنت موثوقة'}
-💳 الفئات: {card_types or 0} فئة
-📦 المخزون: {total_stock or 0} كرت
-💰 الأسعار: {price_range or 'غير محدد'}
-━━━━━━━━━━━━━━━━━━━━━━━━━
+        for n in networks:
+            network_id, name, city, is_active, supplier_name, cat_count, cc_stock, nc_cat_count, nc_stock = n
 
-"""
-            
-            # إضافة زر للشبكة
+            # اختيار المصدر الأنسب للأرقام (card_categories أولاً ثم network_cards)
+            categories_count = cat_count if (cat_count or 0) > 0 else (nc_cat_count or 0)
+            total_stock = cc_stock if (cc_stock or 0) > 0 else (nc_stock or 0)
+
+            stock_status = "📦" if total_stock > 0 else "❌"
+
+            text += (
+                f"🏢 **{name}**\n"
+                f"👤 المزود: {supplier_name or 'غير محدد'}\n"
+                f"🏙️ الموقع: {city or 'غير محدد'}\n"
+                f"💳 الفئات: {categories_count} فئة\n"
+                f"📦 المخزون: {total_stock} كرت\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            )
+
             button_text = f"{stock_status} {name}"
-            if total_stock and total_stock > 0:
+            if total_stock > 0:
                 button_text += f" ({total_stock})"
-            
-            keyboard.append([InlineKeyboardButton(
-                button_text,
-                callback_data=f"network_{network_id}"
-            )])
+            keyboard.append([InlineKeyboardButton(button_text, callback_data=f"network_{network_id}")])
 
-        # إضافة أزرار إضافية
-        keyboard.extend([
-            [InlineKeyboardButton('🔍 بحث متقدم', callback_data='search_networks'),
-             InlineKeyboardButton('💰 ترتيب بالسعر', callback_data='networks_by_price')],
-            [InlineKeyboardButton('🔙 عودة', callback_data='search_networks'),
-             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-        ])
+        # أزرار صفحات مرقمة 1..N
+        page_buttons = []
+        for p in range(1, total_pages + 1):
+            label = f"{p}"
+            cb = f"all_networks_page_{p}"
+            page_buttons.append(InlineKeyboardButton(label, callback_data=cb))
+        if page_buttons:
+            # صف مرقم للصفحات
+            keyboard.append(page_buttons)
+
+        # أزرار إضافية
+        keyboard.append([InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')])
 
         await update.callback_query.edit_message_text(
             text,
@@ -1878,7 +1828,7 @@ async def show_all_networks(update: Update, context: CallbackContext):
         await update.callback_query.edit_message_text("❌ حدث خطأ في عرض الشبكات")
 
 async def show_network_details(update: Update, context: CallbackContext, network_id: str):
-    """عرض تفاصيل شبكة معينة"""
+    """عرض تفاصيل شبكة معينة مع إصلاحات لاستخدام المخطط الفعلي والاحتساب الصحيح للإحصائيات"""
     try:
         user = get_user(update.effective_user.id)
         if not user:
@@ -1887,103 +1837,245 @@ async def show_network_details(update: Update, context: CallbackContext, network
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        
-        # الحصول على بيانات الشبكة
-        cursor.execute('SELECT * FROM networks WHERE id = ? AND is_active = 1', (network_id,))
+
+        # جلب معلومات الشبكة وفق مخطط networks الحالي (id, name, city, supplier_id, ...)
+        cursor.execute('''
+            SELECT n.id, n.name, n.city, COALESCE(u.full_name, '') AS supplier_name
+            FROM networks n
+            LEFT JOIN users u ON n.supplier_id = u.id
+            WHERE n.id = ? AND n.is_active = 1
+        ''', (network_id,))
         network = cursor.fetchone()
-        
+
         if not network:
+            conn.close()
             await update.callback_query.edit_message_text("❌ الشبكة غير موجودة أو غير متاحة")
             return
-        
-        # الحصول على فئات الكروت
+
+        # احتساب عدد الفئات وعدد الكروت المتاحة (مع بدائل من network_cards)
+        # ملاحظة: هذا يعالج مشكلة عرض (0 فئة | 0 كرت) لبعض الشبكات
         cursor.execute('''
-            SELECT id, name, value, price, stock_count
-            FROM card_categories 
-            WHERE network_id = ? AND is_available = 1
-            ORDER BY price
+            SELECT COUNT(*) FROM card_categories WHERE network_id = ? AND is_available = 1
         ''', (network_id,))
-        
-        categories = cursor.fetchall()
+        cc_count = cursor.fetchone()[0] or 0
+
+        cursor.execute('''
+            SELECT COALESCE(SUM(stock_count), 0) FROM card_categories WHERE network_id = ? AND is_available = 1
+        ''', (network_id,))
+        cc_stock = cursor.fetchone()[0] or 0
+
+        cursor.execute('''
+            SELECT COUNT(DISTINCT card_category) FROM network_cards WHERE network_id = ? AND is_sold = 0
+        ''', (network_id,))
+        nc_count = cursor.fetchone()[0] or 0
+
+        cursor.execute('''
+            SELECT COUNT(*) FROM network_cards WHERE network_id = ? AND is_sold = 0
+        ''', (network_id,))
+        nc_stock = cursor.fetchone()[0] or 0
+
         conn.close()
-        
-        # تنسيق معلومات الشبكة
-        text = f"""
-🏢 **{network[1]}** - {network[2]}
 
-👤 **{user['full_name']}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
+        categories_count = cc_count if cc_count > 0 else nc_count
+        available_cards = cc_stock if cc_stock > 0 else nc_stock
 
-📝 **الوصف:**
-{network[3] or 'شبكة إنترنت موثوقة وسريعة'}
+        net_id, net_name, net_city, supplier_name = network
 
-💳 **فئات الكروت المتاحة:**
+        # نص التفاصيل حسب المطلوب
+        text = (
+            f"📶 **{net_name}**\n"
+            f"👤 المالك/المزود: {supplier_name or 'غير محدد'}\n"
+            f"🏙️ الموقع: {net_city or 'غير محدد'}\n"
+            f"📂 عدد الفئات: {categories_count}\n"
+            f"🎫 الكروت المتاحة: {available_cards}"
+        )
 
-"""
-
-        keyboard = []
-        
-        if categories:
-            for category in categories:
-                cat_id, cat_name, cat_value, cat_price, cat_stock = category
-                
-                # تحديد حالة التوفر مع احتساب احتياطي من جدول الكروت الفعلي عند نفاد المخزون المسجل
-                if not cat_stock or cat_stock <= 0:
-                    try:
-                        cursor.execute('SELECT COUNT(*) FROM network_cards WHERE network_id = ? AND card_category = ? AND is_sold = 0', (network_id, int(cat_value)))
-                        derived_stock = cursor.fetchone()[0] or 0
-                        cat_stock = derived_stock
-                    except Exception:
-                        pass
-                
-                availability = "✅ متوفر" if cat_stock > 0 else "❌ نفذ"
-                stock_info = f"({cat_stock} كرت)" if cat_stock > 0 else "(نفذ)"
-                
-                # تنسيق القيمة
-                if cat_value >= 1024:
-                    value_text = f"{cat_value/1024:.0f} جيجا" if cat_value >= 1024 else f"{cat_value} ميجا"
-                else:
-                    value_text = f"{cat_value} ريال" if cat_value >= 100 else f"{cat_value} ميجا"
-                
-                text += f"""
-💳 **{cat_name}**
-📊 القيمة: {value_text}
-💰 السعر: **{cat_price:,.0f}** ريال
-📦 {availability} {stock_info}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-
-"""
-                
-                # إضافة زر شراء إذا كان متوفراً
-                if cat_stock > 0 and user['balance'] >= cat_price:
-                    keyboard.append([InlineKeyboardButton(
-                        f"🛒 شراء {cat_name} - {cat_price:,.0f} ريال",
-                        callback_data=f"buy_card_{cat_id}"
-                    )])
-                elif cat_stock > 0:
-                    keyboard.append([InlineKeyboardButton(
-                        f"💰 رصيد غير كافي - {cat_price:,.0f} ريال",
-                        callback_data=f"insufficient_balance"
-                    )])
-        else:
-            text += "❌ لا توجد فئات متاحة حالياً\n"
-
-        # إضافة أزرار إضافية
-        keyboard.extend([
-            [InlineKeyboardButton('🔙 جميع الشبكات', callback_data='all_networks'),
-             InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet')],
-            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-        ])
+        # أزرار أسفل التفاصيل حسب المطلوب
+        keyboard = [
+            # توحيد المسارين: عرض الكروت/الفئات كلاهما يقود لعرض الفئات المتاحة
+            [InlineKeyboardButton('🎫 عرض الكروت', callback_data=f'view_network_categories_{net_id}')],
+            [InlineKeyboardButton('🗂️ عرض الفئات', callback_data=f'view_network_categories_{net_id}')],
+            [InlineKeyboardButton('🔙 الرجوع', callback_data='all_networks')]
+        ]
 
         await update.callback_query.edit_message_text(
             text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
     except Exception as e:
         logger.error(f"Error in show network details: {e}")
         await update.callback_query.edit_message_text("❌ حدث خطأ في عرض تفاصيل الشبكة")
+
+async def view_network_categories(update: Update, context: CallbackContext, network_id: str):
+    """عرض فئات الكروت لشبكة معينة مع دعم الشراء عند توفر الفئات"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
+            return
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT name FROM networks WHERE id = ?', (network_id,))
+        row = cursor.fetchone()
+        net_name = row[0] if row else 'شبكة'
+
+        cursor.execute('''
+            SELECT id, category_name, value, price, stock_count
+            FROM card_categories
+            WHERE network_id = ? AND is_available = 1
+            ORDER BY price
+        ''', (network_id,))
+        categories = cursor.fetchall()
+
+        # معالجة خاصة: إذا لم تتوفر فئات في card_categories، نحاول الاستنتاج
+        # من network_cards لتقديم تجربة شراء مباشرة من البطاقات المرفوعة.
+        inferred = []
+        if not categories:
+            cursor.execute('''
+                SELECT nc.card_category AS value,
+                       COUNT(*) AS stock
+                FROM network_cards nc
+                WHERE nc.network_id = ? AND nc.is_sold = 0
+                GROUP BY nc.card_category
+                ORDER BY value
+            ''', (network_id,))
+            for row in cursor.fetchall():
+                val = row[0]
+                stock = row[1] or 0
+                # محاولة إيجاد سعر تقريبي من card_categories إن وجد سابقاً
+                cursor.execute('''
+                    SELECT price FROM card_categories
+                    WHERE network_id = ? AND value = ?
+                    ORDER BY updated_at DESC, created_at DESC
+                    LIMIT 1
+                ''', (network_id, val))
+                price_row = cursor.fetchone()
+                price = price_row[0] if price_row else float(val)
+                inferred.append((None, f"فئة {val} ريال", val, price, stock))
+        conn.close()
+
+        text = f"🗂️ **فئات الكروت - {net_name}**"
+        keyboard = []
+
+        if categories or inferred:
+            for cat_id, cat_name, value, price, stock in categories:
+                display_name = cat_name or f"فئة {value} ريال"
+                stock_info = stock if (stock or 0) > 0 else 0
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"🎫 {display_name} - {price:,.0f} ريال ({stock_info} متاح)",
+                        callback_data=f"buy_card_{cat_id}"
+                    )
+                ])
+            # إضافة inferred (شراء مباشر غير ممكن لعدم وجود معرف فئة)، نكتفي بعرضها
+            for _, disp_name, value, price, stock in inferred:
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"🎫 {disp_name} - {price:,.0f} ريال ({stock} متاح)",
+                        callback_data=f"all_networks"  # إرجاع للمستخدم، يمكن لاحقاً ربط شراء مباشر
+                    )
+                ])
+        else:
+            text += "\n\n❌ لا توجد فئات متاحة حالياً"
+
+        keyboard.extend([
+            [InlineKeyboardButton('🔙 الرجوع', callback_data=f'network_{network_id}')],
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ])
+
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+    except Exception as e:
+        logger.error(f"Error in view network categories: {e}")
+        await update.callback_query.edit_message_text("❌ حدث خطأ في عرض الفئات")
+
+async def add_card_category_handler(update: Update, context: CallbackContext, network_id: str):
+    """بدء إضافة فئة كرت جديدة لشبكة محددة (إصلاح لمسار كان غير معالج)"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
+            return
+
+        # توجيه الإدخال بالشكل: الاسم,القيمة,السعر,المخزون
+        text = (
+            "➕ أرسل بيانات الفئة بالشكل التالي:\n"
+            "الاسم,القيمة,السعر,المخزون\n\n"
+            "مثال: كرت 1 جيجا,1024,1800,30"
+        )
+
+        context.user_data['awaiting_new_category_input'] = True
+        context.user_data['new_category_network_id'] = network_id
+
+        await update.callback_query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton('🔙 الرجوع', callback_data=f'network_{network_id}')],
+                [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            ])
+        )
+
+    except Exception as e:
+        logger.error(f"Error in add card category handler: {e}")
+        await update.callback_query.edit_message_text("❌ حدث خطأ في إضافة الفئة")
+
+async def process_add_card_category_input(update: Update, context: CallbackContext):
+    """معالجة إدخال إضافة الفئة وإدراجها في قاعدة البيانات"""
+    try:
+        if not context.user_data.get('awaiting_new_category_input'):
+            return
+
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
+            return
+
+        raw = (update.message.text or '').strip()
+        parts = [p.strip() for p in raw.split(',')]
+        if len(parts) < 4:
+            await update.message.reply_text("❌ تنسيق غير صحيح. أرسل: الاسم,القيمة,السعر,المخزون")
+            return
+
+        name, value_s, price_s, stock_s = parts[0], parts[1], parts[2], parts[3]
+        try:
+            value = float(value_s)
+            price = float(price_s)
+            stock = int(stock_s)
+        except Exception:
+            await update.message.reply_text("❌ القيم يجب أن تكون أرقاماً صحيحة.")
+            return
+
+        network_id = context.user_data.get('new_category_network_id')
+        if not network_id:
+            await update.message.reply_text("❌ لم يتم العثور على معرف الشبكة.")
+            return
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        # إدراج الفئة الجديدة؛ نستخدم network_id كما هو (SQLite يسمح بالتخزين النصي حتى إن كان الحقل مُعلن INTEGER)
+        cursor.execute('''
+            INSERT INTO card_categories (network_id, name, value, price, currency, is_available, stock_count)
+            VALUES (?, ?, ?, ?, 'YER', 1, ?)
+        ''', (network_id, name, value, price, stock))
+        conn.commit()
+        conn.close()
+
+        context.user_data.pop('awaiting_new_category_input', None)
+        context.user_data.pop('new_category_network_id', None)
+
+        await update.message.reply_text(
+            "✅ تم إضافة الفئة بنجاح",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton('➕ إضافة فئة أخرى', callback_data=f'add_card_category_{network_id}')],
+                [InlineKeyboardButton('🔙 الرجوع', callback_data=f'network_{network_id}')]
+            ])
+        )
+
+    except Exception as e:
+        logger.error(f"Error in process add card category: {e}")
+        await update.message.reply_text("❌ حدث خطأ في حفظ الفئة.")
 
 async def show_mobile_networks(update: Update, context: CallbackContext):
     """عرض شبكات المحمول"""
