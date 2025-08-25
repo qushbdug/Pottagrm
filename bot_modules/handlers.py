@@ -573,6 +573,11 @@ async def handle_text_message(update: Update, context: CallbackContext):
             from unified_network_manager import process_category_addition  
             return await process_category_addition(update, context)
         
+        # Check if using enhanced network system
+        from enhanced_network_system import handle_enhanced_text_messages
+        if await handle_enhanced_text_messages(update, context):
+            return
+        
         # Check if awaiting unified search
         if context.user_data.get('awaiting_search'):
             from unified_search_manager import process_unified_search

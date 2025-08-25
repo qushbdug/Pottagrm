@@ -34,6 +34,7 @@ try:
     from unified_network_manager import UNIFIED_NETWORK_CALLBACKS
     from unified_search_manager import UNIFIED_SEARCH_CALLBACKS
     from simplified_network_display import SIMPLIFIED_NETWORK_CALLBACKS, handle_simple_network_callbacks
+    from enhanced_network_system import ENHANCED_NETWORK_CALLBACKS, handle_enhanced_network_callbacks, handle_enhanced_text_messages
 except ImportError as e:
     print(f"Error importing unified modules: {e}")
     print("Make sure all module files are in the bot_modules directory")
@@ -81,10 +82,19 @@ async def button_click_handler(update: Update, context):
         elif callback_data == 'enhanced_wallet':
             return await enhanced_wallet_handler(update, context)
         
-        # Simplified Network Display handlers (PRIORITY - fixes all issues)
-        elif callback_data in SIMPLE_NETWORK_CALLBACKS:
-            return await SIMPLE_NETWORK_CALLBACKS[callback_data](update, context)
-        elif callback_data.startswith(('simple_details_', 'simple_buy_from_')):
+        # Enhanced Network System handlers (HIGHEST PRIORITY - fixes all issues)
+        elif callback_data in ENHANCED_NETWORK_CALLBACKS:
+            return await ENHANCED_NETWORK_CALLBACKS[callback_data](update, context)
+        elif (callback_data.startswith('enhanced_') and 
+              callback_data not in ['enhanced_wallet']):
+            return await handle_enhanced_network_callbacks(update, context, callback_data)
+        
+        # Simplified Network Display handlers (fallback)
+        elif callback_data in SIMPLIFIED_NETWORK_CALLBACKS:
+            return await SIMPLIFIED_NETWORK_CALLBACKS[callback_data](update, context)
+        elif (callback_data.startswith('simple_details_') or 
+              callback_data.startswith('simple_buy_') or 
+              callback_data.startswith('unified_upload_')):
             return await handle_simple_network_callbacks(update, context, callback_data)
         
         # Unified Card Upload handlers
@@ -300,8 +310,8 @@ async def button_click_handler(update: Update, context):
         elif callback_data == 'privacy_settings':
             await privacy_settings_handler(update, context)
         elif callback_data == 'search_networks':
-            from fixed_network_display import fixed_search_networks_handler
-            await fixed_search_networks_handler(update, context)
+            from enhanced_network_system import enhanced_search_networks_handler
+            await enhanced_search_networks_handler(update, context)
         elif callback_data == 'filter_by_category':
             await filter_by_category_handler(update, context)
         elif callback_data == 'sales_reports':
