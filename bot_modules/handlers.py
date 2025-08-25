@@ -1729,12 +1729,13 @@ async def show_all_networks(update: Update, context: CallbackContext):
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # إجمالي الشبكات النشطة (لا نُقيّد بالموافقة هنا لأن هذا عرض/بحث وليس شراء)
+        # إجمالي الشبكات النشطة (لا نُقيّد بالموافقة لأن بعض قواعد البيانات
+        # القديمة لا تحتوي على عمود الموافقة أو تستخدمه بشكل غير موثوق)
         cursor.execute('SELECT COUNT(*) FROM networks WHERE is_active = 1')
         total_networks = cursor.fetchone()[0] or 0
         total_pages = max(1, (total_networks + PER_PAGE - 1) // PER_PAGE)
 
-        # جلب شبكات الصفحة
+        # جلب شبكات الصفحة مع إحصائيات دقيقة من الجداول المتوفرة
         cursor.execute('''
             SELECT n.id, n.name, n.city, n.is_active, COALESCE(u.full_name, '') AS supplier_name,
                    (
@@ -1852,6 +1853,7 @@ async def show_network_details(update: Update, context: CallbackContext, network
             return
 
         # احتساب عدد الفئات وعدد الكروت المتاحة (مع بدائل من network_cards)
+        # ملاحظة: هذا يعالج مشكلة عرض (0 فئة | 0 كرت) لبعض الشبكات
         cursor.execute('''
             SELECT COUNT(*) FROM card_categories WHERE network_id = ? AND is_available = 1
         ''', (network_id,))
@@ -1890,6 +1892,7 @@ async def show_network_details(update: Update, context: CallbackContext, network
 
         # أزرار أسفل التفاصيل حسب المطلوب
         keyboard = [
+            # توحيد المسارين: عرض الكروت/الفئات كلاهما يقود لعرض الفئات المتاحة
             [InlineKeyboardButton('🎫 عرض الكروت', callback_data=f'view_network_categories_{net_id}')],
             [InlineKeyboardButton('🗂️ عرض الفئات', callback_data=f'view_network_categories_{net_id}')],
             [InlineKeyboardButton('🔙 الرجوع', callback_data='all_networks')]
@@ -1925,12 +1928,38 @@ async def view_network_categories(update: Update, context: CallbackContext, netw
             ORDER BY price
         ''', (network_id,))
         categories = cursor.fetchall()
+
+        # معالجة خاصة: إذا لم تتوفر فئات في card_categories، نحاول الاستنتاج
+        # من network_cards لتقديم تجربة شراء مباشرة من البطاقات المرفوعة.
+        inferred = []
+        if not categories:
+            cursor.execute('''
+                SELECT nc.card_category AS value,
+                       COUNT(*) AS stock
+                FROM network_cards nc
+                WHERE nc.network_id = ? AND nc.is_sold = 0
+                GROUP BY nc.card_category
+                ORDER BY value
+            ''', (network_id,))
+            for row in cursor.fetchall():
+                val = row[0]
+                stock = row[1] or 0
+                # محاولة إيجاد سعر تقريبي من card_categories إن وجد سابقاً
+                cursor.execute('''
+                    SELECT price FROM card_categories
+                    WHERE network_id = ? AND value = ?
+                    ORDER BY updated_at DESC, created_at DESC
+                    LIMIT 1
+                ''', (network_id, val))
+                price_row = cursor.fetchone()
+                price = price_row[0] if price_row else float(val)
+                inferred.append((None, f"فئة {val} ريال", val, price, stock))
         conn.close()
 
         text = f"🗂️ **فئات الكروت - {net_name}**"
         keyboard = []
 
-        if categories:
+        if categories or inferred:
             for cat_id, cat_name, value, price, stock in categories:
                 display_name = cat_name or f"فئة {value} ريال"
                 stock_info = stock if (stock or 0) > 0 else 0
@@ -1938,6 +1967,14 @@ async def view_network_categories(update: Update, context: CallbackContext, netw
                     InlineKeyboardButton(
                         f"🎫 {display_name} - {price:,.0f} ريال ({stock_info} متاح)",
                         callback_data=f"buy_card_{cat_id}"
+                    )
+                ])
+            # إضافة inferred (شراء مباشر غير ممكن لعدم وجود معرف فئة)، نكتفي بعرضها
+            for _, disp_name, value, price, stock in inferred:
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"🎫 {disp_name} - {price:,.0f} ريال ({stock} متاح)",
+                        callback_data=f"all_networks"  # إرجاع للمستخدم، يمكن لاحقاً ربط شراء مباشر
                     )
                 ])
         else:

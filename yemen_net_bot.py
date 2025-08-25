@@ -2589,68 +2589,20 @@ async def _ensure_supplier_network(cursor: sqlite3.Cursor, supplier_user_id: int
 
 # Card management functions
 async def buy_cards(update: Update, context: CallbackContext) -> int:
-    """Handle card purchase flow"""
+    """Handle card purchase flow (Unified)
+    التوحيد: بدلاً من الاستعلام المباشر هنا، نعيد استخدام الدالة المحسّنة
+    لعرض الشبكات مع الترقيم وعرض الأعداد الصحيحة للفئات والمخزون.
+    هذا يقلل التكرار ويعالج مشكلة (0 شبكة) الناتجة عن شرط الموافقة الصارم.
+    """
     try:
-        query = update.callback_query
-        await query.answer()
-        
-        user = get_user(query.from_user.id)
-        if not user:
-            await query.edit_message_text(f"{EMOJIS['error']} يرجى التسجيل أولاً.")
-            return ConversationHandler.END
-        
-        update_user_activity(user['id'])
-        
-        loading_msg = await query.edit_message_text(f"{EMOJIS['loading']} جاري تحميل الشبكات المتاحة...")
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute('''
-                SELECT n.id, n.name, n.network_code, u.full_name 
-                FROM networks n 
-                JOIN users u ON n.supplier_id = u.id 
-                WHERE n.is_active = 1 AND n.is_approved = 1
-            ''')
-            networks = cursor.fetchall()
-        finally:
-            conn.close()
-        
-        if not networks:
-            await context.bot.edit_message_text(
-                chat_id=query.message.chat_id, 
-                message_id=loading_msg.message_id, 
-                text=f"{EMOJIS['warning']} لا تتوفر شبكات مفعلة حالياً. يرجى المحاولة لاحقاً."
-            )
-            return ConversationHandler.END
-        
-        keyboard = []
-        for network in networks:
-            network_text = f"{EMOJIS['network']} {network[1]} ({network[2]})"
-            keyboard.append([InlineKeyboardButton(network_text, callback_data=f'network_{network[0]}')])
-        
-        keyboard.append([InlineKeyboardButton(f'{EMOJIS["search"]} بحث بالرمز', callback_data='search_networks')])
-        keyboard.append([InlineKeyboardButton(f'{EMOJIS["cancel"]} إلغاء', callback_data='main_menu')])
-        
-        text = f"""
-{EMOJIS['purchase']} **شراء كروت الإنترنت**
-
-{EMOJIS['network']} اختر الشبكة المطلوبة:
-{EMOJIS['star']} يمكنك البحث بالرمز المكون من 5 أرقام
-"""
-        
-        await context.bot.edit_message_text(
-            chat_id=query.message.chat_id, 
-            message_id=loading_msg.message_id, 
-            text=text, 
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-        
-        return SELECT_NETWORK
+        # Delegate to the enhanced unified handler in bot_modules.handlers
+        from bot_modules.handlers import show_all_networks
+        return await show_all_networks(update, context)
     except Exception as e:
-        logger.error(f"Error in buy_cards: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحميل الشبكات.")
+        logger.error(f"Error in unified buy_cards: {e}")
+        query = update.callback_query if update.callback_query else None
+        if query:
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض الشبكات")
         return ConversationHandler.END
 
 async def select_category(update: Update, context: CallbackContext) -> int:
