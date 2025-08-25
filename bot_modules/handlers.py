@@ -563,13 +563,20 @@ async def handle_text_message(update: Update, context: CallbackContext):
             from bot_modules.admin_functions import admin_process_network_creation
             return await admin_process_network_creation(update, context)
         
-        # Check if supplier is adding network (unified)
-        if context.user_data.get('adding_network'):
+        # Check if using unified network creation
+        if context.user_data.get('unified_adding_network'):
+            from unified_network_manager import process_unified_network_creation
             return await process_unified_network_creation(update, context)
         
         # Check if adding categories to network
         if context.user_data.get('adding_categories'):
+            from unified_network_manager import process_category_addition  
             return await process_category_addition(update, context)
+        
+        # Check if awaiting unified search
+        if context.user_data.get('awaiting_search'):
+            from unified_search_manager import process_unified_search
+            return await process_unified_search(update, context, update.message.text)
         
         # Check if admin is uploading cards
         if context.user_data.get('admin_uploading_card'):

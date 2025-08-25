@@ -24,15 +24,17 @@ from telegram.ext import (
     ConversationHandler, PicklePersistence, filters, CallbackContext
 )
 
-# Import our modular components
+# Import unified modular components
 try:
     from config import *
-    from database import init_db
+    from database import init_db, get_db_connection
     from utils import *
     from handlers import COMMAND_HANDLERS, CONVERSATION_STATES, handle_text_message, show_main_menu
     from admin_functions import ADMIN_CALLBACKS, activate_single_supplier
+    from unified_network_manager import UNIFIED_NETWORK_CALLBACKS
+    from unified_search_manager import UNIFIED_SEARCH_CALLBACKS
 except ImportError as e:
-    print(f"Error importing modules: {e}")
+    print(f"Error importing unified modules: {e}")
     print("Make sure all module files are in the bot_modules directory")
     sys.exit(1)
 
@@ -78,7 +80,11 @@ async def button_click_handler(update: Update, context):
         elif callback_data == 'enhanced_wallet':
             return await enhanced_wallet_handler(update, context)
         
-        # Network search and details
+        # Unified Network and Search handlers
+        elif callback_data in UNIFIED_NETWORK_CALLBACKS:
+            return await UNIFIED_NETWORK_CALLBACKS[callback_data](update, context)
+        elif callback_data in UNIFIED_SEARCH_CALLBACKS:
+            return await UNIFIED_SEARCH_CALLBACKS[callback_data](update, context)
         elif callback_data == 'search_networks':
             return await search_networks_handler(update, context)
         elif callback_data.startswith('network_'):
@@ -2294,44 +2300,7 @@ async def privacy_settings_handler(update: Update, context: CallbackContext):
         logger.error(f"Error in privacy settings handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إعدادات الخصوصية.")
 
-async def search_networks_handler(update: Update, context: CallbackContext):
-    """Handle network search functionality"""
-    try:
-        query = update.callback_query
-        user = get_user(query.from_user.id)
-        
-        search_text = f"""
-🔍 **البحث في الشبكات** 🔍
-
-👤 **{user['full_name']}**
-
-📝 **يمكنك البحث عن:**
-• اسم الشبكة
-• معرف المزود (يبدأ بـ 80)
-• معرف الشبكة
-
-💡 **لبدء البحث:**
-أرسل كلمة البحث كرسالة نصية بعد هذه الرسالة
-
-🔍 **أمثلة:**
-• `سبافون`
-• `801234`
-• `صنعاء`
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('📶 عرض جميع شبكاتي', callback_data='manage_networks')],
-            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
-        ]
-        
-        # Set context for search mode
-        context.user_data['search_mode'] = 'networks'
-        
-        await query.edit_message_text(search_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in search networks handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في البحث.")
+# REMOVED: First duplicate search_networks_handler - functionality merged into unified_search_manager
 
 async def filter_by_category_handler(update: Update, context: CallbackContext):
     """Handle filtering cards by category"""
@@ -2704,7 +2673,7 @@ async def show_network_details(update: Update, context: CallbackContext, network
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض تفاصيل الشبكة.")
 
 async def search_networks_handler(update: Update, context: CallbackContext):
-    """Handle network search with filters"""
+    """Handle network search with filters - UNIFIED VERSION"""
     try:
         query = update.callback_query
         
