@@ -33,9 +33,7 @@ try:
     from admin_functions import ADMIN_CALLBACKS, activate_single_supplier
     from unified_network_manager import UNIFIED_NETWORK_CALLBACKS
     from unified_search_manager import UNIFIED_SEARCH_CALLBACKS
-    from fixed_network_display import FIXED_NETWORK_CALLBACKS, handle_fixed_network_details_callback
-    from simplified_network_display import SIMPLE_NETWORK_CALLBACKS, handle_simple_network_callbacks
-    from unified_card_upload import UNIFIED_UPLOAD_CALLBACKS, handle_unified_upload_callbacks
+    from simplified_network_display import SIMPLIFIED_NETWORK_CALLBACKS, handle_simple_network_callbacks
 except ImportError as e:
     print(f"Error importing unified modules: {e}")
     print("Make sure all module files are in the bot_modules directory")
