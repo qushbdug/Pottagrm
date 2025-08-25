@@ -2624,7 +2624,7 @@ COMMAND_HANDLERS = {
     'manage_networks': lambda u, c: supplier_manage_networks(u, c),
     'upload_cards': lambda u, c: enhanced_placeholder_handler(u, c, "📤 رفع كروت", "رفع وإدارة كروت الشحن"),
     'sales_reports': lambda u, c: enhanced_placeholder_handler(u, c, "📈 تقارير المبيعات", "تقارير مفصلة عن مبيعاتك"),
-    'buy_cards': lambda u, c: enhanced_placeholder_handler(u, c, "🛒 شراء الكروت", "شراء كروت الشحن من الشبكات المتاحة"),
+    'buy_cards': 'FIXED_IN_MAIN_BOT',  # Now handled by fixed_network_display.py
     'help': help_handler,
     'transaction_details': lambda u, c: enhanced_placeholder_handler(u, c, "📊 تفاصيل المعاملات", "عرض تفاصيل معاملاتك المالية"),
     'wallet_stats': lambda u, c: enhanced_placeholder_handler(u, c, "📈 إحصائيات المحفظة", "إحصائيات مفصلة عن محفظتك"),
