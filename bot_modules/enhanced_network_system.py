@@ -1164,3 +1164,273 @@ async def process_enhanced_network_creation(update: Update, context: CallbackCon
         logger.error(f"Error in process_enhanced_network_creation: {e}")
         await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في إضافة الشبكة: {e}")
         context.user_data.clear()
+
+# =============================================================================
+# ENHANCED PURCHASE CONFIRMATION - COMPLETE IMPLEMENTATION
+# =============================================================================
+
+async def enhanced_confirm_purchase_handler(update: Update, context: CallbackContext, category_id: str):
+    """Show purchase confirmation dialog"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user:
+            await query.edit_message_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
+            return
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Get category and network details
+            cursor.execute('''
+                SELECT cc.*, n.name as network_name, n.provider, n.location
+                FROM card_categories cc 
+                JOIN networks n ON cc.network_id = n.id 
+                WHERE cc.id = ? AND cc.is_available = 1 AND cc.stock_count > 0
+            ''', (category_id,))
+            category = cursor.fetchone()
+            
+            if not category:
+                await query.edit_message_text(f"{EMOJIS['error']} هذه الفئة غير متوفرة حالياً.")
+                return
+            
+            # Check available cards
+            cursor.execute('''
+                SELECT COUNT(*) FROM cards 
+                WHERE category_id = ? AND is_sold = 0
+            ''', (category_id,))
+            available_cards = cursor.fetchone()[0]
+            
+            if available_cards == 0:
+                await query.edit_message_text(f"{EMOJIS['error']} نفدت الكروت من هذه الفئة.")
+                return
+            
+            # Store category_id in context for purchase execution
+            context.user_data['purchase_category_id'] = category_id
+            
+            # Calculate costs
+            card_price = category['price']
+            user_balance = user['balance']
+            balance_after = user_balance - card_price
+            
+            # Prepare confirmation message
+            confirmation_msg = f"""
+💳 **تأكيد عملية الشراء**
+
+🌐 **تفاصيل الكرت:**
+📡 الشبكة: **{category['network_name']}**
+🏢 المزود: **{category['provider']}**
+📍 الموقع: **{category['location']}**
+🏷️ الفئة: **{category['name']}**
+💎 القيمة: **{category['value']:,.0f}** ريال
+
+💰 **التكلفة:**
+💵 سعر الكرت: **{card_price:,.2f}** ريال
+💳 رصيدك الحالي: **{user_balance:,.2f}** ريال
+📊 الرصيد بعد الشراء: **{balance_after:,.2f}** ريال
+
+📦 **الكمية المتوفرة:** {available_cards} كرت
+
+❓ **هل أنت متأكد من إتمام عملية الشراء؟**
+"""
+            
+            # Create confirmation buttons
+            keyboard = [
+                [InlineKeyboardButton('✅ تأكيد الشراء', callback_data='enhanced_execute_purchase')],
+                [InlineKeyboardButton('❌ إلغاء', callback_data='enhanced_search_networks'),
+                 InlineKeyboardButton('🔙 العودة', callback_data=f'enhanced_network_details_{category["network_id"]}')]
+            ]
+            
+            await query.edit_message_text(
+                confirmation_msg,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+        except Exception as db_error:
+            logger.error(f"Database error in purchase confirmation: {db_error}")
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في استرجاع بيانات الكرت.")
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        logger.error(f"Error in enhanced_confirm_purchase_handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض تأكيد الشراء.")
+
+# =============================================================================
+# ENHANCED PURCHASE EXECUTION - COMPLETE IMPLEMENTATION
+# =============================================================================
+
+async def enhanced_execute_purchase_handler(update: Update, context: CallbackContext):
+    """Execute the actual card purchase and send card details"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        # Get user and purchase data from context
+        user = get_user(query.from_user.id)
+        if not user:
+            await query.edit_message_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
+            return
+        
+        # Get purchase details from user_data
+        category_id = context.user_data.get('purchase_category_id')
+        if not category_id:
+            await query.edit_message_text(f"{EMOJIS['error']} انتهت جلسة الشراء. يرجى المحاولة مرة أخرى.")
+            return
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Get category details
+            cursor.execute('''
+                SELECT cc.*, n.name as network_name, n.provider 
+                FROM card_categories cc 
+                JOIN networks n ON cc.network_id = n.id 
+                WHERE cc.id = ? AND cc.is_available = 1 AND cc.stock_count > 0
+            ''', (category_id,))
+            category = cursor.fetchone()
+            
+            if not category:
+                await query.edit_message_text(f"{EMOJIS['error']} هذه الفئة غير متوفرة حالياً.")
+                return
+            
+            # Check user balance
+            if user['balance'] < category['price']:
+                await query.edit_message_text(
+                    f"{EMOJIS['error']} رصيدك غير كافي!\n\n"
+                    f"💰 رصيدك: {user['balance']:,.2f} ريال\n"
+                    f"💳 سعر الكرت: {category['price']:,.2f} ريال\n"
+                    f"❌ تحتاج: {category['price'] - user['balance']:,.2f} ريال إضافية"
+                )
+                return
+            
+            # Find available card
+            cursor.execute('''
+                SELECT * FROM cards 
+                WHERE category_id = ? AND is_sold = 0 
+                ORDER BY created_at ASC 
+                LIMIT 1
+            ''', (category_id,))
+            card = cursor.fetchone()
+            
+            if not card:
+                await query.edit_message_text(f"{EMOJIS['error']} نفدت الكروت من هذه الفئة.")
+                return
+            
+            # Execute purchase transaction
+            purchase_time = datetime.now()
+            
+            # 1. Mark card as sold
+            cursor.execute('''
+                UPDATE cards 
+                SET is_sold = 1, sold_to = ?, sold_at = ?, sale_price = ?
+                WHERE id = ?
+            ''', (user['id'], purchase_time, category['price'], card['id']))
+            
+            # 2. Deduct from user balance
+            new_balance = user['balance'] - category['price']
+            cursor.execute('''
+                UPDATE users 
+                SET balance = ?, total_purchases = total_purchases + 1, 
+                    total_spent = total_spent + ?, last_activity = ?
+                WHERE id = ?
+            ''', (new_balance, category['price'], purchase_time, user['id']))
+            
+            # 3. Update category stock
+            cursor.execute('''
+                UPDATE card_categories 
+                SET stock_count = stock_count - 1 
+                WHERE id = ?
+            ''', (category_id,))
+            
+            # 4. Record transaction
+            cursor.execute('''
+                INSERT INTO transactions (user_id, type, amount, description, created_at, card_id)
+                VALUES (?, 'purchase', ?, ?, ?, ?)
+            ''', (user['id'], category['price'], 
+                  f"شراء كرت {category['network_name']} - {category['name']}", 
+                  purchase_time, card['id']))
+            
+            conn.commit()
+            
+            # Clear purchase data from context
+            context.user_data.pop('purchase_category_id', None)
+            
+            # Prepare card details for display
+            card_details = f"""
+🎉 **تم شراء الكرت بنجاح!** 🎉
+
+🌐 **تفاصيل الكرت:**
+📡 الشبكة: **{category['network_name']}**
+🏢 المزود: **{category['provider']}**
+🏷️ الفئة: **{category['name']}**
+💎 القيمة: **{category['value']:,.0f}** ريال
+💰 السعر المدفوع: **{category['price']:,.2f}** ريال
+
+🎫 **بيانات الكرت:**
+🔢 الرقم السري: `{card['card_number']}`
+🔐 كود التفعيل: `{card['pin_code'] if card['pin_code'] else 'غير مطلوب'}`
+⏰ صالح حتى: {card['expiry_date'] if card['expiry_date'] else 'غير محدد'}
+
+💳 **حالة المحفظة:**
+💵 الرصيد المتبقي: **{new_balance:,.2f}** ريال
+
+📋 **تعليمات الاستخدام:**
+1. انسخ الرقم السري أعلاه
+2. اتصل بـ *134# أو *133#
+3. اختر خيار شحن الرصيد
+4. أدخل الرقم السري
+
+✅ **شكراً لك على الثقة!**
+"""
+            
+            # Send card details
+            keyboard = [
+                [InlineKeyboardButton('🛒 شراء كرت آخر', callback_data='enhanced_search_networks')],
+                [InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet'),
+                 InlineKeyboardButton('📊 مشترياتي', callback_data='my_purchases')],
+                [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            ]
+            
+            await query.edit_message_text(
+                card_details,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+            # Log successful purchase
+            logger.info(f"Card purchase successful: User {user['id']} bought card {card['id']} for {category['price']} YER")
+            
+            # Send notification to user about successful purchase
+            try:
+                await context.bot.send_message(
+                    chat_id=query.from_user.id,
+                    text=f"🎉 تم شراء كرت {category['network_name']} بنجاح!\n\n"
+                         f"🔢 الرقم السري: `{card['card_number']}`\n"
+                         f"💰 تم خصم {category['price']:,.2f} ريال من محفظتك",
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                logger.warning(f"Failed to send purchase notification: {e}")
+            
+        except Exception as db_error:
+            conn.rollback()
+            logger.error(f"Database error during purchase: {db_error}")
+            await query.edit_message_text(
+                f"{EMOJIS['error']} حدث خطأ أثناء عملية الشراء. يرجى المحاولة مرة أخرى.\n\n"
+                f"إذا تم خصم المبلغ، سيتم استرداده خلال 24 ساعة."
+            )
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        logger.error(f"Error in enhanced_execute_purchase_handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.")
+        
+        # Clear purchase context on error
+        context.user_data.pop('purchase_category_id', None)
