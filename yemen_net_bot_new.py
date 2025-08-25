@@ -2344,10 +2344,10 @@ async def add_network_handler(update: Update, context: CallbackContext):
 للحصول على حساب مزود، تواصل مع الإدارة.
 """
         else:
-            # تفعيل وضع إضافة الشبكة
+            # تفعيل وضع إضافة الشبكة المحسن
             context.user_data.clear()
-            context.user_data['adding_network'] = True
-            context.user_data['network_step'] = 'name'
+            context.user_data['enhanced_adding_network'] = True
+            context.user_data['enhanced_network_step'] = 'name'
             
             add_text = f"""
 ➕ **إضافة شبكة جديدة** ➕

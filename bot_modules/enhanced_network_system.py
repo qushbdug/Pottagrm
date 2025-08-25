@@ -954,8 +954,13 @@ async def handle_enhanced_network_callbacks(update: Update, context: CallbackCon
 # =============================================================================
 
 async def handle_enhanced_text_messages(update: Update, context: CallbackContext):
-    """Handle text messages for search and category addition"""
+    """Handle text messages for search, category addition, and network creation"""
     try:
+        # Handle enhanced network creation
+        if context.user_data.get('enhanced_adding_network'):
+            await process_enhanced_network_creation(update, context)
+            return True
+        
         # Handle category addition
         if context.user_data.get('adding_enhanced_category'):
             await process_category_addition_step(update, context)
@@ -976,3 +981,162 @@ async def handle_enhanced_text_messages(update: Update, context: CallbackContext
         logger.error(f"Error handling enhanced text messages: {e}")
         await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في معالجة الرسالة.")
         return False
+
+# =============================================================================
+# ENHANCED NETWORK CREATION
+# =============================================================================
+
+async def process_enhanced_network_creation(update: Update, context: CallbackContext):
+    """Process enhanced network creation step by step"""
+    try:
+        text = update.message.text.strip()
+        user_id = update.message.from_user.id
+        step = context.user_data.get('enhanced_network_step', 'name')
+        
+        if step == 'name':
+            # Validate network name
+            if len(text) < 3:
+                await update.message.reply_text(f"{EMOJIS['error']} اسم الشبكة قصير جداً. يجب أن يكون 3 أحرف على الأقل.")
+                return
+            
+            if len(text) > 50:
+                await update.message.reply_text(f"{EMOJIS['error']} اسم الشبكة طويل جداً. يجب أن يكون أقل من 50 حرف.")
+                return
+            
+            context.user_data['network_name'] = text
+            context.user_data['enhanced_network_step'] = 'provider'
+            
+            await update.message.reply_text(f"""
+✅ **تم حفظ اسم الشبكة:** {text}
+
+🔸 **الخطوة 2 من 4**
+🏢 **أدخل اسم المزود:**
+
+مثال: "شركة التقنية المتقدمة"
+
+📤 **أرسل اسم المزود الآن:**
+""", parse_mode='Markdown')
+            
+        elif step == 'provider':
+            # Validate provider name
+            if len(text) < 3:
+                await update.message.reply_text(f"{EMOJIS['error']} اسم المزود قصير جداً. يجب أن يكون 3 أحرف على الأقل.")
+                return
+            
+            if len(text) > 50:
+                await update.message.reply_text(f"{EMOJIS['error']} اسم المزود طويل جداً. يجب أن يكون أقل من 50 حرف.")
+                return
+            
+            context.user_data['network_provider'] = text
+            context.user_data['enhanced_network_step'] = 'location'
+            
+            await update.message.reply_text(f"""
+✅ **تم حفظ اسم المزود:** {text}
+
+🔸 **الخطوة 3 من 4**
+📍 **أدخل موقع الشبكة:**
+
+مثال: "صنعاء - شارع الزبيري"
+
+📤 **أرسل الموقع الآن:**
+""", parse_mode='Markdown')
+            
+        elif step == 'location':
+            # Validate location
+            if len(text) < 3:
+                await update.message.reply_text(f"{EMOJIS['error']} موقع الشبكة قصير جداً. يجب أن يكون 3 أحرف على الأقل.")
+                return
+            
+            if len(text) > 100:
+                await update.message.reply_text(f"{EMOJIS['error']} موقع الشبكة طويل جداً. يجب أن يكون أقل من 100 حرف.")
+                return
+            
+            context.user_data['network_location'] = text
+            context.user_data['enhanced_network_step'] = 'description'
+            
+            await update.message.reply_text(f"""
+✅ **تم حفظ الموقع:** {text}
+
+🔸 **الخطوة 4 من 4**
+📝 **أدخل وصف الشبكة (اختياري):**
+
+مثال: "شبكة سريعة وموثوقة، تغطي منطقة الحصبة"
+
+📤 **أرسل الوصف أو اكتب "تخطي" للمتابعة:**
+""", parse_mode='Markdown')
+            
+        elif step == 'description':
+            # Create the network
+            network_name = context.user_data.get('network_name')
+            provider = context.user_data.get('network_provider')
+            location = context.user_data.get('network_location')
+            description = text if text.lower() not in ['تخطي', 'skip'] else 'لا يوجد وصف'
+            
+            if len(description) > 200:
+                await update.message.reply_text(f"{EMOJIS['error']} الوصف طويل جداً. يجب أن يكون أقل من 200 حرف.")
+                return
+            
+            # Add network to database
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            try:
+                cursor.execute('''
+                    INSERT INTO networks (supplier_id, name, provider, location, description, 
+                                        city, created_by, is_active, is_approved, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, CURRENT_TIMESTAMP)
+                ''', (user_id, network_name, provider, location, description, 
+                      location.split('-')[0].strip() if '-' in location else location, user_id))
+                
+                network_id = cursor.lastrowid
+                conn.commit()
+                
+                # Clear user data
+                context.user_data.clear()
+                
+                # Create success message with action buttons
+                keyboard = [
+                    [InlineKeyboardButton('➕ إضافة فئات', callback_data=f'enhanced_add_categories_{network_id}')],
+                    [InlineKeyboardButton('📊 تفاصيل الشبكة', callback_data=f'enhanced_network_details_{network_id}')],
+                    [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel'),
+                     InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+                ]
+                
+                success_message = f"""
+🎉 **تم إنشاء الشبكة بنجاح!**
+
+🌐 **اسم الشبكة:** {network_name}
+🏢 **المزود:** {provider}
+📍 **الموقع:** {location}
+📝 **الوصف:** {description}
+🆔 **معرف الشبكة:** #{network_id}
+
+✨ **الخطوات التالية:**
+• إضافة فئات الكروت
+• رفع الكروت
+• تفعيل الشبكة للعملاء
+
+🚀 **الشبكة جاهزة للاستخدام!**
+"""
+                
+                await update.message.reply_text(
+                    success_message, 
+                    reply_markup=InlineKeyboardMarkup(keyboard), 
+                    parse_mode='Markdown'
+                )
+                
+                # Log the creation
+                logger.info(f"Network created successfully: ID={network_id}, Name={network_name}, User={user_id}")
+                
+            except Exception as db_error:
+                conn.rollback()
+                logger.error(f"Database error creating network: {db_error}")
+                await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في قاعدة البيانات: {db_error}")
+                context.user_data.clear()
+            finally:
+                conn.close()
+            
+    except Exception as e:
+        logger.error(f"Error in process_enhanced_network_creation: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في إضافة الشبكة: {e}")
+        context.user_data.clear()
