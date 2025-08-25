@@ -568,6 +568,10 @@ async def handle_text_message(update: Update, context: CallbackContext):
             from unified_network_manager import process_unified_network_creation
             return await process_unified_network_creation(update, context)
         
+        # Check if adding network (basic system)
+        if context.user_data.get('adding_network'):
+            return await process_network_creation_flow(update, context)
+        
         # Check if adding categories to network
         if context.user_data.get('adding_categories'):
             from unified_network_manager import process_category_addition  
