@@ -942,8 +942,8 @@ async def handle_enhanced_network_callbacks(update: Update, context: CallbackCon
             await enhanced_confirm_purchase_handler(update, context, category_id)
             
         elif callback_data == 'enhanced_execute_purchase':
-            # Execute the actual purchase (to be implemented)
-            await update.callback_query.edit_message_text("🛒 سيتم تنفيذ عملية الشراء قريباً...")
+            # Execute the actual purchase
+            await enhanced_execute_purchase_handler(update, context)
             
     except Exception as e:
         logger.error(f"Error handling enhanced network callback: {e}")
