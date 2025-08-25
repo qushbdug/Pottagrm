@@ -35,6 +35,7 @@ try:
     from unified_search_manager import UNIFIED_SEARCH_CALLBACKS
     from simplified_network_display import SIMPLIFIED_NETWORK_CALLBACKS, handle_simple_network_callbacks
     from enhanced_network_system import ENHANCED_NETWORK_CALLBACKS, handle_enhanced_network_callbacks, handle_enhanced_text_messages
+    from simple_card_upload import SIMPLE_UPLOAD_CALLBACKS, handle_simple_upload_callbacks, handle_simple_upload_text_messages, handle_simple_upload_documents
 except ImportError as e:
     print(f"Error importing unified modules: {e}")
     print("Make sure all module files are in the bot_modules directory")
@@ -75,7 +76,13 @@ async def button_click_handler(update: Update, context):
         elif callback_data == 'enhanced_wallet':
             return await enhanced_wallet_handler(update, context)
         
-        # Enhanced Network System handlers (HIGHEST PRIORITY - fixes all issues)
+        # Simple Card Upload System (HIGHEST PRIORITY - NEW UNIFIED SYSTEM)
+        elif callback_data in SIMPLE_UPLOAD_CALLBACKS:
+            return await SIMPLE_UPLOAD_CALLBACKS[callback_data](update, context)
+        elif callback_data.startswith('simple_upload_'):
+            return await handle_simple_upload_callbacks(update, context, callback_data)
+        
+        # Enhanced Network System handlers (HIGH PRIORITY - fixes all issues)
         elif callback_data in ENHANCED_NETWORK_CALLBACKS:
             return await ENHANCED_NETWORK_CALLBACKS[callback_data](update, context)
         elif (callback_data.startswith('enhanced_') and 
@@ -263,13 +270,19 @@ async def button_click_handler(update: Update, context):
         
         # Enhanced supplier features
         elif callback_data == 'upload_cards':
-            await upload_cards_handler(update, context)
+            # ❌ OLD SYSTEM DISABLED - Use new simple upload system
+            return await SIMPLE_UPLOAD_CALLBACKS['simple_upload_cards'](update, context)
         elif callback_data == 'manage_networks':
             await manage_networks_handler(update, context)
         elif callback_data.startswith('add_categories_'):
             await add_categories_handler(update, context)
         elif callback_data.startswith('upload_to_network_'):
-            await upload_to_network_handler(update, context)
+            # ❌ OLD SYSTEM DISABLED - Use new simple upload system
+            await update.callback_query.edit_message_text(
+                f"{EMOJIS['info']} **النظام القديم معطل**\n\n"
+                f"يرجى استخدام النظام الجديد الموحد:\n"
+                f"لوحة المزود ← رفع الكروت"
+            )
         elif callback_data == 'cards_reports':
             await cards_reports_handler(update, context)
         elif callback_data == 'sales_stats':
