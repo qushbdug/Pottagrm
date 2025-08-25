@@ -40,15 +40,8 @@ except ImportError as e:
     print("Make sure all module files are in the bot_modules directory")
     sys.exit(1)
 
-# Configure logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO,
-    handlers=[
-        logging.FileHandler('bot.log'),
-        logging.StreamHandler()
-    ]
-)
+# Logging will be configured by main.py - avoiding duplicate configuration
+# logging.basicConfig() removed to prevent conflicts with main.py unified logging
 
 logger = logging.getLogger(__name__)
 
@@ -233,8 +226,7 @@ async def button_click_handler(update: Update, context):
         elif callback_data == 'buy_cards':
             from simplified_network_display import simple_buy_cards_handler
             await simple_buy_cards_handler(update, context)
-        elif callback_data == 'transfer_to_friend':
-            await transfer_handler(update, context)
+        # transfer_to_friend already handled above, removing duplicate
         
         # Personal features
         elif callback_data == 'personal_reports':
@@ -317,10 +309,7 @@ async def button_click_handler(update: Update, context):
             await mark_all_read_handler(update, context)
         elif callback_data == 'recharge_balance':
             await recharge_balance_handler(update, context)
-        elif callback_data == 'personal_reports':
-            await personal_reports_handler(update, context)
-        elif callback_data == 'promotions':
-            await promotions_handler(update, context)
+        # personal_reports and promotions already handled above, removing duplicates
         elif callback_data == 'my_notifications':
             await my_notifications_handler(update, context)
         elif callback_data == 'account_settings':

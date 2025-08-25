@@ -990,8 +990,27 @@ async def process_enhanced_network_creation(update: Update, context: CallbackCon
     """Process enhanced network creation step by step"""
     try:
         text = update.message.text.strip()
-        user_id = update.message.from_user.id
+        telegram_user_id = update.message.from_user.id
+        
+        # Get actual user database ID from telegram_id
+        user = get_user(telegram_user_id)
+        if not user:
+            await update.message.reply_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
+            context.user_data.clear()
+            return
+            
+        user_id = user['id']  # Database ID, not Telegram ID
+        
+        # Check user permissions for network creation
+        if user['role'] not in ['supplier', 'admin', 'super_admin']:
+            await update.message.reply_text(f"{EMOJIS['error']} ليس لديك صلاحية لإضافة الشبكات. يرجى التواصل مع الإدارة.")
+            context.user_data.clear()
+            return
+            
         step = context.user_data.get('enhanced_network_step', 'name')
+        
+        # Detailed logging for debugging
+        logger.info(f"Network creation step '{step}' for user {user_id} (telegram: {telegram_user_id})")
         
         if step == 'name':
             # Validate network name
@@ -1081,15 +1100,20 @@ async def process_enhanced_network_creation(update: Update, context: CallbackCon
             cursor = conn.cursor()
             
             try:
+                # Log the values being inserted for debugging
+                city = location.split('-')[0].strip() if '-' in location else location
+                logger.info(f"Inserting network: supplier_id={user_id}, name={network_name}, provider={provider}, city={city}, created_by={user_id}")
+                
                 cursor.execute('''
                     INSERT INTO networks (supplier_id, name, provider, location, description, 
                                         city, created_by, is_active, is_approved, created_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, CURRENT_TIMESTAMP)
-                ''', (user_id, network_name, provider, location, description, 
-                      location.split('-')[0].strip() if '-' in location else location, user_id))
+                ''', (user_id, network_name, provider, location, description, city, user_id))
                 
                 network_id = cursor.lastrowid
                 conn.commit()
+                
+                logger.info(f"Network created successfully with ID: {network_id}")
                 
                 # Clear user data
                 context.user_data.clear()

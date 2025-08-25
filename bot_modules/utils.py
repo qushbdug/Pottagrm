@@ -15,6 +15,10 @@ from bot_modules.database import get_db_connection
 
 logger = logging.getLogger(__name__)
 
+# Simple cache for user data to improve performance
+_user_cache = {}
+_cache_timeout = 300  # 5 minutes
+
 # Encryption functions
 def _load_cipher_suite():
     """Load or generate encryption key for secure data storage"""
@@ -65,21 +69,54 @@ def decrypt_data(encrypted_data: str) -> str:
 
 # User management utilities
 def get_user(telegram_id: int):
-    """Get user by telegram ID"""
+    """Get user by telegram ID with caching for better performance"""
     try:
+        # Check cache first
+        current_time = datetime.now().timestamp()
+        if telegram_id in _user_cache:
+            cache_entry = _user_cache[telegram_id]
+            if current_time - cache_entry['timestamp'] < _cache_timeout:
+                return cache_entry['data']
+        
+        # Cache miss or expired, fetch from database
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM users WHERE telegram_id = ?', (telegram_id,))
         user = cursor.fetchone()
         conn.close()
+        
+        # Update cache
+        if user:
+            _user_cache[telegram_id] = {
+                'data': user,
+                'timestamp': current_time
+            }
+        
         return user
     except Exception as e:
         logger.error(f"Error getting user: {e}")
         return None
 
+def clear_user_cache(telegram_id: int = None):
+    """Clear user cache for specific user or all users"""
+    global _user_cache
+    if telegram_id:
+        _user_cache.pop(telegram_id, None)
+    else:
+        _user_cache.clear()
+
 def update_user_activity(user_id: int):
     """Update user's last activity timestamp"""
     try:
+        # Clear cache for this user when updating activity
+        # Find telegram_id for this user_id
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT telegram_id FROM users WHERE id = ?', (user_id,))
+        result = cursor.fetchone()
+        if result:
+            clear_user_cache(result[0])
+        
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('UPDATE users SET last_activity = ? WHERE id = ?', 
