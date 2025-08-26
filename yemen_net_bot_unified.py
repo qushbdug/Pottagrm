@@ -77,7 +77,7 @@ async def main():
         
         # بدء البوت
         print("🚀 بدء البوت...")
-        await application.run_polling()
+        await application.run_polling(allowed_updates=Update.ALL_TYPES)
         
     except Exception as e:
         logger.error(f"خطأ في تشغيل البوت: {e}")
