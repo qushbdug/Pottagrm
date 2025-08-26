@@ -9,7 +9,7 @@ import sqlite3
 import uuid
 import random
 from datetime import datetime
-from config import *
+from bot_modules.config import *
 
 logger = logging.getLogger(__name__)
 
