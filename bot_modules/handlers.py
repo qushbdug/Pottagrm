@@ -14,6 +14,9 @@ from bot_modules.utils import *
 
 logger = logging.getLogger(__name__)
 
+# Import new unified functions
+from bot_modules.network_handlers import process_unified_network_creation, process_category_addition
+
 # Command handlers
 async def start(update: Update, context: CallbackContext) -> int:
     """Handle /start command"""
@@ -441,7 +444,7 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
 💳 **محفظتي المطورة** 💳
 
 👤 **{user['full_name']}**
-🏷️ نوع الحساب: **{USER_ROLES.get(user['role'] if 'role' in user.keys() else 'customer', 'عميل')}**
+🏷️ نوع الحساب: **{USER_ROLES.get(user['role'] if user['role'] else 'customer', 'عميل')}**
 ⚡ حالة الحساب: **{"✅ مفعل" if user['is_active'] else "⏳ في انتظار التفعيل"}**
 
 💰 **الرصيد والإحصائيات:**
@@ -560,9 +563,34 @@ async def handle_text_message(update: Update, context: CallbackContext):
             from bot_modules.admin_functions import admin_process_network_creation
             return await admin_process_network_creation(update, context)
         
-        # Check if supplier is adding network
+        # Check if using unified network creation
+        if context.user_data.get('unified_adding_network'):
+            from unified_network_manager import process_unified_network_creation
+            return await process_unified_network_creation(update, context)
+        
+        # Check if adding network (basic system)
         if context.user_data.get('adding_network'):
-            return await process_supplier_network_creation(update, context)
+            return await process_network_creation_flow(update, context)
+        
+        # Check if adding categories to network
+        if context.user_data.get('adding_categories'):
+            from unified_network_manager import process_category_addition  
+            return await process_category_addition(update, context)
+        
+        # Check if using enhanced network system
+        from enhanced_network_system import handle_enhanced_text_messages
+        if await handle_enhanced_text_messages(update, context):
+            return
+        
+        # Check if awaiting unified search
+        if context.user_data.get('awaiting_search'):
+            from unified_search_manager import process_unified_search
+            return await process_unified_search(update, context, update.message.text)
+        
+        # Check if uploading to network (unified system)
+        if context.user_data.get('uploading_to_network'):
+            # Handle file upload through document handler
+            return
         
         # Check if admin is uploading cards
         if context.user_data.get('admin_uploading_card'):
@@ -2597,7 +2625,7 @@ COMMAND_HANDLERS = {
     'cancel': cancel,
     'wifi_search': wifi_search_handler,
     'send_balance': send_balance_handler,
-    'search_networks': wifi_search_handler,
+    'search_networks': 'HANDLED_IN_MAIN_BOT',  # Now handled by enhanced_network_system
     'transfer_to_friend': send_balance_handler,
     'personal_reports': personal_reports_handler,
     'promotions': promotions_handler,
@@ -2608,9 +2636,9 @@ COMMAND_HANDLERS = {
     'my_commissions': lambda u, c: enhanced_placeholder_handler(u, c, "💰 عمولاتي", "عرض العمولات والأرباح"),
     'supplier_panel': lambda u, c: enhanced_placeholder_handler(u, c, "🏪 لوحة المزود", "لوحة تحكم خاصة بالمزودين"),
     'manage_networks': lambda u, c: supplier_manage_networks(u, c),
-    'upload_cards': lambda u, c: enhanced_placeholder_handler(u, c, "📤 رفع كروت", "رفع وإدارة كروت الشحن"),
+    'upload_cards': 'UNIFIED_IN_MAIN_BOT',  # Now handled by unified_card_upload.py
     'sales_reports': lambda u, c: enhanced_placeholder_handler(u, c, "📈 تقارير المبيعات", "تقارير مفصلة عن مبيعاتك"),
-    'buy_cards': lambda u, c: enhanced_placeholder_handler(u, c, "🛒 شراء الكروت", "شراء كروت الشحن من الشبكات المتاحة"),
+    'buy_cards': 'FIXED_IN_MAIN_BOT',  # Now handled by fixed_network_display.py
     'help': help_handler,
     'transaction_details': lambda u, c: enhanced_placeholder_handler(u, c, "📊 تفاصيل المعاملات", "عرض تفاصيل معاملاتك المالية"),
     'wallet_stats': lambda u, c: enhanced_placeholder_handler(u, c, "📈 إحصائيات المحفظة", "إحصائيات مفصلة عن محفظتك"),

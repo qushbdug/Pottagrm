@@ -73,76 +73,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Bot configuration
-BOT_TOKEN = '7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0'
-DB_PATH = os.getenv('DB_PATH', os.path.abspath('yemen_net.db'))
+# Import unified configuration - SINGLE SOURCE OF TRUTH
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'bot_modules'))
+from bot_modules.config import (
+    BOT_TOKEN, DB_PATH, 
+    ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY, ACCOUNT_TYPE_EQUITY, 
+    ACCOUNT_TYPE_REVENUE, ACCOUNT_TYPE_EXPENSE,
+    ACCOUNT_CODE_ISSUANCE_EXPENSE, ACCOUNT_CODE_BOT_COMMISSION_REVENUE,
+    CARD_COMMISSION_RATE, AGENT_COMMISSION_RATE
+)
 
-# Accounting constants
-ACCOUNT_TYPE_ASSET = 'asset'
-ACCOUNT_TYPE_LIABILITY = 'liability'
-ACCOUNT_TYPE_EQUITY = 'equity'
-ACCOUNT_TYPE_REVENUE = 'revenue'
-ACCOUNT_TYPE_EXPENSE = 'expense'
-ACCOUNT_CODE_ISSUANCE_EXPENSE = '5000'
-ACCOUNT_CODE_BOT_COMMISSION_REVENUE = '4100'
-
-# Business configuration
-CARD_COMMISSION_RATE = float(os.getenv('CARD_COMMISSION_RATE', '0.10'))
-AGENT_COMMISSION_RATE = float(os.getenv('AGENT_COMMISSION_RATE', '0.05'))
-
-# Enhanced Bot command menu
-QUICK_COMMANDS = [
-    BotCommand('start', '🏠 البداية - القائمة الرئيسية'),
-    BotCommand('menu', '📋 القائمة السريعة'),
-    BotCommand('wallet', '💳 محفظتي المطورة'),
-    BotCommand('buy', '🛒 شراء كروت الشبكة'),
-    BotCommand('transfer', '💸 تحويل رصيد لصديق'),
-    BotCommand('balance', '💰 عرض الرصيد والمعاملات'),
-    BotCommand('reports', '📊 تقاريري الشخصية'),
-    BotCommand('ratings', '⭐ تقييماتي ومراجعاتي'),
-    BotCommand('notifications', '🔔 إشعاراتي وتنبيهاتي'),
-    BotCommand('promotions', '🎁 العروض والخصومات'),
-    BotCommand('settings', '⚙️ إعدادات الحساب'),
-    BotCommand('invite', '👥 دعوة الأصدقاء'),
-    BotCommand('admin', '👑 لوحة الإدارة'),
-    BotCommand('help', '❓ المساعدة والدعم'),
-    BotCommand('cancel', '❌ إلغاء العملية الحالية'),
-]
-
-# Emojis for better UI
-EMOJIS = {
-    'success': '✅',
-    'error': '❌',
-    'warning': '⚠️',
-    'loading': '⏳',
-    'money': '💰',
-    'card': '🎫',
-    'network': '📶',
-    'user': '👤',
-    'admin': '👑',
-    'stats': '📊',
-    'home': '🏠',
-    'back': '↩️',
-    'cancel': '❌',
-    'confirm': '✅',
-    'search': '🔍',
-    'settings': '⚙️',
-    'wallet': '💳',
-    'transfer': '💸',
-    'purchase': '🛒',
-    'upload': '📤',
-    'download': '📥',
-    'phone': '📱',
-    'email': '📧',
-    'id': '🆔',
-    'time': '⏰',
-    'date': '📅',
-    'star': '⭐',
-    'fire': '🔥',
-    'new': '🆕',
-    'hot': '🔥',
-    'cool': '😎'
-}
+# Import UI elements from unified config
+from bot_modules.config import QUICK_COMMANDS, EMOJIS
 
 # Enhanced utility functions for new features
 def log_activity(user_id: int, activity_type: str, description: str, metadata: dict = None):
@@ -1083,15 +1027,8 @@ def decrypt_data(encrypted_data: str) -> str:
         return encrypted_data
 
 # Database connection with error handling
-def get_db_connection():
-    """Get database connection with error handling"""
-    try:
-        conn = sqlite3.connect(DB_PATH, timeout=30.0)
-        conn.execute('PRAGMA foreign_keys = ON')
-        return conn
-    except sqlite3.Error as e:
-        logger.error(f"Database connection error: {e}")
-        raise
+# Use unified database connection
+from bot_modules.database import get_db_connection
 
 def execute_db_query(query: str, params: tuple = (), fetch_one: bool = False, fetch_all: bool = False):
     """Execute database query with proper error handling"""

@@ -24,27 +24,25 @@ from telegram.ext import (
     ConversationHandler, PicklePersistence, filters, CallbackContext
 )
 
-# Import our modular components
+# Import unified modular components
 try:
     from config import *
-    from database import init_db
+    from database import init_db, get_db_connection
     from utils import *
     from handlers import COMMAND_HANDLERS, CONVERSATION_STATES, handle_text_message, show_main_menu
     from admin_functions import ADMIN_CALLBACKS, activate_single_supplier
+    from unified_network_manager import UNIFIED_NETWORK_CALLBACKS
+    from unified_search_manager import UNIFIED_SEARCH_CALLBACKS
+    from simplified_network_display import SIMPLIFIED_NETWORK_CALLBACKS, handle_simple_network_callbacks
+    from enhanced_network_system import ENHANCED_NETWORK_CALLBACKS, handle_enhanced_network_callbacks, handle_enhanced_text_messages
+    from simple_card_upload import SIMPLE_UPLOAD_CALLBACKS, handle_simple_upload_callbacks, handle_simple_upload_text_messages, handle_simple_upload_documents
 except ImportError as e:
-    print(f"Error importing modules: {e}")
+    print(f"Error importing unified modules: {e}")
     print("Make sure all module files are in the bot_modules directory")
     sys.exit(1)
 
-# Configure logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO,
-    handlers=[
-        logging.FileHandler('bot.log'),
-        logging.StreamHandler()
-    ]
-)
+# Logging will be configured by main.py - avoiding duplicate configuration
+# logging.basicConfig() removed to prevent conflicts with main.py unified logging
 
 logger = logging.getLogger(__name__)
 
@@ -78,9 +76,41 @@ async def button_click_handler(update: Update, context):
         elif callback_data == 'enhanced_wallet':
             return await enhanced_wallet_handler(update, context)
         
-        # Network search and details
+        # Simple Card Upload System (HIGHEST PRIORITY - NEW UNIFIED SYSTEM)
+        elif callback_data in SIMPLE_UPLOAD_CALLBACKS:
+            return await SIMPLE_UPLOAD_CALLBACKS[callback_data](update, context)
+        elif callback_data.startswith('simple_upload_'):
+            return await handle_simple_upload_callbacks(update, context, callback_data)
+        
+        # Enhanced Network System handlers (HIGH PRIORITY - fixes all issues)
+        elif callback_data in ENHANCED_NETWORK_CALLBACKS:
+            return await ENHANCED_NETWORK_CALLBACKS[callback_data](update, context)
+        elif (callback_data.startswith('enhanced_') and 
+              callback_data not in ['enhanced_wallet']):
+            return await handle_enhanced_network_callbacks(update, context, callback_data)
+        
+        # Simplified Network Display handlers (fallback)
+        elif callback_data in SIMPLIFIED_NETWORK_CALLBACKS:
+            return await SIMPLIFIED_NETWORK_CALLBACKS[callback_data](update, context)
+        elif (callback_data.startswith('simple_details_') or 
+              callback_data.startswith('simple_buy_') or 
+              callback_data.startswith('unified_upload_')):
+            return await handle_simple_network_callbacks(update, context, callback_data)
+        
+        # Unified Card Upload handlers (integrated in enhanced system)
+        # Note: Upload functionality is now handled by enhanced_network_system
+        
+        # Legacy handlers (preserved for compatibility)
+        # Note: Fixed network display functionality is now handled by enhanced_network_system
+        
+        # Unified Network and Search handlers
+        elif callback_data in UNIFIED_NETWORK_CALLBACKS:
+            return await UNIFIED_NETWORK_CALLBACKS[callback_data](update, context)
+        elif callback_data in UNIFIED_SEARCH_CALLBACKS:
+            return await UNIFIED_SEARCH_CALLBACKS[callback_data](update, context)
         elif callback_data == 'search_networks':
-            return await search_networks_handler(update, context)
+            from enhanced_network_system import enhanced_search_networks_handler
+            return await enhanced_search_networks_handler(update, context)
         elif callback_data.startswith('network_'):
             network_id = callback_data.split('_')[1]
             return await show_network_details(update, context, network_id)
@@ -199,11 +229,11 @@ async def button_click_handler(update: Update, context):
             from handlers import choose_role
             return await choose_role(update, context)
         
-        # Core features
+        # Core features - SIMPLIFIED VERSION (FIXES PHONE_NUMBER ERROR)
         elif callback_data == 'buy_cards':
-            await buy_cards_handler(update, context)
-        elif callback_data == 'transfer_to_friend':
-            await transfer_handler(update, context)
+            from simplified_network_display import simple_buy_cards_handler
+            await simple_buy_cards_handler(update, context)
+        # transfer_to_friend already handled above, removing duplicate
         
         # Personal features
         elif callback_data == 'personal_reports':
@@ -227,7 +257,8 @@ async def button_click_handler(update: Update, context):
         
         # Additional features
         elif callback_data == 'view_networks':
-            await view_networks_handler(update, context)
+            from fixed_network_display import fixed_view_networks_handler
+            await fixed_view_networks_handler(update, context)
         elif callback_data == 'search_user':
             await search_user_handler(update, context)
         elif callback_data == 'my_sent_ratings':
@@ -239,9 +270,19 @@ async def button_click_handler(update: Update, context):
         
         # Enhanced supplier features
         elif callback_data == 'upload_cards':
-            await upload_cards_handler(update, context)
+            # ❌ OLD SYSTEM DISABLED - Use new simple upload system
+            return await SIMPLE_UPLOAD_CALLBACKS['simple_upload_cards'](update, context)
         elif callback_data == 'manage_networks':
             await manage_networks_handler(update, context)
+        elif callback_data.startswith('add_categories_'):
+            await add_categories_handler(update, context)
+        elif callback_data.startswith('upload_to_network_'):
+            # ❌ OLD SYSTEM DISABLED - Use new simple upload system
+            await update.callback_query.edit_message_text(
+                f"{EMOJIS['info']} **النظام القديم معطل**\n\n"
+                f"يرجى استخدام النظام الجديد الموحد:\n"
+                f"لوحة المزود ← رفع الكروت"
+            )
         elif callback_data == 'cards_reports':
             await cards_reports_handler(update, context)
         elif callback_data == 'sales_stats':
@@ -268,8 +309,7 @@ async def button_click_handler(update: Update, context):
             await network_details_handler(update, context)
         elif callback_data == 'privacy_settings':
             await privacy_settings_handler(update, context)
-        elif callback_data == 'search_networks':
-            await search_networks_handler(update, context)
+        # search_networks is now handled in the main callback handler above
         elif callback_data == 'filter_by_category':
             await filter_by_category_handler(update, context)
         elif callback_data == 'sales_reports':
@@ -282,10 +322,7 @@ async def button_click_handler(update: Update, context):
             await mark_all_read_handler(update, context)
         elif callback_data == 'recharge_balance':
             await recharge_balance_handler(update, context)
-        elif callback_data == 'personal_reports':
-            await personal_reports_handler(update, context)
-        elif callback_data == 'promotions':
-            await promotions_handler(update, context)
+        # personal_reports and promotions already handled above, removing duplicates
         elif callback_data == 'my_notifications':
             await my_notifications_handler(update, context)
         elif callback_data == 'account_settings':
@@ -626,79 +663,7 @@ async def account_settings_handler(update: Update, context):
         logger.error(f"Error in account settings handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض الإعدادات.")
 
-async def buy_cards_handler(update: Update, context):
-    """Handle buy cards request"""
-    try:
-        query = update.callback_query
-        user = get_user(query.from_user.id)
-        
-        # الحصول على الشبكات المتاحة
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT n.id, n.name, n.provider, n.location, COUNT(cc.id) as categories_count,
-                   MIN(cc.price) as min_price, MAX(cc.price) as max_price
-            FROM networks n
-            LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
-            WHERE n.is_active = 1 AND n.is_approved = 1
-            GROUP BY n.id, n.name, n.provider, n.location
-            HAVING categories_count > 0
-            ORDER BY n.name
-        ''')
-        networks = cursor.fetchall()
-        conn.close()
-        
-        buy_text = f"""
-🛒 **شراء كروت الإنترنت** 🛒
-
-👤 **{user['full_name']}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
-
-📶 **الشبكات المتاحة ({len(networks)} شبكة):**
-
-"""
-        
-        if networks:
-            for network in networks:
-                net_id, name, provider, location, cat_count, min_price, max_price = network
-                location_text = f"📍 {location}" if location else ""
-                price_range = f"{min_price:,.0f} - {max_price:,.0f}" if min_price != max_price else f"{min_price:,.0f}"
-                
-                buy_text += f"""
-🌐 **{name}**
-👤 {provider} {location_text}
-💳 {cat_count} فئة متاحة
-💰 {price_range} ريال
-━━━━━━━━━━━━━━━━━━━━━━━━━
-"""
-        else:
-            buy_text += "❌ لا توجد شبكات متاحة حالياً"
-        
-        keyboard = []
-        
-        # إضافة أزرار الشبكات للشراء
-        if networks:
-            for network in networks[:6]:  # أول 6 شبكات
-                net_id = network[0]
-                name = network[1]
-                keyboard.append([
-                    InlineKeyboardButton(f'🛒 شراء من {name}', callback_data=f'buy_from_network_{net_id}')
-                ])
-        
-        keyboard.extend([
-            [InlineKeyboardButton(f'📊 جميع الشبكات', callback_data='view_all_networks'),
-             InlineKeyboardButton(f'🔍 البحث في الشبكات', callback_data='search_networks')],
-            [InlineKeyboardButton(f'💰 شحن الرصيد', callback_data='recharge_balance'),
-             InlineKeyboardButton(f'📈 إحصائياتي', callback_data='my_purchase_stats')],
-            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
-        ])
-        
-        await query.edit_message_text(buy_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in buy cards handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض صفحة الشراء.")
+# REMOVED: Old buy_cards_handler - replaced with fixed version in fixed_network_display.py
 
 async def transfer_handler(update: Update, context):
     """Handle transfer request"""
@@ -904,66 +869,7 @@ async def supplier_panel_handler(update: Update, context):
         logger.error(f"Error in supplier panel handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في لوحة المزود.")
 
-async def view_networks_handler(update: Update, context):
-    """Handle view networks"""
-    try:
-        query = update.callback_query
-        
-        # الحصول على الشبكات المتاحة من قاعدة البيانات
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT n.id, n.name, n.provider, n.location, n.created_at,
-                   COUNT(cc.id) as categories_count,
-                   MIN(cc.price) as min_price, MAX(cc.price) as max_price,
-                   COUNT(CASE WHEN c.is_sold = 0 THEN 1 END) as available_cards
-            FROM networks n
-            LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
-            LEFT JOIN cards c ON cc.id = c.category_id
-            WHERE n.is_active = 1 AND n.is_approved = 1
-            GROUP BY n.id, n.name, n.provider, n.location, n.created_at
-            ORDER BY n.created_at DESC
-        ''')
-        networks = cursor.fetchall()
-        conn.close()
-        
-        networks_text = f"""
-📶 **الشبكات المتاحة ({len(networks)} شبكة)** 📶
-
-🌐 **جميع الشبكات المعتمدة:**
-
-"""
-        
-        if networks:
-            for network in networks:
-                net_id, name, provider, location, created_at, cat_count, min_price, max_price, available_cards = network
-                location_text = f"📍 {location}" if location else "📍 غير محدد"
-                price_range = f"{min_price:,.0f} - {max_price:,.0f}" if min_price and max_price and min_price != max_price else f"{min_price:,.0f}" if min_price else "غير محدد"
-                
-                networks_text += f"""
-🌐 **{name}**
-👤 المزود: {provider}
-{location_text}
-💳 الفئات: {cat_count} فئة
-💰 الأسعار: {price_range} ريال
-📦 كروت متاحة: {available_cards or 0}
-📅 تاريخ الإضافة: {created_at[:10] if created_at else 'غير محدد'}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-"""
-        else:
-            networks_text += "❌ لا توجد شبكات متاحة حالياً"
-        
-        keyboard = [
-            [InlineKeyboardButton(f'🛒 شراء كروت', callback_data='buy_cards')],
-            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
-        ]
-        
-        await query.edit_message_text(networks_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in view networks handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض الشبكات.")
+# REMOVED: Old view_networks_handler - replaced with fixed version in fixed_network_display.py
 
 async def search_user_handler(update: Update, context):
     """Handle search user"""
@@ -1751,8 +1657,8 @@ async def handle_document(update: Update, context: CallbackContext):
             return
         
         user = get_user(update.message.from_user.id)
-        if not user or user['role'] != 'supplier':
-            await update.message.reply_text("❌ هذه الميزة متاحة للمزودين فقط.")
+        if not user or user['role'] not in ['supplier', 'admin', 'super_admin']:
+            await update.message.reply_text("❌ هذه الميزة متاحة للمزودين والمشرفين فقط.")
             return
         
         document = update.message.document
@@ -1789,26 +1695,37 @@ async def handle_document(update: Update, context: CallbackContext):
             'size': file_size
         }
         
+        # Check if uploading to specific network (UNIFIED SYSTEM)
+        if context.user_data.get('uploading_to_network'):
+            from unified_card_upload import unified_process_card_upload
+            return await unified_process_card_upload(update, context)
+        
         # Get user's networks for selection
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT id, name FROM networks WHERE supplier_id = ? AND is_active = 1', (user['id'],))
+        # Query based on user role
+        if user['role'] in ['admin', 'super_admin']:
+            cursor.execute('SELECT id, name, provider FROM networks WHERE is_active = 1 ORDER BY name')
+        else:
+            cursor.execute('SELECT id, name, provider FROM networks WHERE supplier_id = ? AND is_active = 1', (user['id'],))
         networks = cursor.fetchall()
         conn.close()
         
         if not networks:
             await update.message.reply_text("""
-❌ **لا توجد شبكات مفعلة**
+❌ **لا توجد شبكات متاحة**
 
-يجب أن يكون لديك شبكة مفعلة لرفع الكروت.
-اتصل بالإدارة لتفعيل شبكاتك أو أضف شبكة جديدة.
+يجب أن تكون هناك شبكة متاحة لرفع الكروت.
 """, parse_mode='Markdown')
             return
         
         # Show network selection
         keyboard = []
         for network in networks:
-            keyboard.append([InlineKeyboardButton(f"📶 {network['name']}", callback_data=f"select_network_{network['id']}")])
+            display_name = f"📶 {network['name']}"
+            if user['role'] in ['admin', 'super_admin'] and 'provider' in network:
+                display_name += f" ({network['provider']})"
+            keyboard.append([InlineKeyboardButton(display_name, callback_data=f"select_network_{network['id']}")])
         
         keyboard.append([InlineKeyboardButton("❌ إلغاء", callback_data="cancel_upload")])
         
@@ -1967,6 +1884,7 @@ async def cancel_upload(update: Update, context: CallbackContext):
         context.user_data.pop('upload_file', None)
         context.user_data.pop('selected_network_id', None)
         context.user_data.pop('selected_category', None)
+        context.user_data.pop('uploading_to_network', None)
         
         await query.edit_message_text("❌ تم إلغاء عملية رفع الكروت.")
         
@@ -2014,6 +1932,7 @@ async def confirm_upload(update: Update, context: CallbackContext):
         context.user_data.pop('upload_file', None)
         context.user_data.pop('selected_network_id', None)
         context.user_data.pop('selected_category', None)
+        context.user_data.pop('uploading_to_network', None)
         
         # Send results
         result_text = f"""
@@ -2274,44 +2193,7 @@ async def privacy_settings_handler(update: Update, context: CallbackContext):
         logger.error(f"Error in privacy settings handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إعدادات الخصوصية.")
 
-async def search_networks_handler(update: Update, context: CallbackContext):
-    """Handle network search functionality"""
-    try:
-        query = update.callback_query
-        user = get_user(query.from_user.id)
-        
-        search_text = f"""
-🔍 **البحث في الشبكات** 🔍
-
-👤 **{user['full_name']}**
-
-📝 **يمكنك البحث عن:**
-• اسم الشبكة
-• معرف المزود (يبدأ بـ 80)
-• معرف الشبكة
-
-💡 **لبدء البحث:**
-أرسل كلمة البحث كرسالة نصية بعد هذه الرسالة
-
-🔍 **أمثلة:**
-• `سبافون`
-• `801234`
-• `صنعاء`
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('📶 عرض جميع شبكاتي', callback_data='manage_networks')],
-            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
-        ]
-        
-        # Set context for search mode
-        context.user_data['search_mode'] = 'networks'
-        
-        await query.edit_message_text(search_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in search networks handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في البحث.")
+# REMOVED: First duplicate search_networks_handler - functionality merged into unified_search_manager
 
 async def filter_by_category_handler(update: Update, context: CallbackContext):
     """Handle filtering cards by category"""
@@ -2464,10 +2346,10 @@ async def add_network_handler(update: Update, context: CallbackContext):
 للحصول على حساب مزود، تواصل مع الإدارة.
 """
         else:
-            # تفعيل وضع إضافة الشبكة
+            # تفعيل وضع إضافة الشبكة المحسن
             context.user_data.clear()
-            context.user_data['adding_network'] = True
-            context.user_data['network_step'] = 'name'
+            context.user_data['enhanced_adding_network'] = True
+            context.user_data['enhanced_network_step'] = 'name'
             
             add_text = f"""
 ➕ **إضافة شبكة جديدة** ➕
@@ -2594,97 +2476,10 @@ async def mark_all_read_handler(update: Update, context: CallbackContext):
         logger.error(f"Error in mark all read handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحديث الإشعارات.")
 
-async def show_network_details(update: Update, context: CallbackContext, network_id: str):
-    """Show detailed information about a specific network"""
-    try:
-        query = update.callback_query
-        
-        # الحصول على تفاصيل الشبكة
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT n.id, n.name, n.provider, n.location, n.description, n.created_at,
-                   COUNT(cc.id) as categories_count,
-                   MIN(cc.price) as min_price, MAX(cc.price) as max_price,
-                   COUNT(CASE WHEN c.is_sold = 0 THEN 1 END) as available_cards
-            FROM networks n
-            LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
-            LEFT JOIN cards c ON cc.id = c.category_id
-            WHERE n.id = ? AND n.is_active = 1
-            GROUP BY n.id, n.name, n.provider, n.location, n.description, n.created_at
-        ''', (network_id,))
-        network = cursor.fetchone()
-        
-        if not network:
-            await query.edit_message_text(
-                "❌ الشبكة غير موجودة أو غير متاحة",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton('🔙 العودة', callback_data='search_networks')
-                ]])
-            )
-            return
-        
-        net_id, name, provider, location, description, created_at, cat_count, min_price, max_price, available_cards = network
-        
-        # الحصول على فئات الكروت
-        cursor.execute('''
-            SELECT name, price, description
-            FROM card_categories
-            WHERE network_id = ? AND is_available = 1
-            ORDER BY price ASC
-        ''', (network_id,))
-        categories = cursor.fetchall()
-        
-        conn.close()
-        
-        location_text = f"📍 {location}" if location else "📍 غير محدد"
-        price_range = f"{min_price:,.0f} - {max_price:,.0f}" if min_price and max_price and min_price != max_price else f"{min_price:,.0f}" if min_price else "غير محدد"
-        
-        details_text = f"""
-🌐 **تفاصيل الشبكة** 🌐
-
-📋 **المعلومات الأساسية:**
-🏷️ الاسم: **{name}**
-👤 المزود: **{provider}**
-{location_text}
-📝 الوصف: {description or 'غير متاح'}
-📅 تاريخ الإضافة: {created_at[:10] if created_at else 'غير محدد'}
-
-📊 **الإحصائيات:**
-💳 عدد الفئات: **{cat_count}** فئة
-💰 نطاق الأسعار: **{price_range}** ريال
-📦 الكروت المتاحة: **{available_cards or 0}** كرت
-
-💳 **فئات الكروت المتاحة:**
-
-"""
-        
-        if categories:
-            for cat_name, price, cat_desc in categories:
-                details_text += f"""
-🎫 **{cat_name}**
-💰 السعر: **{price:,.0f}** ريال
-📝 الوصف: {cat_desc or 'غير متاح'}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-"""
-        else:
-            details_text += "❌ لا توجد فئات متاحة حالياً"
-        
-        keyboard = [
-            [InlineKeyboardButton(f'🛒 شراء من {name}', callback_data=f'buy_from_network_{net_id}')],
-            [InlineKeyboardButton('🔙 العودة للشبكات', callback_data='search_networks'),
-             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-        ]
-        
-        await query.edit_message_text(details_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in show network details: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض تفاصيل الشبكة.")
+# REMOVED: Old show_network_details - replaced with fixed version in fixed_network_display.py
 
 async def search_networks_handler(update: Update, context: CallbackContext):
-    """Handle network search with filters"""
+    """Handle network search with filters - UNIFIED VERSION"""
     try:
         query = update.callback_query
         
@@ -3702,526 +3497,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-async def process_supplier_network_creation(update: Update, context: CallbackContext):
-    """معالجة إضافة الشبكة للمزود خطوة بخطوة - مُصحح"""
-    try:
-        text = update.message.text.strip()
-        user = get_user(update.effective_user.id)
-        step = context.user_data.get('network_step', 'name')
-        
-        if step == 'name':
-            context.user_data['network_name'] = text
-            context.user_data['network_step'] = 'provider'
-            await update.message.reply_text(
-                f"✅ **تم حفظ اسم الشبكة:** {text}\n\n🔸 **الخطوة 2 من 4**\n👤 **أدخل اسم المزود:**",
-                parse_mode='Markdown'
-            )
-            
-        elif step == 'provider':
-            context.user_data['network_provider'] = text
-            context.user_data['network_step'] = 'description'
-            await update.message.reply_text(
-                f"✅ **تم حفظ اسم المزود:** {text}\n\n🔸 **الخطوة 3 من 4**\n📝 **أدخل وصف الشبكة:**",
-                parse_mode='Markdown'
-            )
-            
-        elif step == 'description':
-            context.user_data['network_description'] = text
-            context.user_data['network_step'] = 'location'
-            await update.message.reply_text(
-                f"✅ **تم حفظ وصف الشبكة:** {text}\n\n🔸 **الخطوة 4 من 4**\n📍 **أدخل موقع الشبكة:**",
-                parse_mode='Markdown'
-            )
-            
-        elif step == 'location':
-            network_name = context.user_data.get('network_name')
-            provider = context.user_data.get('network_provider')
-            description = context.user_data.get('network_description')
-            
-            try:
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                
-                # إدراج مع supplier_id المطلوب
-                cursor.execute('''
-                    INSERT INTO networks (supplier_id, name, city, provider, description, location, created_by, is_active, is_approved, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, CURRENT_TIMESTAMP)
-                ''', (user['id'], network_name, text, provider, description, text, user['id']))
-                
-                network_id = cursor.lastrowid
-                conn.commit()
-                conn.close()
-                context.user_data.clear()
-                
-                await update.message.reply_text(
-                    f"✅ **تم إنشاء الشبكة بنجاح!**\n\n🌐 **{network_name}**\n👤 {provider}\n📍 {text}\n🆔 معرف: #{network_id}",
-                    parse_mode='Markdown'
-                )
-                
-            except Exception as e:
-                logger.error(f"Error creating network: {e}")
-                await update.message.reply_text(f"❌ خطأ في إنشاء الشبكة: {e}")
-                context.user_data.clear()
-        
-    except Exception as e:
-        logger.error(f"Error in supplier network creation: {e}")
-        await update.message.reply_text(f"❌ خطأ في معالجة الشبكة: {e}")
-        context.user_data.clear()
-
-
-async def enhanced_wallet_handler(update: Update, context: CallbackContext):
-    """معالج المحفظة المحسنة - مُصحح"""
-    try:
-        # تحديد نوع التحديث (callback أو message)
-        if hasattr(update, 'callback_query') and update.callback_query:
-            query = update.callback_query
-            user = get_user(query.from_user.id)
-            is_callback = True
-        else:
-            user = get_user(update.effective_user.id)
-            is_callback = False
-        
-        if not user:
-            error_msg = f"{EMOJIS['error']} يرجى التسجيل أولاً."
-            if is_callback:
-                await update.callback_query.edit_message_text(error_msg)
-            else:
-                await update.message.reply_text(error_msg)
-            return
-        
-        # الحصول على المعاملات الحديثة
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # آخر المعاملات
-        cursor.execute('''
-            SELECT id, from_user, to_user, amount, type, description, created_at
-            FROM transactions 
-            WHERE from_user = ? OR to_user = ?
-            ORDER BY created_at DESC
-            LIMIT 8
-        ''', (user['id'], user['id']))
-        
-        recent_transactions = cursor.fetchall()
-        
-        # إحصائيات المعاملات
-        cursor.execute('''
-            SELECT 
-                COUNT(*) as total_count,
-                COALESCE(SUM(CASE WHEN from_user = ? THEN amount END), 0) as sent_total,
-                COALESCE(SUM(CASE WHEN to_user = ? THEN amount END), 0) as received_total
-            FROM transactions 
-            WHERE from_user = ? OR to_user = ?
-        ''', (user['id'], user['id'], user['id'], user['id']))
-        
-        stats = cursor.fetchone()
-        total_transactions, sent_amount, received_amount = stats
-        
-        conn.close()
-        
-        # حساب التقييم
-        rating_data = calculate_user_rating(user['id'])
-        
-        wallet_text = f"""
-💳 **محفظتي المطورة** 💳
-
-👤 **{user['full_name']}**
-💰 **الرصيد:** {user['balance']:,.2f} ريال
-💳 **رقم المحفظة:** {user['wallet_number']}
-
-📊 **إحصائيات المحفظة:**
-📤 المرسل: **{sent_amount:,.2f}** ريال ({total_transactions} معاملة)
-📥 المستلم: **{received_amount:,.2f}** ريال
-💵 صافي الحركة: **{received_amount - sent_amount:+,.2f}** ريال
-⭐ تقييمي: **{rating_data['average_rating']}/5**
-
-📋 **آخر المعاملات:**
-
-"""
-        
-        if recent_transactions:
-            for transaction in recent_transactions:
-                trans_id, from_user_id, to_user_id, amount, trans_type, description, created_at = transaction
-                
-                # تحديد اتجاه المعاملة
-                if from_user_id == user['id']:
-                    direction = "📤 مرسل"
-                    color = "🔴"
-                else:
-                    direction = "📥 مستلم"
-                    color = "🟢"
-                
-                # نوع المعاملة
-                type_names = {
-                    'transfer': 'تحويل رصيد',
-                    'card_purchase': 'شراء كرت',
-                    'coupon_redeem': 'شحن بكوبون',
-                    'commission': 'عمولة'
-                }
-                type_name = type_names.get(trans_type, 'معاملة')
-                
-                wallet_text += f"""
-{color} **{direction} - {type_name}**
-💰 {amount:,.2f} ريال
-📅 {created_at[:16] if created_at else 'غير محدد'}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-"""
-        else:
-            wallet_text += "📭 لا توجد معاملات حتى الآن"
-        
-        keyboard = [
-            [InlineKeyboardButton('💸 تحويل رصيد', callback_data='transfer_to_friend'),
-             InlineKeyboardButton('🛒 شراء كروت', callback_data='buy_cards')],
-            [InlineKeyboardButton('🎟️ شحن بكوبون', callback_data='redeem_coupon'),
-             InlineKeyboardButton('📊 تفاصيل المعاملات', callback_data='transaction_details')],
-            [InlineKeyboardButton('📈 إحصائيات المحفظة', callback_data='wallet_stats'),
-             InlineKeyboardButton('🔄 تحديث الرصيد', callback_data='refresh_balance')],
-            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-        ]
-        
-        if is_callback:
-            await update.callback_query.edit_message_text(wallet_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        else:
-            await update.message.reply_text(wallet_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in enhanced wallet handler: {e}")
-        error_msg = f"{EMOJIS['error']} حدث خطأ في المحفظة. تم إصلاحه الآن."
-        
-        if hasattr(update, 'callback_query') and update.callback_query:
-            await update.callback_query.edit_message_text(error_msg)
-        else:
-            await update.message.reply_text(error_msg)
-
-
-# معالجات إدارة الشبكات للمشرف الأعلى
-async def admin_manage_networks_handler(update: Update, context: CallbackContext):
-    """معالج إدارة الشبكات للمشرف الأعلى"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        user = get_user(query.from_user.id)
-        if not user or user['role'] != 'super_admin':
-            await query.edit_message_text("❌ ليس لديك صلاحية لهذه العملية.")
-            return
-        
-        # الحصول على جميع الشبكات
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT n.id, n.name, n.provider, n.city, n.location, n.is_active, n.is_approved,
-                   u.full_name as supplier_name,
-                   COUNT(cc.id) as categories_count,
-                   COUNT(c.id) as total_cards,
-                   COUNT(CASE WHEN c.is_sold = 0 THEN 1 END) as available_cards
-            FROM networks n
-            LEFT JOIN users u ON n.supplier_id = u.id
-            LEFT JOIN card_categories cc ON n.id = cc.network_id
-            LEFT JOIN cards c ON cc.id = c.category_id
-            GROUP BY n.id
-            ORDER BY n.created_at DESC
-        ''')
-        
-        networks = cursor.fetchall()
-        conn.close()
-        
-        if not networks:
-            text = f"""
-🗑️ **إدارة الشبكات** 🗑️
-
-👑 مرحباً **{user['full_name']}**
-
-❌ **لا توجد شبكات للإدارة**
-
-🔧 **يجب إضافة شبكة أولاً**
-"""
-            keyboard = [
-                [InlineKeyboardButton('🌐 إضافة شبكة جديدة', callback_data='admin_add_network')],
-                [InlineKeyboardButton('🔙 عودة', callback_data='super_admin_panel')]
-            ]
-        else:
-            text = f"""
-🗑️ **إدارة الشبكات** 🗑️
-
-👑 مرحباً **{user['full_name']}**
-
-📊 **إجمالي الشبكات:** {len(networks)} شبكة
-
-🔽 **اختر شبكة للإدارة:**
-"""
-            keyboard = []
-            
-            for network in networks:
-                network_id, name, provider, city, location, is_active, is_approved, supplier_name, categories, total_cards, available_cards = network
-                
-                status_icon = "🟢" if is_active else "🔴"
-                button_text = f"{status_icon} {name} - {provider} ({available_cards or 0} كرت متاح)"
-                
-                keyboard.append([InlineKeyboardButton(
-                    button_text[:60] + "..." if len(button_text) > 60 else button_text,
-                    callback_data=f'admin_network_details_{network_id}'
-                )])
-            
-            keyboard.extend([
-                [InlineKeyboardButton('🌐 إضافة شبكة جديدة', callback_data='admin_add_network')],
-                [InlineKeyboardButton('🔙 عودة', callback_data='super_admin_panel')]
-            ])
-        
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-        
-    except Exception as e:
-        logger.error(f"Error in admin manage networks: {e}")
-        await query.edit_message_text("❌ حدث خطأ في إدارة الشبكات.")
-
-async def admin_network_details_handler(update: Update, context: CallbackContext, network_id: str):
-    """عرض تفاصيل الشبكة مع خيارات الإدارة"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        user = get_user(query.from_user.id)
-        if not user or user['role'] != 'super_admin':
-            await query.edit_message_text("❌ ليس لديك صلاحية لهذه العملية.")
-            return
-        
-        # الحصول على تفاصيل الشبكة
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT n.id, n.name, n.provider, n.city, n.location, n.description, n.is_active, n.is_approved,
-                   n.created_at, u.full_name as supplier_name,
-                   COUNT(cc.id) as categories_count,
-                   COUNT(c.id) as total_cards,
-                   COUNT(CASE WHEN c.is_sold = 0 THEN 1 END) as available_cards,
-                   COUNT(CASE WHEN c.is_sold = 1 THEN 1 END) as sold_cards
-            FROM networks n
-            LEFT JOIN users u ON n.supplier_id = u.id
-            LEFT JOIN card_categories cc ON n.id = cc.network_id
-            LEFT JOIN cards c ON cc.id = c.category_id
-            WHERE n.id = ?
-            GROUP BY n.id
-        ''', (network_id,))
-        
-        network = cursor.fetchone()
-        
-        if not network:
-            await query.edit_message_text("❌ لم يتم العثور على الشبكة المحددة.")
-            return
-        
-        conn.close()
-        
-        network_id, name, provider, city, location, description, is_active, is_approved, created_at, supplier_name, categories_count, total_cards, available_cards, sold_cards = network
-        
-        status_text = "🟢 نشطة" if is_active else "🔴 متوقفة"
-        approval_text = "✅ معتمدة" if is_approved else "⏳ في الانتظار"
-        
-        text = f"""
-📋 **تفاصيل الشبكة** 📋
-
-🌐 **الاسم:** {name}
-👤 **المزود:** {provider}
-🏢 **المالك:** {supplier_name or 'غير محدد'}
-🏙️ **المدينة:** {city or 'غير محدد'}
-📍 **الموقع:** {location or 'غير محدد'}
-
-📊 **الحالة:**
-• **الحالة:** {status_text}
-• **الاعتماد:** {approval_text}
-• **تاريخ الإنشاء:** {created_at[:10] if created_at else 'غير محدد'}
-
-💳 **إحصائيات الكروت:**
-• **فئات الكروت:** {categories_count or 0}
-• **إجمالي الكروت:** {total_cards or 0}
-• **متاحة:** {available_cards or 0}
-• **مباعة:** {sold_cards or 0}
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('💳 إدارة الكروت', callback_data=f'admin_upload_to_network_{network_id}'),
-             InlineKeyboardButton('📊 إحصائيات', callback_data=f'admin_network_stats_{network_id}')],
-            [InlineKeyboardButton('🗑️ حذف الشبكة', callback_data=f'admin_delete_network_{network_id}')],
-            [InlineKeyboardButton('🔙 عودة للقائمة', callback_data='admin_manage_networks'),
-             InlineKeyboardButton('🏠 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
-        ]
-        
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-        
-    except Exception as e:
-        logger.error(f"Error in network details: {e}")
-        await query.edit_message_text("❌ حدث خطأ في عرض تفاصيل الشبكة.")
-
-async def admin_delete_network_handler(update: Update, context: CallbackContext, network_id: str):
-    """تأكيد حذف الشبكة"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        user = get_user(query.from_user.id)
-        if not user or user['role'] != 'super_admin':
-            await query.edit_message_text("❌ ليس لديك صلاحية لهذه العملية.")
-            return
-        
-        # الحصول على تفاصيل الشبكة
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT n.name, n.provider, u.full_name as supplier_name,
-                   COUNT(c.id) as total_cards,
-                   COUNT(CASE WHEN c.is_sold = 1 THEN 1 END) as sold_cards
-            FROM networks n
-            LEFT JOIN users u ON n.supplier_id = u.id
-            LEFT JOIN card_categories cc ON n.id = cc.network_id
-            LEFT JOIN cards c ON cc.id = c.category_id
-            WHERE n.id = ?
-            GROUP BY n.id
-        ''', (network_id,))
-        
-        network = cursor.fetchone()
-        conn.close()
-        
-        if not network:
-            await query.edit_message_text("❌ لم يتم العثور على الشبكة المحددة.")
-            return
-        
-        name, provider, supplier_name, total_cards, sold_cards = network
-        
-        text = f"""
-⚠️ **تأكيد حذف الشبكة** ⚠️
-
-🌐 **الشبكة:** {name}
-👤 **المزود:** {provider}
-🏢 **المالك:** {supplier_name or 'غير محدد'}
-
-📊 **البيانات التي ستُحذف:**
-• **إجمالي الكروت:** {total_cards or 0}
-• **الكروت المباعة:** {sold_cards or 0}
-• **جميع فئات الكروت**
-• **جميع الإحصائيات**
-
-⚠️ **تحذير هام:**
-• هذا الإجراء **لا يمكن التراجع عنه**
-• سيتم حذف جميع البيانات المرتبطة
-
-❓ **هل أنت متأكد من الحذف؟**
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('✅ نعم، احذف الشبكة', callback_data=f'admin_confirm_delete_{network_id}'),
-             InlineKeyboardButton('❌ إلغاء', callback_data=f'admin_network_details_{network_id}')]
-        ]
-        
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-        
-    except Exception as e:
-        logger.error(f"Error in delete network confirmation: {e}")
-        await query.edit_message_text("❌ حدث خطأ في تأكيد حذف الشبكة.")
-
-async def admin_confirm_delete_network_handler(update: Update, context: CallbackContext, network_id: str):
-    """تنفيذ حذف الشبكة فعلياً"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        user = get_user(query.from_user.id)
-        if not user or user['role'] != 'super_admin':
-            await query.edit_message_text("❌ ليس لديك صلاحية لهذه العملية.")
-            return
-        
-        # الحصول على اسم الشبكة قبل الحذف
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('SELECT name, provider FROM networks WHERE id = ?', (network_id,))
-        network = cursor.fetchone()
-        
-        if not network:
-            await query.edit_message_text("❌ لم يتم العثور على الشبكة المحددة.")
-            return
-        
-        network_name, provider = network
-        
-        # حذف الشبكة وجميع البيانات المرتبطة
-        try:
-            # 1. حذف الكروت أولاً
-            cursor.execute('''
-                DELETE FROM cards 
-                WHERE category_id IN (
-                    SELECT id FROM card_categories WHERE network_id = ?
-                )
-            ''', (network_id,))
-            deleted_cards = cursor.rowcount
-            
-            # 2. حذف فئات الكروت
-            cursor.execute('DELETE FROM card_categories WHERE network_id = ?', (network_id,))
-            deleted_categories = cursor.rowcount
-            
-            # 3. حذف الشبكة نفسها
-            cursor.execute('DELETE FROM networks WHERE id = ?', (network_id,))
-            
-            conn.commit()
-            conn.close()
-            
-            success_text = f"""
-✅ **تم حذف الشبكة بنجاح** ✅
-
-🗑️ **الشبكة المحذوفة:**
-• **الاسم:** {network_name}
-• **المزود:** {provider}
-
-📊 **البيانات المحذوفة:**
-• **الكروت:** {deleted_cards}
-• **فئات الكروت:** {deleted_categories}
-
-⏰ **وقت الحذف:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-👤 **تم بواسطة:** {user['full_name']}
-"""
-            
-            keyboard = [
-                [InlineKeyboardButton('🗑️ إدارة شبكات أخرى', callback_data='admin_manage_networks')],
-                [InlineKeyboardButton('�� إضافة شبكة جديدة', callback_data='admin_add_network')],
-                [InlineKeyboardButton('🏠 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
-            ]
-            
-            await query.edit_message_text(
-                success_text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
-            
-            logger.info(f"تم حذف الشبكة {network_name} (ID: {network_id}) بواسطة {user['full_name']}")
-            
-        except Exception as db_error:
-            conn.rollback()
-            conn.close()
-            
-            logger.error(f"خطأ في حذف الشبكة: {db_error}")
-            
-            await query.edit_message_text(
-                f"❌ **فشل في حذف الشبكة**\n\n🔍 **السبب:** {str(db_error)}",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton('🔄 إعادة المحاولة', callback_data=f'admin_delete_network_{network_id}')],
-                    [InlineKeyboardButton('🔙 عودة للتفاصيل', callback_data=f'admin_network_details_{network_id}')]
-                ]),
-                parse_mode='Markdown'
-            )
-        
-    except Exception as e:
-        logger.error(f"Error in confirm delete network: {e}")
-        await query.edit_message_text("❌ حدث خطأ في حذف الشبكة.")
-
