@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 بوت بسيط جداً
-Simple Bot
+Minimal Bot
 """
 
 import logging

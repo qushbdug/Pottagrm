@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-بوت بسيط جداً
-Simple Bot
+بوت اختبار بسيط
+Simple Test Bot
 """
 
 import logging
@@ -51,27 +51,6 @@ async def main():
     except Exception as e:
         print(f"❌ فشل في الاختبار: {e}")
         logger.error(f"خطأ في الاختبار: {e}")
-        
-        # محاولة تشغيل البوت رغم الخطأ
-        print("🔄 محاولة تشغيل البوت رغم الخطأ...")
-        
-        try:
-            # إنشاء تطبيق جديد
-            application = Application.builder().token("7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0").build()
-            
-            # إضافة معالج بسيط
-            async def simple_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-                await update.message.reply_text("🔥 مرحباً! البوت يعمل الآن!")
-            
-            application.add_handler(CommandHandler("start", simple_start))
-            print("✅ تم إضافة معالج البداية")
-            
-            print("🚀 بدء البوت...")
-            await application.run_polling(allowed_updates=Update.ALL_TYPES)
-            
-        except Exception as e2:
-            print(f"❌ فشل في تشغيل البوت: {e2}")
-            logger.error(f"خطأ في تشغيل البوت: {e2}")
 
 if __name__ == "__main__":
     print("🎯 بدء التشغيل...")
@@ -80,5 +59,5 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n🛑 تم إيقاف البوت بواسطة المستخدم")
     except Exception as e:
-        print(f"💥 خطأ غير متوقع: {e}")
-        logger.error(f"خطأ غير متوقع: {e}")
+        print(f"💥 خطأ في التشغيل: {e}")
+        logger.error(f"خطأ في التشغيل: {e}")
