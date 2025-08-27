@@ -75,14 +75,13 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
 """
         
         keyboard = [
-            [InlineKeyboardButton(f'👥 إدارة المستخدمين', callback_data='manage_users'),
-             InlineKeyboardButton(f'👑 إدارة المشرفين', callback_data='manage_admins')],
+            [InlineKeyboardButton(f'👥 إدارة العملاء المطورة', callback_data='customer_dashboard'),
+             InlineKeyboardButton(f'👑 إدارة المشرفين المطورة', callback_data='admin_dashboard')],
             [InlineKeyboardButton(f'📊 لوحة المعلومات', callback_data='dashboard'),
              InlineKeyboardButton(f'📈 التقارير التنفيذية', callback_data='executive_reports')],
             [InlineKeyboardButton(f'💰 إدارة الأرصدة', callback_data='admin_wallet'),
              InlineKeyboardButton(f'💸 إرسال رصيد', callback_data='admin_send_money')],
-            [InlineKeyboardButton(f'💼 إدارة العمولات', callback_data='commission_management'),
-             InlineKeyboardButton(f'🏛️ إدارة المنصة', callback_data='super_platform_management')],
+            [InlineKeyboardButton(f'🏛️ إدارة المنصة', callback_data='super_platform_management')],
             [InlineKeyboardButton(f'🌐 إضافة شبكة جديدة', callback_data='admin_add_network'),
              InlineKeyboardButton(f'🗑️ إدارة الشبكات', callback_data='admin_manage_networks'),
              InlineKeyboardButton(f'💳 رفع كروت', callback_data='admin_upload_cards')],
@@ -639,8 +638,7 @@ async def platform_management_handler(update: Update, context: CallbackContext):
 """
         
         keyboard = [
-            [InlineKeyboardButton(f'🔧 إعدادات العمولات', callback_data='super_commission_settings'),
-             InlineKeyboardButton(f'📢 إشعار عام', callback_data='super_broadcast_message')],
+            [InlineKeyboardButton(f'📢 إشعار عام', callback_data='super_broadcast_message')],
             [InlineKeyboardButton(f'🚫 حظر مستخدم', callback_data='super_ban_user'),
              InlineKeyboardButton(f'✅ إلغاء حظر مستخدم', callback_data='super_unban_user')],
             [InlineKeyboardButton(f'📊 إعادة حساب الأرصدة', callback_data='super_recalc_balances'),
@@ -687,8 +685,7 @@ async def placeholder_handler(update, context, feature_name):
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ.")
 
 # Placeholder handlers for missing features
-async def commission_settings_handler(update, context):
-    return await placeholder_handler(update, context, "إعدادات العمولات")
+
 
 async def backup_handler(update, context):
     """Handle backup management"""
@@ -1039,8 +1036,7 @@ async def system_settings_handler(update, context):
         
         # Insert default values if they don't exist
         default_settings = [
-            ('card_commission', '5', 'عمولة البطاقات بالنسبة المئوية'),
-            ('agent_commission', '3', 'عمولة الوكلاء بالنسبة المئوية'),
+
             ('transfer_fee', '1', 'رسوم التحويل بالنسبة المئوية'),
             ('system_status', 'active', 'حالة النظام العامة'),
             ('maintenance_mode', 'off', 'وضع الصيانة')
@@ -1063,8 +1059,7 @@ async def system_settings_handler(update, context):
 🔧 **إعدادات النظام** 🔧
 
 📊 **العمولات والرسوم:**
-💳 عمولة البطاقات: **{settings_dict.get('card_commission', '5')}%**
-👤 عمولة الوكلاء: **{settings_dict.get('agent_commission', '3')}%**
+
 💸 رسوم التحويل: **{settings_dict.get('transfer_fee', '1')}%**
 
 ⚙️ **حالة النظام:**
@@ -1078,8 +1073,7 @@ async def system_settings_handler(update, context):
 """
         
         keyboard = [
-            [InlineKeyboardButton('💳 تعديل عمولة البطاقات', callback_data='system_edit_card_commission'),
-             InlineKeyboardButton('👤 تعديل عمولة الوكلاء', callback_data='system_edit_agent_commission')],
+
             [InlineKeyboardButton('💸 تعديل رسوم التحويل', callback_data='system_edit_transfer_fee'),
              InlineKeyboardButton('🔄 إعادة تحميل الإعدادات', callback_data='system_reload_config')],
             [InlineKeyboardButton('📊 إحصائيات النظام', callback_data='system_stats'),

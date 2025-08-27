@@ -36,14 +36,16 @@ try:
         redeem_coupon_handler, cancel_coupon_handler, quick_transfer_handler,
         select_user_for_transfer, process_amount_selection, process_card_purchase,
         skip_network_location, search_by_type_handler, choose_role,
-        agent_locations_handler, contact_support_handler
+
     )
     from admin_functions import (
-        ADMIN_CALLBACKS, activate_single_supplier, edit_specific_commission,
+        ADMIN_CALLBACKS, activate_single_supplier,
         admin_add_category_handler, admin_network_upload_handler,
         admin_upload_category_handler, admin_upload_single_card_handler,
         admin_panel_handler
     )
+    from customer_management import CustomerManagement
+    from admin_management import AdminManagement
     # Import additional utilities
     from utils import (
         get_or_create_supplier_code, get_cards_stats_by_category,
@@ -272,9 +274,7 @@ async def button_click_handler(update: Update, context):
         elif callback_data.startswith('skip_location_'):
             network_id = callback_data.split('_')[2]
             return await skip_network_location(update, context, network_id)
-        elif callback_data.startswith('edit_comm_'):
-            commission_id = callback_data.split('_')[2]
-            return await edit_specific_commission(update, context, commission_id)
+
         elif callback_data.startswith('admin_add_category_'):
             network_id = callback_data.split('_')[3]
             return await admin_add_category_handler(update, context, network_id)
@@ -300,6 +300,30 @@ async def button_click_handler(update: Update, context):
             else:
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية للوصول لهذه اللوحة.")
                 return
+        
+        # Enhanced Customer Management System
+        elif callback_data == 'customer_dashboard':
+            return await CustomerManagement.get_customer_dashboard(update, context)
+        elif callback_data == 'customer_search':
+            return await CustomerManagement.search_customers(update, context)
+        elif callback_data == 'customer_analytics':
+            return await CustomerManagement.get_customer_analytics(update, context)
+        elif callback_data.startswith('customer_profile_'):
+            customer_id = int(callback_data.split('_')[2])
+            return await CustomerManagement.show_customer_profile(update, context, customer_id)
+        
+        # Enhanced Admin Management System  
+        elif callback_data == 'admin_dashboard':
+            return await AdminManagement.get_admin_dashboard(update, context)
+        elif callback_data == 'admin_manage_admins':
+            return await AdminManagement.manage_admins(update, context)
+        elif callback_data == 'admin_analytics':
+            return await AdminManagement.get_admin_analytics(update, context)
+        elif callback_data == 'admin_security':
+            return await AdminManagement.admin_security_center(update, context)
+        elif callback_data.startswith('admin_profile_'):
+            admin_id = int(callback_data.split('_')[2])
+            return await AdminManagement.show_admin_profile(update, context, admin_id)
         
         # Transfer confirmation handlers
         elif callback_data == 'confirm_transfer_yes':
@@ -347,10 +371,7 @@ async def button_click_handler(update: Update, context):
             await account_settings_handler(update, context)
         
         # Role-specific features
-        elif callback_data == 'agent_panel':
-            await agent_panel_handler(update, context)
-        elif callback_data == 'my_commissions':
-            await my_commissions_handler(update, context)
+
         elif callback_data == 'supplier_panel':
             await supplier_panel_handler(update, context)
         
@@ -443,21 +464,15 @@ async def button_click_handler(update: Update, context):
             await help_handler(update, context)
         
 
-        # Support and agent callbacks
-        elif callback_data == 'agent_locations':
-            return await agent_locations_handler(update, context)
-        elif callback_data == 'contact_support':
-            return await contact_support_handler(update, context)
+        # Support callbacks
         elif callback_data == 'recharge_help':
             await query.edit_message_text(
                 "💡 **مساعدة الشحن** 💡\n\n"
                 "🎟️ **أسرع طريقة:** استخدم الكوبونات\n"
-                "🏪 **الوكلاء:** متاحون في جميع المحافظات\n"
                 "📞 **الدعم:** متاح 24/7\n\n"
                 "💡 اختر الطريقة المناسبة لك:",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton('🎟️ شحن بكوبون', callback_data='redeem_coupon')],
-                    [InlineKeyboardButton('🏪 مواقع الوكلاء', callback_data='agent_locations')],
                     [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
                 ]),
                 parse_mode='Markdown'
@@ -769,7 +784,7 @@ async def account_settings_handler(update: Update, context):
                 # تحديد نوع الحساب
         role_names = {
             'user': 'عميل', 
-            'agent': 'وكيل', 
+ 
             'supplier': 'مزود', 
             'admin': 'مشرف', 
             'super_admin': 'مشرف أعلى'
@@ -925,101 +940,7 @@ async def transfer_handler(update: Update, context):
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض صفحة التحويل.")
 
 # Additional missing handlers
-async def agent_panel_handler(update: Update, context):
-    """Handle agent panel"""
-    try:
-        query = update.callback_query
-        user = get_user(query.from_user.id)
-        
-        # الحصول على إحصائيات الوكيل الفعلية
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # عدد العملاء
-        cursor.execute('SELECT COUNT(*) FROM users WHERE role = "user"')
-        total_customers = cursor.fetchone()[0]
-        
-        # إجمالي المعاملات
-        cursor.execute('SELECT COUNT(*), COALESCE(SUM(amount), 0) FROM transactions')
-        total_transactions, total_amount = cursor.fetchone()
-        
-        # معاملات اليوم
-        cursor.execute('''
-            SELECT COUNT(*), COALESCE(SUM(amount), 0) 
-            FROM transactions 
-            WHERE DATE(created_at) = DATE('now')
-        ''')
-        today_transactions, today_amount = cursor.fetchone()
-        
-        conn.close()
-        
-        panel_text = f"""
-💼 **لوحة الوكيل** 💼
 
-👤 **{user['full_name']}**
-💰 رصيدك: **{user['balance']:.2f}** ريال
-
-📊 **إحصائيات الوكيل المباشرة:**
-
-👥 **العملاء:**
-• إجمالي العملاء: **{total_customers:,}** عميل
-• العملاء النشطين: **{min(total_customers, total_transactions):,}** عميل
-
-💰 **المعاملات:**
-• إجمالي المعاملات: **{total_transactions:,}** معاملة
-• قيمة المعاملات: **{total_amount:,.2f}** ريال
-
-📈 **اليوم:**
-• معاملات اليوم: **{today_transactions:,}** معاملة
-• مبلغ اليوم: **{today_amount:,.2f}** ريال
-
-💡 **العمولة المتوقعة:**
-• عمولة متوقعة: **{today_amount * 0.05:,.2f}** ريال
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton(f'💰 عمولاتي', callback_data='my_commissions')],
-            [InlineKeyboardButton(f'📊 تقارير المبيعات', callback_data='agent_sales_reports')],
-            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
-        ]
-        
-        await query.edit_message_text(panel_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in agent panel handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في لوحة الوكيل.")
-
-async def my_commissions_handler(update: Update, context):
-    """Handle my commissions view"""
-    try:
-        query = update.callback_query
-        user = get_user(query.from_user.id)
-        
-        commissions_text = f"""
-💰 **عمولاتي** 💰
-
-👤 **{user['full_name']}**
-
-📊 **ملخص العمولات:**
-💎 **العمولات الحقيقية متاحة الآن!**
-
-📊 **إحصائيات العمولات:**
-• عمولة 5% من كل معاملة
-• حساب تلقائي للعمولات
-• تقارير شهرية مفصلة
-• رصيد عمولات محدث
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton(f'💼 لوحة الوكيل', callback_data='agent_panel')],
-            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
-        ]
-        
-        await query.edit_message_text(commissions_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in my commissions handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض العمولات.")
 
 async def supplier_panel_handler(update: Update, context):
     """Handle enhanced supplier panel"""
@@ -1819,7 +1740,7 @@ async def supplier_settings_handler(update: Update, context):
                 # تحديد نوع الحساب
         role_names = {
             'user': 'عميل', 
-            'agent': 'وكيل', 
+ 
             'supplier': 'مزود', 
             'admin': 'مشرف', 
             'super_admin': 'مشرف أعلى'
@@ -2265,7 +2186,7 @@ async def notification_settings_handler(update: Update, context: CallbackContext
                 # تحديد نوع الحساب
         role_names = {
             'user': 'عميل', 
-            'agent': 'وكيل', 
+ 
             'supplier': 'مزود', 
             'admin': 'مشرف', 
             'super_admin': 'مشرف أعلى'
@@ -3263,7 +3184,7 @@ async def account_settings_handler(update: Update, context: CallbackContext):
                 # تحديد نوع الحساب
         role_names = {
             'user': 'عميل', 
-            'agent': 'وكيل', 
+ 
             'supplier': 'مزود', 
             'admin': 'مشرف', 
             'super_admin': 'مشرف أعلى'

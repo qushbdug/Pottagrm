@@ -145,7 +145,7 @@ async def get_phone(update: Update, context: CallbackContext) -> int:
 {EMOJIS['user']} **اختر نوع حسابك:**
 
 🛒 **عميل** - شراء كروت الإنترنت
-🔷 **وكيل** - بيع الكروت وكسب عمولة  
+  
 🏪 **مزود** - رفع وإدارة الشبكات والكروت
 
 👇 **اختر الدور المناسب لك:**
@@ -153,7 +153,7 @@ async def get_phone(update: Update, context: CallbackContext) -> int:
         
         keyboard = [
             [InlineKeyboardButton(f'{EMOJIS["purchase"]} عميل', callback_data='role_customer')],
-            [InlineKeyboardButton(f'🔷 وكيل', callback_data='role_agent')],
+
             [InlineKeyboardButton(f'🏪 مزود', callback_data='role_supplier')]
         ]
         
@@ -245,21 +245,7 @@ async def choose_role(update: Update, context: CallbackContext) -> int:
 • عرض إحصائياتك
 • تقييم الخدمات
 """
-        elif role == 'agent':
-            welcome_message = f"""
-✅ **تم إنشاء حساب الوكيل بنجاح!**
 
-👤 **معلومات حسابك:**
-📛 الاسم: **{full_name}**
-📞 الهاتف: **{phone}**
-🏷️ النوع: **وكيل**
-💳 رقم المحفظة: **{wallet_number}**
-🎫 كود الدعوة: **{invite_code}**
-
-⏳ **حسابك في انتظار التفعيل من الإدارة**
-
-💰 **كوكيل ستحصل على عمولة من كل عملية بيع!**
-"""
         else:  # supplier
             welcome_message = f"""
 ✅ **تم إنشاء حساب المزود بنجاح!**
@@ -280,8 +266,8 @@ async def choose_role(update: Update, context: CallbackContext) -> int:
         
         await query.edit_message_text(welcome_message, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
-        # Send notification to admins for non-customer registrations
-        if role in ['agent', 'supplier']:
+        # Send notification to admins for supplier registrations
+        if role == 'supplier':
             # Notify admins about new registration
             pass  # Will implement admin notification
         
@@ -351,12 +337,7 @@ def create_main_keyboard(role: str):
         ]
         
         # Role-specific features
-        if role == 'agent':
-            base_buttons.extend([
-                [InlineKeyboardButton('💼 لوحة الوكيل', callback_data='agent_panel'),
-                 InlineKeyboardButton('💰 عمولاتي', callback_data='my_commissions')]
-            ])
-        elif role == 'supplier':
+        if role == 'supplier':
             base_buttons.extend([
                 [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel'),
                  InlineKeyboardButton('📶 إدارة الشبكات', callback_data='manage_networks')],
@@ -1828,7 +1809,7 @@ async def process_user_search(update: Update, context: CallbackContext, search_t
         for i, result in enumerate(search_results, 1):
             user_id, full_name, wallet_number, phone, telegram_id, balance, is_active, role = result
             status_emoji = "✅" if is_active else "⏳"
-            role_emoji = "👑" if role == 'admin' else "🏪" if role == 'supplier' else "💼" if role == 'agent' else "👤"
+            role_emoji = "👑" if role == 'admin' else "🏪" if role == 'supplier' else "👤"
             
             result_text += f"""
 {i}️⃣ {status_emoji} **{full_name}** {role_emoji}
@@ -2604,8 +2585,7 @@ COMMAND_HANDLERS = {
     'my_notifications': my_notifications_handler,
     'account_settings': account_settings_handler,
     'my_ratings': my_ratings_handler,
-    'agent_panel': lambda u, c: enhanced_placeholder_handler(u, c, "💼 لوحة الوكيل", "لوحة تحكم خاصة بالوكلاء"),
-    'my_commissions': lambda u, c: enhanced_placeholder_handler(u, c, "💰 عمولاتي", "عرض العمولات والأرباح"),
+
     'supplier_panel': lambda u, c: enhanced_placeholder_handler(u, c, "🏪 لوحة المزود", "لوحة تحكم خاصة بالمزودين"),
     'manage_networks': lambda u, c: supplier_manage_networks(u, c),
     'upload_cards': lambda u, c: enhanced_placeholder_handler(u, c, "📤 رفع كروت", "رفع وإدارة كروت الشحن"),
@@ -3567,50 +3547,7 @@ async def cancel_coupon_handler(update: Update, context: CallbackContext):
         await query.edit_message_text("❌ حدث خطأ في الإلغاء.")
 
 # معالجات الميزات الجديدة
-async def agent_locations_handler(update: Update, context: CallbackContext):
-    """عرض مواقع الوكلاء"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        text = """
-🏪 **مواقع الوكلاء المعتمدين** 🏪
 
-📍 **الوكلاء المتاحون:**
-
-🏢 **صنعاء:**
-   • وكيل الحديدة - شارع الزبيري
-   • وكيل التحرير - ميدان التحرير
-   • وكيل الستين - شارع الستين
-
-🏢 **عدن:**
-   • وكيل كريتر - منطقة كريتر
-   • وكيل المعلا - منطقة المعلا
-
-🏢 **تعز:**
-   • وكيل وسط المدينة - شارع جمال
-
-📞 **للاستفسار:**
-   تواصل مع الدعم للحصول على معلومات محدثة
-
-💡 **كيفية الشحن:**
-   1️⃣ اذهب لأقرب وكيل
-   2️⃣ أعطه رقم محفظتك
-   3️⃣ ادفع المبلغ المطلوب
-   4️⃣ سيتم شحن حسابك فوراً
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('📞 التواصل مع الدعم', callback_data='contact_support'),
-             InlineKeyboardButton('🎟️ شحن بكوبون', callback_data='redeem_coupon')],
-            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-        ]
-        
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in agent locations handler: {e}")
-        await query.edit_message_text("❌ حدث خطأ في عرض مواقع الوكلاء.")
 
 async def contact_support_handler(update: Update, context: CallbackContext):
     """التواصل مع الدعم"""

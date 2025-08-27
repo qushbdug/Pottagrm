@@ -89,7 +89,6 @@ TRANSFER_TARGET, TRANSFER_AMOUNT, TRANSFER_CONFIRM = range(6, 9)
 # User roles
 USER_ROLES = {
     'customer': 'عميل',
-    'agent': 'وكيل',
     'supplier': 'مزود',
     'admin': 'مشرف',
     'super_admin': 'مشرف أعلى'
