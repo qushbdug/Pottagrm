@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
-بوت يعمل
-Working Bot
+بوت بسيط يعمل
+Simple Working Bot
 """
 
 import logging
-import asyncio
 
 # إعداد التسجيل
 logging.basicConfig(
@@ -15,34 +14,38 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-async def main():
+def main():
     """الدالة الرئيسية"""
     try:
         print("🚀 بدء البوت...")
         
         # استيراد المكتبة
-        from telegram import Update
-        from telegram.ext import Application, CommandHandler, ContextTypes
+        from telegram.ext import Updater, CommandHandler
         
         print("✅ تم استيراد المكتبة")
         
-        # إنشاء التطبيق
+        # إنشاء البوت
         token = "7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0"
-        application = Application.builder().token(token).build()
+        updater = Updater(token)
         
-        print("✅ تم إنشاء التطبيق")
+        print("✅ تم إنشاء البوت")
+        
+        # الحصول على dispatcher
+        dispatcher = updater.dispatcher
         
         # إضافة معالج البداية
-        async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            await update.message.reply_text("🔥 مرحباً! البوت يعمل الآن!")
+        def start_command(update, context):
+            update.message.reply_text("🔥 مرحباً! البوت يعمل الآن!")
         
-        application.add_handler(CommandHandler("start", start_command))
+        dispatcher.add_handler(CommandHandler("start", start_command))
         
         print("✅ تم إضافة المعالج")
         print("🚀 البوت يعمل الآن...")
+        print("📱 يمكنك الآن إرسال /start للبوت!")
         
         # تشغيل البوت
-        await application.run_polling()
+        updater.start_polling()
+        updater.idle()
         
     except Exception as e:
         print(f"❌ خطأ: {e}")
@@ -50,4 +53,4 @@ async def main():
 
 if __name__ == "__main__":
     print("🎯 بدء التشغيل...")
-    asyncio.run(main())
+    main()

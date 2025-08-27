@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-بوت يعمل
-Working Bot
+بوت بسيط بدون APScheduler
+Simple Bot without APScheduler
 """
 
 import logging
@@ -26,7 +26,7 @@ async def main():
         
         print("✅ تم استيراد المكتبة")
         
-        # إنشاء التطبيق
+        # إنشاء التطبيق بدون APScheduler
         token = "7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0"
         application = Application.builder().token(token).build()
         
@@ -47,6 +47,8 @@ async def main():
     except Exception as e:
         print(f"❌ خطأ: {e}")
         logger.error(f"خطأ: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     print("🎯 بدء التشغيل...")

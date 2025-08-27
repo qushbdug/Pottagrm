@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-بوت يعمل
-Working Bot
+البوت النهائي العامل
+Final Working Bot
 """
 
 import logging
@@ -40,9 +40,10 @@ async def main():
         
         print("✅ تم إضافة المعالج")
         print("🚀 البوت يعمل الآن...")
+        print("📱 يمكنك الآن إرسال /start للبوت!")
         
         # تشغيل البوت
-        await application.run_polling()
+        await application.run_polling(close_loop=False)
         
     except Exception as e:
         print(f"❌ خطأ: {e}")
@@ -50,4 +51,10 @@ async def main():
 
 if __name__ == "__main__":
     print("🎯 بدء التشغيل...")
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n🛑 تم إيقاف البوت بواسطة المستخدم")
+    except Exception as e:
+        print(f"💥 خطأ غير متوقع: {e}")
+        logger.error(f"خطأ غير متوقع: {e}")

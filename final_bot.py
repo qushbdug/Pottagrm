@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-بوت يعمل
-Working Bot
+البوت النهائي
+Final Bot
 """
 
 import logging
