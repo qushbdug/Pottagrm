@@ -9,9 +9,9 @@ import uuid
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext
-from config import *
+from bot_modules.config import *
 from bot_modules.database import get_db_connection
-from utils import *
+from bot_modules.utils import *
 
 logger = logging.getLogger(__name__)
 

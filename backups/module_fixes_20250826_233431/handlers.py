@@ -9,8 +9,8 @@ import random
 import sqlite3
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext, ConversationHandler
-from config import *
-from utils import *
+from bot_modules.config import *
+from bot_modules.utils import *
 
 logger = logging.getLogger(__name__)
 
