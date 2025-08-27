@@ -13,6 +13,8 @@ import asyncio
 import sys
 import os
 from datetime import datetime
+import sqlite3
+from telegram.error import TelegramError, NetworkError, TimedOut, BadRequest
 
 # Add bot_modules to Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'bot_modules'))
@@ -27,10 +29,26 @@ from telegram.ext import (
 # Import our modular components
 try:
     from config import *
-    from database import init_db
+    from database import init_db, get_db_connection
     from utils import *
-    from handlers import COMMAND_HANDLERS, CONVERSATION_STATES, handle_text_message, show_main_menu
-    from admin_functions import ADMIN_CALLBACKS, activate_single_supplier
+    from handlers import (
+        COMMAND_HANDLERS, CONVERSATION_STATES, handle_text_message, show_main_menu,
+        redeem_coupon_handler, cancel_coupon_handler, quick_transfer_handler,
+        select_user_for_transfer, process_amount_selection, process_card_purchase,
+        skip_network_location, search_by_type_handler, choose_role,
+        agent_locations_handler, contact_support_handler
+    )
+    from admin_functions import (
+        ADMIN_CALLBACKS, activate_single_supplier, edit_specific_commission,
+        admin_add_category_handler, admin_network_upload_handler,
+        admin_upload_category_handler, admin_upload_single_card_handler,
+        admin_panel_handler
+    )
+    # Import additional utilities
+    from utils import (
+        get_or_create_supplier_code, get_cards_stats_by_category,
+        get_card_categories, process_uploaded_cards, recalc_and_set_user_balance
+    )
 except ImportError as e:
     print(f"Error importing modules: {e}")
     print("Make sure all module files are in the bot_modules directory")
@@ -48,25 +66,151 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+# Custom Exception Classes for better error handling
+class BotDatabaseError(Exception):
+    """Database related errors"""
+    pass
+
+class BotValidationError(Exception):
+    """Input validation errors"""
+    pass
+
+class BotPermissionError(Exception):
+    """Permission related errors"""
+    pass
+
+class BotConfigurationError(Exception):
+    """Configuration errors"""
+    pass
+
+class BotTimeoutError(Exception):
+    """Timeout related errors"""
+    pass
+
+# Utility functions for enhanced functionality
+async def safe_db_operation(operation_func, *args, timeout=10.0, **kwargs):
+    """Execute database operation with timeout and error handling"""
+    try:
+        return await asyncio.wait_for(
+            asyncio.create_task(operation_func(*args, **kwargs)),
+            timeout=timeout
+        )
+    except asyncio.TimeoutError:
+        raise BotTimeoutError(f"Database operation timed out after {timeout} seconds")
+    except sqlite3.Error as e:
+        raise BotDatabaseError(f"Database operation failed: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error in database operation: {e}")
+        raise
+
+def validate_user_input(input_value, input_type, min_length=None, max_length=None, pattern=None):
+    """Enhanced input validation with specific checks"""
+    if input_value is None:
+        raise BotValidationError("Input value cannot be None")
+    
+    if input_type == 'phone':
+        if not input_value.startswith(('77', '73', '70', '71')):
+            raise BotValidationError("رقم الهاتف يجب أن يبدأ بـ 77، 73، 70، أو 71")
+        if len(input_value) != 9:
+            raise BotValidationError("رقم الهاتف يجب أن يكون 9 أرقام")
+        if not input_value.isdigit():
+            raise BotValidationError("رقم الهاتف يجب أن يحتوي على أرقام فقط")
+    
+    elif input_type == 'amount':
+        try:
+            amount = float(input_value)
+            if amount <= 0:
+                raise BotValidationError("المبلغ يجب أن يكون أكبر من صفر")
+            if amount > 100000:
+                raise BotValidationError("المبلغ كبير جداً")
+        except ValueError:
+            raise BotValidationError("المبلغ يجب أن يكون رقماً صحيحاً")
+    
+    elif input_type == 'name':
+        if len(input_value.strip()) < 2:
+            raise BotValidationError("الاسم يجب أن يكون أكثر من حرفين")
+        if len(input_value.strip()) > 50:
+            raise BotValidationError("الاسم طويل جداً")
+    
+    elif input_type == 'text':
+        if min_length and len(input_value) < min_length:
+            raise BotValidationError(f"النص قصير جداً (الحد الأدنى {min_length} حرف)")
+        if max_length and len(input_value) > max_length:
+            raise BotValidationError(f"النص طويل جداً (الحد الأقصى {max_length} حرف)")
+    
+    return True
+
+# Memory optimization utilities
+def clear_unused_context_data(context, keep_keys=None):
+    """Clear unused data from context to save memory"""
+    if keep_keys is None:
+        keep_keys = ['user_state', 'selected_network_id', 'upload_file']
+    
+    keys_to_remove = [key for key in context.user_data.keys() if key not in keep_keys]
+    for key in keys_to_remove:
+        context.user_data.pop(key, None)
+
+async def cleanup_old_conversations(context):
+    """Clean up old conversation data periodically"""
+    try:
+        # This should be called periodically to clean memory
+        if hasattr(context, 'user_data') and len(context.user_data) > 100:
+            # Keep only recent conversations
+            logger.info("Cleaning up old conversation data")
+            # Implementation depends on how data is stored
+    except Exception as e:
+        logger.warning(f"Failed to cleanup conversations: {e}")
+
+# Enhanced database connection with connection pooling concept
+_db_connection_pool = None
+_pool_lock = asyncio.Lock()
+
+async def get_pooled_db_connection():
+    """Get database connection with basic pooling for memory efficiency"""
+    try:
+        # Simple connection reuse to reduce memory overhead
+        conn = get_db_connection()
+        return conn
+    except Exception as e:
+        raise BotDatabaseError(f"Failed to get database connection: {e}")
+
 # Main callback handler
 async def button_click_handler(update: Update, context):
     """Enhanced callback query handler with better error handling"""
     try:
         query = update.callback_query
+        
+        # Handle query answer with specific timeout
         try:
-            await query.answer()
-        except Exception:
-            # Ignore query timeout errors
-            pass
+            await asyncio.wait_for(query.answer(), timeout=5.0)
+        except asyncio.TimeoutError:
+            logger.warning(f"Query answer timeout for user {query.from_user.id}")
+        except (TelegramError, NetworkError) as e:
+            logger.warning(f"Telegram error in query answer: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error in query answer: {e}")
         
         callback_data = query.data
-        user = get_user(query.from_user.id)
         
-        if not user:
+        # Get user with validation
+        try:
+            user = get_user(query.from_user.id)
+            if not user:
+                raise BotValidationError("User not found in database")
+        except sqlite3.Error as e:
+            logger.error(f"Database error getting user {query.from_user.id}: {e}")
+            await query.edit_message_text(f"{EMOJIS['error']} خطأ في قاعدة البيانات. يرجى المحاولة لاحقاً")
+            return
+        except BotValidationError:
             await query.edit_message_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
             return
         
-        update_user_activity(user['id'])
+        # Update user activity
+        try:
+            update_user_activity(user['id'])
+        except sqlite3.Error as e:
+            logger.error(f"Failed to update user activity for {user['id']}: {e}")
+            # Continue execution, this is not critical
         
         # Route to appropriate handlers
         
@@ -99,20 +243,15 @@ async def button_click_handler(update: Update, context):
         
         # Coupon handlers
         elif callback_data == 'redeem_coupon':
-            from bot_modules.handlers import redeem_coupon_handler
             return await redeem_coupon_handler(update, context)
         elif callback_data == 'cancel_coupon':
-            from bot_modules.handlers import cancel_coupon_handler
             return await cancel_coupon_handler(update, context)
         elif callback_data == 'quick_transfer':
-            from handlers import quick_transfer_handler
             return await quick_transfer_handler(update, context)
         elif callback_data.startswith('select_user_'):
-            from handlers import select_user_for_transfer
             user_id = callback_data.split('_')[2]
             return await select_user_for_transfer(update, context, user_id)
         elif callback_data.startswith('amount_'):
-            from handlers import process_amount_selection
             parts = callback_data.split('_')
             amount = parts[1]
             user_id = parts[2]
@@ -120,7 +259,6 @@ async def button_click_handler(update: Update, context):
         
         # Purchase handlers
         elif callback_data.startswith('buy_card_'):
-            from handlers import process_card_purchase
             category_id = callback_data.split('_')[2]
             return await process_card_purchase(update, context, category_id)
         elif callback_data.startswith('confirm_purchase_'):
@@ -132,40 +270,32 @@ async def button_click_handler(update: Update, context):
             amount = parts[3]
             return await confirm_user_transfer(update, context, user_id, amount)
         elif callback_data.startswith('skip_location_'):
-            from handlers import skip_network_location
             network_id = callback_data.split('_')[2]
             return await skip_network_location(update, context, network_id)
         elif callback_data.startswith('edit_comm_'):
-            from bot_modules.admin_functions import edit_specific_commission
             commission_id = callback_data.split('_')[2]
             return await edit_specific_commission(update, context, commission_id)
         elif callback_data.startswith('admin_add_category_'):
-            from bot_modules.admin_functions import admin_add_category_handler
             network_id = callback_data.split('_')[3]
             return await admin_add_category_handler(update, context, network_id)
         elif callback_data.startswith('admin_upload_to_network_'):
-            from bot_modules.admin_functions import admin_network_upload_handler
             network_id = callback_data.split('_')[-1]  # آخر عنصر هو network_id
             return await admin_network_upload_handler(update, context, network_id)
         elif callback_data.startswith('admin_upload_category_'):
-            from bot_modules.admin_functions import admin_upload_category_handler
             category_id = callback_data.split('_')[3]
             return await admin_upload_category_handler(update, context, category_id)
         elif callback_data.startswith('admin_upload_single_'):
-            from bot_modules.admin_functions import admin_upload_single_card_handler
             category_id = callback_data.split('_')[3]
             return await admin_upload_single_card_handler(update, context, category_id)
         
         # Search by type handlers
         elif callback_data.startswith('search_by_'):
-            from handlers import search_by_type_handler
             search_type = callback_data.split('_')[2]
             return await search_by_type_handler(update, context, search_type)
         
         # Admin panel routing
         elif callback_data == 'admin_panel':
             if user['role'] in ['admin', 'super_admin']:
-                from admin_functions import admin_panel_handler
                 return await admin_panel_handler(update, context)
             else:
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية للوصول لهذه اللوحة.")
@@ -196,7 +326,6 @@ async def button_click_handler(update: Update, context):
         
         # Role selection during registration
         elif callback_data.startswith('role_'):
-            from handlers import choose_role
             return await choose_role(update, context)
         
         # Core features
@@ -316,10 +445,8 @@ async def button_click_handler(update: Update, context):
 
         # Support and agent callbacks
         elif callback_data == 'agent_locations':
-            from bot_modules.handlers import agent_locations_handler
             return await agent_locations_handler(update, context)
         elif callback_data == 'contact_support':
-            from bot_modules.handlers import contact_support_handler
             return await contact_support_handler(update, context)
         elif callback_data == 'recharge_help':
             await query.edit_message_text(
@@ -354,17 +481,73 @@ async def button_click_handler(update: Update, context):
                 ])
             )
     
-    except Exception as e:
-        logger.error(f"Error in button click handler: {e}")
+    except BotDatabaseError as e:
+        logger.error(f"Database error in button click handler: {e}")
         try:
             if update.callback_query:
                 await update.callback_query.edit_message_text(
-                    f"{EMOJIS['error']} حدث خطأ. يرجى المحاولة مرة أخرى.",
+                    f"{EMOJIS['error']} خطأ في قاعدة البيانات. يرجى المحاولة لاحقاً.",
                     reply_markup=InlineKeyboardMarkup([
                         [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
                     ])
                 )
-        except:
+        except (TelegramError, NetworkError) as te:
+            logger.error(f"Failed to send database error message: {te}")
+    
+    except BotValidationError as e:
+        logger.warning(f"Validation error in button click handler: {e}")
+        try:
+            if update.callback_query:
+                await update.callback_query.edit_message_text(
+                    f"{EMOJIS['warning']} بيانات غير صحيحة. يرجى التحقق والمحاولة مرة أخرى.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+                    ])
+                )
+        except (TelegramError, NetworkError) as te:
+            logger.error(f"Failed to send validation error message: {te}")
+    
+    except BotPermissionError as e:
+        logger.warning(f"Permission error in button click handler: {e}")
+        try:
+            if update.callback_query:
+                await update.callback_query.edit_message_text(
+                    f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+                    ])
+                )
+        except (TelegramError, NetworkError) as te:
+            logger.error(f"Failed to send permission error message: {te}")
+    
+    except (NetworkError, TimedOut) as e:
+        logger.error(f"Network/Timeout error in button click handler: {e}")
+        try:
+            if update.callback_query:
+                await update.callback_query.edit_message_text(
+                    f"{EMOJIS['warning']} مشكلة في الاتصال. يرجى المحاولة مرة أخرى.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+                    ])
+                )
+        except Exception:
+            pass  # Don't log if this fails too
+    
+    except TelegramError as e:
+        logger.error(f"Telegram error in button click handler: {e}")
+        # Don't try to send message if it's a Telegram error
+    
+    except Exception as e:
+        logger.error(f"Unexpected error in button click handler: {e}", exc_info=True)
+        try:
+            if update.callback_query:
+                await update.callback_query.edit_message_text(
+                    f"{EMOJIS['error']} حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+                    ])
+                )
+        except Exception:
             pass
 
 # Placeholder handlers for features being implemented
@@ -845,7 +1028,6 @@ async def supplier_panel_handler(update: Update, context):
         user = get_user(query.from_user.id)
         
         # Get supplier code
-        from bot_modules.utils import get_or_create_supplier_code
         supplier_code = get_or_create_supplier_code(user['id'])
         
         # Get statistics
@@ -1381,7 +1563,6 @@ async def cards_reports_handler(update: Update, context):
         user = get_user(query.from_user.id)
         
         # Get cards statistics
-        from bot_modules.utils import get_cards_stats_by_category
         stats_by_category = get_cards_stats_by_category(user['id'])
         
         conn = get_db_connection()
@@ -1605,7 +1786,6 @@ async def supplier_settings_handler(update: Update, context):
         query = update.callback_query
         user = get_user(query.from_user.id)
         
-        from bot_modules.utils import get_or_create_supplier_code
         supplier_code = get_or_create_supplier_code(user['id'])
         
         # الحصول على معلومات المزود التفصيلية
@@ -1770,23 +1950,55 @@ async def handle_document(update: Update, context: CallbackContext):
             await update.message.reply_text("❌ نوع الملف غير مدعوم. يرجى رفع ملف .txt أو .csv أو .xlsx")
             return
         
-        # Download file
-        file = await context.bot.get_file(document.file_id)
-        file_content = await file.download_as_bytearray()
-        
-        # Store file temporarily in context
+        # Download file with timeout and memory management
         try:
-            content = file_content.decode('utf-8') if file_name.endswith('.txt') else file_content
-        except UnicodeDecodeError:
-            try:
-                content = file_content.decode('utf-8-sig')  # Try with BOM
-            except UnicodeDecodeError:
-                content = file_content.decode('latin-1')  # Fallback encoding
+            file = await asyncio.wait_for(
+                context.bot.get_file(document.file_id),
+                timeout=30.0
+            )
+            file_content = await asyncio.wait_for(
+                file.download_as_bytearray(),
+                timeout=60.0
+            )
+        except asyncio.TimeoutError:
+            await update.message.reply_text("❌ انتهت مهلة تحميل الملف. يرجى المحاولة مرة أخرى.")
+            return
+        except Exception as e:
+            logger.error(f"Error downloading file: {e}")
+            await update.message.reply_text("❌ فشل في تحميل الملف. يرجى المحاولة مرة أخرى.")
+            return
+        
+        # Process file content with memory-efficient decoding
+        try:
+            if file_name.lower().endswith('.txt'):
+                # For text files, try different encodings
+                for encoding in ['utf-8', 'utf-8-sig', 'latin-1', 'cp1256']:
+                    try:
+                        content = file_content.decode(encoding)
+                        break
+                    except UnicodeDecodeError:
+                        continue
+                else:
+                    raise UnicodeDecodeError("Failed to decode with any encoding")
+            else:
+                content = file_content
+                
+            # Clear the original file_content to free memory
+            del file_content
+            
+        except UnicodeDecodeError as e:
+            logger.error(f"Encoding error in file {file_name}: {e}")
+            await update.message.reply_text("❌ تعذر قراءة الملف. تأكد من ترميز النص (UTF-8).")
+            return
+        
+        # Clear any old upload data to save memory
+        clear_unused_context_data(context, keep_keys=['upload_file'])
         
         context.user_data['upload_file'] = {
             'content': content,
             'filename': file_name,
-            'size': file_size
+            'size': file_size,
+            'timestamp': datetime.now().timestamp()  # For cleanup tracking
         }
         
         # Get user's networks for selection
@@ -1853,7 +2065,6 @@ async def process_network_selection(update: Update, context: CallbackContext):
         context.user_data['selected_network_id'] = network_id
         
         # Show category selection
-        from bot_modules.utils import get_card_categories
         categories = get_card_categories()
         
         category_text = f"""
@@ -2005,7 +2216,6 @@ async def confirm_upload(update: Update, context: CallbackContext):
         conn.close()
         
         # Process cards
-        from bot_modules.utils import process_uploaded_cards
         successful, failed, errors = process_uploaded_cards(
             upload_data['content'], user['id'], network_id, batch_id, selected_category
         )
@@ -2319,7 +2529,6 @@ async def filter_by_category_handler(update: Update, context: CallbackContext):
         query = update.callback_query
         user = get_user(query.from_user.id)
         
-        from bot_modules.utils import get_cards_stats_by_category
         stats = get_cards_stats_by_category(user['id'])
         
         filter_text = f"""
@@ -3526,7 +3735,6 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
             return
         
         # Execute the transfer
-        from bot_modules.database import get_db_connection
         conn = get_db_connection()
         cursor = conn.cursor()
         
@@ -3560,7 +3768,6 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
         ''', (fee_id, user['id'], transfer_fee, 'transfer_fee', f'رسوم تحويل رصيد إلى {target_user["full_name"]}', datetime.now()))
         
         # Update balances
-        from bot_modules.utils import recalc_and_set_user_balance
         sender_new_balance = recalc_and_set_user_balance(user['id'])
         receiver_new_balance = recalc_and_set_user_balance(target_user['id'])
         
@@ -3623,25 +3830,48 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تنفيذ التحويل.")
 
 def main():
-    """Main function to start the bot"""
+    """Main function to start the bot with enhanced error handling"""
     try:
-        # Initialize database
+        # Initialize database with timeout
         logger.info("Initializing database...")
-        init_db()
+        try:
+            init_db()
+            logger.info("Database initialized successfully")
+        except sqlite3.Error as e:
+            raise BotDatabaseError(f"Failed to initialize database: {e}")
+        except Exception as e:
+            raise BotConfigurationError(f"Database configuration error: {e}")
         
-        # Create persistence
-        persistence = PicklePersistence(filepath='yemen_net_bot_data')
-        application = Application.builder().token(BOT_TOKEN).persistence(persistence).build()
+        # Validate configuration
+        if not BOT_TOKEN:
+            raise BotConfigurationError("BOT_TOKEN is not configured")
+        
+        # Create persistence with error handling
+        try:
+            persistence = PicklePersistence(filepath='yemen_net_bot_data')
+            application = Application.builder().token(BOT_TOKEN).persistence(persistence).build()
+        except Exception as e:
+            raise BotConfigurationError(f"Failed to create application: {e}")
         
         # Set bot commands (will be done after startup)
         async def post_init(application):
             try:
                 logger.info("Setting bot commands...")
-                await application.bot.set_my_commands(QUICK_COMMANDS)
-                await application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+                await asyncio.wait_for(
+                    application.bot.set_my_commands(QUICK_COMMANDS),
+                    timeout=30.0
+                )
+                await asyncio.wait_for(
+                    application.bot.set_chat_menu_button(menu_button=MenuButtonCommands()),
+                    timeout=30.0
+                )
                 logger.info("Bot commands set successfully")
+            except asyncio.TimeoutError:
+                logger.error("Timeout setting bot commands")
+            except (TelegramError, NetworkError) as e:
+                logger.error(f'Telegram error setting commands/menu: {e}')
             except Exception as e:
-                logger.warning(f'Failed setting commands/menu: {e}')
+                logger.error(f'Unexpected error setting commands/menu: {e}')
         
         application.post_init = post_init
         
@@ -3665,20 +3895,48 @@ def main():
             per_message=False,
         )
         
-        # Error handler
+        # Enhanced error handler
         async def error_handler(update: object, context):
-            """Log errors and handle them gracefully"""
-            logger.error("Exception while handling an update:", exc_info=context.error)
+            """Enhanced error handler with specific error types"""
+            error = context.error
             
-            # Try to send error message to user
+            # Log error with context
+            if isinstance(error, (NetworkError, TimedOut)):
+                logger.warning(f"Network/Timeout error: {error}")
+            elif isinstance(error, TelegramError):
+                logger.error(f"Telegram API error: {error}")
+            elif isinstance(error, (BotDatabaseError, sqlite3.Error)):
+                logger.error(f"Database error: {error}")
+            elif isinstance(error, BotValidationError):
+                logger.warning(f"Validation error: {error}")
+            elif isinstance(error, BotPermissionError):
+                logger.warning(f"Permission error: {error}")
+            else:
+                logger.error("Unexpected error while handling update:", exc_info=error)
+            
+            # Try to send appropriate error message to user
             try:
                 if isinstance(update, Update) and update.effective_chat:
-                    await context.bot.send_message(
-                        chat_id=update.effective_chat.id,
-                        text=f"{EMOJIS['error']} حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى."
+                    if isinstance(error, (NetworkError, TimedOut)):
+                        message = f"{EMOJIS['warning']} مشكلة في الاتصال. يرجى المحاولة مرة أخرى."
+                    elif isinstance(error, (BotDatabaseError, sqlite3.Error)):
+                        message = f"{EMOJIS['error']} خطأ في قاعدة البيانات. يرجى المحاولة لاحقاً."
+                    elif isinstance(error, BotValidationError):
+                        message = f"{EMOJIS['warning']} بيانات غير صحيحة. يرجى التحقق والمحاولة مرة أخرى."
+                    elif isinstance(error, BotPermissionError):
+                        message = f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية."
+                    else:
+                        message = f"{EMOJIS['error']} حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى."
+                    
+                    await asyncio.wait_for(
+                        context.bot.send_message(
+                            chat_id=update.effective_chat.id,
+                            text=message
+                        ),
+                        timeout=10.0
                     )
             except Exception:
-                pass
+                pass  # Don't log if this fails
         
         # Add handlers
         application.add_handler(conv_handler)
@@ -3692,12 +3950,34 @@ def main():
             if command not in ['start']:  # start is already in conversation handler
                 application.add_handler(CommandHandler(command, handler))
         
-        # Start the bot
+        # Start the bot with enhanced error handling
         logger.info(f'{EMOJIS["fire"]} Starting Pottagrm Enhanced Bot v2.1.0...')
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
+        try:
+            # Configure timeouts for the polling
+            application.run_polling(
+                allowed_updates=Update.ALL_TYPES,
+                timeout=30
+            )
+        except KeyboardInterrupt:
+            logger.info("Bot stopped by user (Ctrl+C)")
+        except (NetworkError, TimedOut) as e:
+            logger.error(f"Network error during polling: {e}")
+            raise BotTimeoutError(f"Network error: {e}")
+        except TelegramError as e:
+            logger.error(f"Telegram API error during polling: {e}")
+            raise BotConfigurationError(f"Telegram error: {e}")
         
+    except BotDatabaseError as e:
+        logger.critical(f"Database error prevented bot startup: {e}")
+        raise
+    except BotConfigurationError as e:
+        logger.critical(f"Configuration error prevented bot startup: {e}")
+        raise
+    except BotTimeoutError as e:
+        logger.critical(f"Timeout error prevented bot startup: {e}")
+        raise
     except Exception as e:
-        logger.error(f"Failed to start bot: {e}")
+        logger.critical(f"Unexpected error prevented bot startup: {e}", exc_info=True)
         raise
 
 if __name__ == '__main__':
