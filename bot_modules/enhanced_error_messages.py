@@ -188,6 +188,126 @@ class ErrorMessages:
             user_action=solution,
             error_code=code
         )
+    
+    @staticmethod
+    def coupon_error(operation: str, coupon_code: str = None, reason: str = None) -> str:
+        """خطأ الكوبونات"""
+        details = f"في {operation}"
+        if coupon_code:
+            details += f" للكوبون {coupon_code}"
+        if reason:
+            details += f" - {reason}"
+            
+        return ErrorMessages.format_error(
+            error_type="الكوبون",
+            specific_error=details,
+            user_action="تحقق من رقم الكوبون وتاريخ انتهاء الصلاحية",
+            error_code="COUPON_ERROR"
+        )
+    
+    @staticmethod
+    def search_error(search_term: str = None, search_type: str = None) -> str:
+        """خطأ البحث"""
+        details = "فشل في البحث"
+        if search_term:
+            details += f" عن '{search_term}'"
+        if search_type:
+            details += f" في {search_type}"
+            
+        return ErrorMessages.format_error(
+            error_type="البحث",
+            specific_error=details,
+            user_action="تأكد من صحة كلمات البحث أو جرب كلمات أخرى",
+            error_code="SEARCH_ERROR"
+        )
+    
+    @staticmethod
+    def wallet_error(operation: str, wallet_balance: float = None, reason: str = None) -> str:
+        """خطأ المحفظة"""
+        details = f"في عملية {operation}"
+        if wallet_balance is not None:
+            details += f" (رصيد الحالي: {wallet_balance:.2f} ريال)"
+        if reason:
+            details += f" - {reason}"
+            
+        return ErrorMessages.format_error(
+            error_type="المحفظة",
+            specific_error=details,
+            user_action="تحقق من رصيدك أو حدث البيانات وحاول مرة أخرى",
+            error_code="WALLET_ERROR"
+        )
+    
+    @staticmethod
+    def menu_error(menu_section: str, button_name: str = None) -> str:
+        """خطأ القوائم والأزرار"""
+        details = f"في قسم {menu_section}"
+        if button_name:
+            details += f" عند الضغط على '{button_name}'"
+            
+        return ErrorMessages.format_error(
+            error_type="القائمة",
+            specific_error=details,
+            user_action="أعد تحميل القائمة أو اختر خيار آخر",
+            error_code="MENU_ERROR"
+        )
+    
+    @staticmethod
+    def report_error(report_type: str, date_range: str = None) -> str:
+        """خطأ التقارير"""
+        details = f"في إنشاء تقرير {report_type}"
+        if date_range:
+            details += f" للفترة {date_range}"
+            
+        return ErrorMessages.format_error(
+            error_type="التقرير",
+            specific_error=details,
+            user_action="تحقق من الفترة الزمنية أو حاول تقرير أبسط",
+            error_code="REPORT_ERROR"
+        )
+    
+    @staticmethod
+    def notification_error(notification_type: str, recipient: str = None) -> str:
+        """خطأ الإشعارات"""
+        details = f"في إرسال إشعار {notification_type}"
+        if recipient:
+            details += f" إلى {recipient}"
+            
+        return ErrorMessages.format_error(
+            error_type="الإشعار",
+            specific_error=details,
+            user_action="تحقق من إعدادات الإشعارات أو حاول مرة أخرى",
+            error_code="NOTIF_ERROR"
+        )
+    
+    @staticmethod
+    def settings_error(setting_name: str, new_value: str = None) -> str:
+        """خطأ الإعدادات"""
+        details = f"في تعديل إعداد {setting_name}"
+        if new_value:
+            details += f" إلى '{new_value}'"
+            
+        return ErrorMessages.format_error(
+            error_type="الإعدادات",
+            specific_error=details,
+            user_action="تحقق من صحة القيمة الجديدة وحاول مرة أخرى",
+            error_code="SETTINGS_ERROR"
+        )
+    
+    @staticmethod
+    def unexpected_error(operation: str = None, context: str = None) -> str:
+        """خطأ غير متوقع - بديل محسن للرسالة المبهمة"""
+        details = "حدث خطأ تقني غير متوقع"
+        if operation:
+            details += f" أثناء {operation}"
+        if context:
+            details += f" في {context}"
+            
+        return ErrorMessages.format_error(
+            error_type="النظام",
+            specific_error=details,
+            user_action="أعد المحاولة خلال دقائق، وإذا استمرت المشكلة تواصل مع الدعم",
+            error_code="UNEXPECTED_ERROR"
+        )
 
 # دوال مساعدة للاستخدام السريع
 def db_error(operation: str, details: str = None) -> str:
@@ -209,6 +329,26 @@ def file_error(operation: str, file_type: str = None, file_size: str = None) -> 
 def balance_error(current: float, required: float) -> str:
     """اختصار لخطأ الرصيد"""
     return ErrorMessages.balance_error(current, required)
+
+def coupon_error(operation: str, code: str = None, reason: str = None) -> str:
+    """اختصار لخطأ الكوبونات"""
+    return ErrorMessages.coupon_error(operation, code, reason)
+
+def search_error(term: str = None, search_type: str = None) -> str:
+    """اختصار لخطأ البحث"""
+    return ErrorMessages.search_error(term, search_type)
+
+def wallet_error(operation: str, balance: float = None, reason: str = None) -> str:
+    """اختصار لخطأ المحفظة"""
+    return ErrorMessages.wallet_error(operation, balance, reason)
+
+def menu_error(section: str, button: str = None) -> str:
+    """اختصار لخطأ القوائم"""
+    return ErrorMessages.menu_error(section, button)
+
+def unexpected_error(operation: str = None, context: str = None) -> str:
+    """اختصار للخطأ غير المتوقع - بديل محسن للرسالة المبهمة"""
+    return ErrorMessages.unexpected_error(operation, context)
 
 # قاموس رسائل الخطأ المحسنة للاستخدام المباشر
 ENHANCED_ERRORS = {
@@ -241,4 +381,8 @@ ENHANCED_ERRORS = {
 }
 
 # تصدير الفئات والدوال
-__all__ = ['ErrorMessages', 'db_error', 'perm_error', 'net_error', 'file_error', 'balance_error', 'ENHANCED_ERRORS']
+__all__ = [
+    'ErrorMessages', 'db_error', 'perm_error', 'net_error', 'file_error', 'balance_error',
+    'coupon_error', 'search_error', 'wallet_error', 'menu_error', 'unexpected_error',
+    'ENHANCED_ERRORS'
+]

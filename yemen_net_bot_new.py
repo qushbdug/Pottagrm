@@ -59,7 +59,7 @@ try:
     # Import management modules
     from customer_management import CustomerManagement
     from admin_management import AdminManagement
-    from enhanced_error_messages import ErrorMessages, db_error, perm_error, net_error
+    from enhanced_error_messages import ErrorMessages, db_error, perm_error, net_error, unexpected_error, menu_error, wallet_error, search_error, coupon_error
 except ImportError as e:
     print(f"Error importing modules: {e}")
     print("Make sure all module files are in the bot_modules directory")
@@ -581,7 +581,7 @@ async def button_click_handler(update: Update, context):
         try:
             if update.callback_query:
                 await update.callback_query.edit_message_text(
-                    f"{EMOJIS['error']} حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.",
+                    unexpected_error("معالجة الضغط على الزر", f"زر '{callback_data}'"),
                     reply_markup=InlineKeyboardMarkup([
                         [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
                     ])
@@ -693,7 +693,7 @@ async def my_notifications_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in my notifications handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض الإشعارات.")
+        await query.edit_message_text(ErrorMessages.notification_error("عرض قائمة الإشعارات"))
 
 
 
@@ -771,7 +771,7 @@ async def buy_cards_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in buy cards handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض صفحة الشراء.")
+        await query.edit_message_text(menu_error("صفحة الشراء", "شراء الكروت"))
 
 async def transfer_handler(update: Update, context):
     """Handle transfer request"""
@@ -812,7 +812,7 @@ async def transfer_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in transfer handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض صفحة التحويل.")
+        await query.edit_message_text(wallet_error("عرض صفحة التحويل"))
 
 # Additional missing handlers
 
@@ -950,7 +950,7 @@ async def view_networks_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in view networks handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض الشبكات.")
+        await query.edit_message_text(search_error(None, "عرض قائمة الشبكات"))
 
 async def search_user_handler(update: Update, context):
     """Handle search user"""
@@ -993,7 +993,7 @@ async def search_user_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in search user handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في البحث.")
+        await query.edit_message_text(search_error("المستخدم", "قاعدة بيانات المستخدمين"))
 
 async def my_sent_ratings_handler(update: Update, context):
     """Handle my sent ratings"""
@@ -1172,7 +1172,7 @@ async def transaction_details_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in transaction details handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض تفاصيل المعاملات.")
+        await query.edit_message_text(wallet_error("عرض تفاصيل المعاملات"))
 
 async def wallet_stats_handler(update: Update, context):
     """Handle wallet statistics"""
@@ -1272,7 +1272,7 @@ async def wallet_stats_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in wallet stats handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض إحصائيات المحفظة.")
+        await query.edit_message_text(wallet_error("حساب إحصائيات المحفظة"))
 
 # Enhanced supplier handlers
 async def upload_cards_handler(update: Update, context):
@@ -1463,7 +1463,7 @@ async def cards_reports_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in cards reports handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تقارير الكروت.")
+        await query.edit_message_text(ErrorMessages.report_error("الكروت والمبيعات"))
 
 async def sales_stats_handler(update: Update, context):
     """Handle sales statistics"""
@@ -1569,7 +1569,7 @@ async def sales_stats_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in sales stats handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إحصائيات المبيعات.")
+        await query.edit_message_text(ErrorMessages.report_error("إحصائيات المبيعات"))
 
 async def upload_history_handler(update: Update, context):
     """Handle upload history"""
@@ -1624,7 +1624,7 @@ async def upload_history_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in upload history handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في سجل الرفع.")
+        await query.edit_message_text(ErrorMessages.upload_error("عرض سجل الرفع"))
 
 async def supplier_settings_handler(update: Update, context):
     """Handle supplier settings"""
@@ -1717,7 +1717,7 @@ async def supplier_settings_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in supplier settings handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إعدادات المزود.")
+        await query.edit_message_text(ErrorMessages.supplier_error("عرض الإعدادات"))
 
 async def help_handler(update: Update, context):
     """Show help information"""
@@ -1764,7 +1764,7 @@ async def help_handler(update: Update, context):
             
     except Exception as e:
         logger.error(f"Error in help handler: {e}")
-        error_text = f"{EMOJIS['error']} حدث خطأ في عرض المساعدة."
+        error_text = menu_error("صفحة المساعدة", "عرض المساعدة")
         if update.callback_query:
             await update.callback_query.edit_message_text(error_text)
         else:
@@ -2409,7 +2409,7 @@ async def process_network_selection(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error processing network selection: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في اختيار الشبكة.")
+        await query.edit_message_text(search_error("الشبكة", "معالجة الاختيار"))
 
 async def process_category_selection(update: Update, context: CallbackContext):
     """Process category selection for file upload"""
@@ -2476,7 +2476,7 @@ async def process_category_selection(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error processing category selection: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في اختيار الفئة.")
+        await query.edit_message_text(ErrorMessages.card_error("اختيار فئة الكرت"))
 
 async def cancel_upload(update: Update, context: CallbackContext):
     """Cancel file upload"""
@@ -2562,7 +2562,7 @@ async def confirm_upload(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error confirming upload: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في معالجة الرفع.")
+        await query.edit_message_text(ErrorMessages.upload_error("تأكيد الرفع"))
 
 async def notification_settings_handler(update: Update, context: CallbackContext):
     """Handle notification settings"""
@@ -2633,7 +2633,7 @@ async def notification_settings_handler(update: Update, context: CallbackContext
         
     except Exception as e:
         logger.error(f"Error in notification settings handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إعدادات الإشعارات.")
+        await query.edit_message_text(ErrorMessages.notification_error("تحديث الإعدادات"))
 
 async def choose_upload_method_handler(update: Update, context: CallbackContext):
     """Handle upload method selection"""
@@ -2670,7 +2670,7 @@ async def choose_upload_method_handler(update: Update, context: CallbackContext)
         
     except Exception as e:
         logger.error(f"Error in choose upload method handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في اختيار طريقة الرفع.")
+        await query.edit_message_text(ErrorMessages.upload_error("اختيار طريقة الرفع"))
 
 async def network_details_handler(update: Update, context: CallbackContext):
     """Handle network details view"""
@@ -2724,7 +2724,7 @@ async def network_details_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in network details handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض تفاصيل الشبكات.")
+        await query.edit_message_text(search_error("تفاصيل الشبكة", "قاعدة البيانات"))
 
 async def privacy_settings_handler(update: Update, context: CallbackContext):
     """Handle privacy settings"""
@@ -2791,7 +2791,7 @@ async def privacy_settings_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in privacy settings handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إعدادات الخصوصية.")
+        await query.edit_message_text(ErrorMessages.settings_error("الخصوصية"))
 
 async def search_networks_handler(update: Update, context: CallbackContext):
     """Handle network search functionality - interactive search"""
@@ -2898,7 +2898,7 @@ async def filter_by_category_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in filter by category handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في فلترة الكروت.")
+        await query.edit_message_text(ErrorMessages.card_error("فلترة حسب الفئة"))
 
 async def sales_reports_handler(update: Update, context: CallbackContext):
     """Handle sales reports"""
@@ -2989,7 +2989,7 @@ async def sales_reports_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in sales reports handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تقارير المبيعات.")
+        await query.edit_message_text(ErrorMessages.report_error("المبيعات"))
 
 async def add_network_handler(update: Update, context: CallbackContext):
     """Handle add network"""
@@ -3066,7 +3066,7 @@ async def add_network_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in add network handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إضافة الشبكة.")
+        await query.edit_message_text(ErrorMessages.supplier_error("إضافة شبكة جديدة"))
 
 async def promotion_details_handler(update: Update, context: CallbackContext):
     """Handle promotion details"""
@@ -3149,7 +3149,7 @@ async def promotion_details_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in promotion details handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تفاصيل العروض.")
+        await query.edit_message_text(menu_error("العروض والخصومات", "عرض التفاصيل"))
 
 async def mark_all_read_handler(update: Update, context: CallbackContext):
     """Handle mark all notifications as read"""
@@ -3160,7 +3160,7 @@ async def mark_all_read_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in mark all read handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحديث الإشعارات.")
+        await query.edit_message_text(ErrorMessages.notification_error("تحديث حالة القراءة"))
 
 async def show_network_details(update: Update, context: CallbackContext, network_id: str):
     """Show detailed information about a specific network"""
@@ -3249,7 +3249,7 @@ async def show_network_details(update: Update, context: CallbackContext, network
         
     except Exception as e:
         logger.error(f"Error in show network details: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض تفاصيل الشبكة.")
+        await query.edit_message_text(search_error("تفاصيل الشبكة", "قاعدة البيانات"))
 
 async def legacy_search_networks_handler(update: Update, context: CallbackContext):
     """Legacy search function - shows all networks (deprecated)"""
@@ -3324,7 +3324,7 @@ async def legacy_search_networks_handler(update: Update, context: CallbackContex
         
     except Exception as e:
         logger.error(f"Error in search networks handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في البحث عن الشبكات.")
+        await query.edit_message_text(search_error("الشبكات", "واجهة البحث"))
 
 async def transfer_to_friend_handler(update: Update, context: CallbackContext):
     """معالج تحويل الرصيد للأصدقاء"""
@@ -3365,7 +3365,7 @@ async def transfer_to_friend_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in transfer handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض صفحة التحويل.")
+        await query.edit_message_text(wallet_error("عرض صفحة التحويل"))
 
 async def personal_reports_handler(update: Update, context: CallbackContext):
     """معالج التقارير الشخصية"""
@@ -3448,7 +3448,7 @@ async def personal_reports_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in personal reports handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في التقارير الشخصية.")
+        await query.edit_message_text(ErrorMessages.report_error("الشخصية"))
 
 async def promotions_handler(update: Update, context: CallbackContext):
     """معالج العروض والخصومات"""
@@ -3531,7 +3531,7 @@ async def promotions_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in promotions handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في العروض والخصومات.")
+        await query.edit_message_text(menu_error("العروض والخصومات", "عرض العروض"))
 
 async def my_notifications_handler(update: Update, context: CallbackContext):
     """معالج إشعاراتي"""
@@ -3611,7 +3611,7 @@ async def my_notifications_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in my notifications handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في الإشعارات.")
+        await query.edit_message_text(ErrorMessages.notification_error("عرض الإشعارات"))
 
 async def account_settings_handler(update: Update, context: CallbackContext):
     """معالج إعدادات الحساب"""
@@ -3678,7 +3678,7 @@ async def account_settings_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in account settings handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إعدادات الحساب.")
+        await query.edit_message_text(ErrorMessages.settings_error("الحساب"))
 
 async def transfer_history_handler(update: Update, context: CallbackContext):
     """معالج سجل التحويلات"""
@@ -3762,7 +3762,7 @@ async def transfer_history_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in transfer history handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في سجل التحويلات.")
+        await query.edit_message_text(wallet_error("عرض سجل التحويلات"))
 
 async def update_profile_handler(update: Update, context: CallbackContext):
     """معالج تحديث البيانات الشخصية"""
@@ -3803,7 +3803,7 @@ async def update_profile_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in update profile handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحديث البيانات.")
+        await query.edit_message_text(ErrorMessages.settings_error("البيانات الشخصية"))
 
 async def change_password_handler(update: Update, context: CallbackContext):
     """معالج تغيير كلمة المرور"""
@@ -3851,7 +3851,7 @@ async def change_password_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in change password handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إعدادات كلمة المرور.")
+        await query.edit_message_text(ErrorMessages.settings_error("كلمة المرور"))
 
 async def contact_admin_handler(update: Update, context: CallbackContext):
     """معالج التواصل مع الإدارة"""
@@ -3912,7 +3912,7 @@ async def contact_admin_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in contact admin handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في معلومات التواصل.")
+        await query.edit_message_text(menu_error("معلومات التواصل", "الدعم الفني"))
 
 async def account_status_handler(update: Update, context: CallbackContext):
     """معالج حالة الحساب"""
@@ -4003,7 +4003,7 @@ async def account_status_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in account status handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في حالة الحساب.")
+        await query.edit_message_text(ErrorMessages.settings_error("حالة الحساب"))
 
 async def recharge_balance_handler(update: Update, context: CallbackContext):
     """Handle balance recharge"""
@@ -4051,7 +4051,7 @@ async def recharge_balance_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in recharge balance handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في شحن الرصيد.")
+        await query.edit_message_text(wallet_error("شحن الرصيد"))
 
 async def confirm_transfer_handler(update: Update, context: CallbackContext, confirmed: bool):
     """Handle transfer confirmation"""
@@ -4186,7 +4186,7 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
         
     except Exception as e:
         logger.error(f"Error in confirm transfer handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تنفيذ التحويل.")
+        await query.edit_message_text(wallet_error("تنفيذ التحويل"))
 
 def main():
     """Main function to start the bot with enhanced error handling"""
@@ -4285,7 +4285,7 @@ def main():
                     elif isinstance(error, BotPermissionError):
                         message = f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية."
                     else:
-                        message = f"{EMOJIS['error']} حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى."
+                        message = unexpected_error("تنفيذ العملية", "معالجة الطلب")
                     
                     await asyncio.wait_for(
                         context.bot.send_message(

@@ -11,6 +11,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext, ConversationHandler
 from bot_modules.config import *
 from bot_modules.utils import *
+from bot_modules.enhanced_error_messages import ErrorMessages, unexpected_error, menu_error, wallet_error, search_error, coupon_error, perm_error
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ async def start(update: Update, context: CallbackContext) -> int:
             return await register_new_user(update, context)
     except Exception as e:
         logger.error(f"Error in start handler: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ. يرجى المحاولة مرة أخرى.")
+        await update.message.reply_text(unexpected_error("العملية المطلوبة", "النظام"))
         return ConversationHandler.END
 
 async def wallet_handler(update: Update, context: CallbackContext):
@@ -57,7 +58,7 @@ async def admin_handler(update: Update, context: CallbackContext):
         return await admin_panel_handler(update, context)
     except Exception as e:
         logger.error(f"Error in admin handler: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في الوصول للوحة الإدارة.")
+        await update.message.reply_text(perm_error("إدارة النظام", "غير معروف"))
 
 async def cancel(update: Update, context: CallbackContext) -> int:
     """Handle cancellation"""
@@ -74,7 +75,7 @@ async def cancel(update: Update, context: CallbackContext) -> int:
             return ConversationHandler.END
     except Exception as e:
         logger.error(f"Error in cancel handler: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ.")
+        await update.message.reply_text(unexpected_error("تنفيذ الطلب"))
         return ConversationHandler.END
 
 # Registration handlers
@@ -101,7 +102,7 @@ async def register_new_user(update: Update, context: CallbackContext) -> int:
         return GET_FULL_NAME
     except Exception as e:
         logger.error(f"Error in register new user: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في بدء التسجيل.")
+        await update.message.reply_text(ErrorMessages.validation_error("التسجيل", "بيانات المستخدم"))
         return ConversationHandler.END
 
 async def get_full_name(update: Update, context: CallbackContext) -> int:
@@ -120,7 +121,7 @@ async def get_full_name(update: Update, context: CallbackContext) -> int:
         return GET_PHONE
     except Exception as e:
         logger.error(f"Error in get full name: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ. يرجى المحاولة مرة أخرى.")
+        await update.message.reply_text(unexpected_error("العملية المطلوبة", "النظام"))
         return GET_FULL_NAME
 
 async def get_phone(update: Update, context: CallbackContext) -> int:
@@ -169,7 +170,7 @@ async def get_phone(update: Update, context: CallbackContext) -> int:
         return CHOOSE_ROLE
     except Exception as e:
         logger.error(f"Error in get phone: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ. يرجى المحاولة مرة أخرى.")
+        await update.message.reply_text(unexpected_error("العملية المطلوبة", "النظام"))
         return GET_PHONE
 
 async def choose_role(update: Update, context: CallbackContext) -> int:
@@ -194,7 +195,7 @@ async def choose_role(update: Update, context: CallbackContext) -> int:
                 break
         
         if not wallet_number:
-            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إنشاء رقم المحفظة.")
+            await query.edit_message_text(wallet_error("إنشاء رقم المحفظة"))
             return ConversationHandler.END
         
         # Generate invite code
@@ -283,7 +284,7 @@ async def choose_role(update: Update, context: CallbackContext) -> int:
         
     except Exception as e:
         logger.error(f"Error in choose role: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إنشاء الحساب.")
+        await query.edit_message_text(ErrorMessages.validation_error("إنشاء الحساب", "اختيار الدور"))
         return ConversationHandler.END
 
 # Menu handlers
@@ -320,7 +321,7 @@ async def show_main_menu(update: Update, context: CallbackContext, role: str) ->
         
     except Exception as e:
         logger.error(f"Error in show main menu: {e}")
-        error_text = f"{EMOJIS['error']} حدث خطأ في تحميل القائمة الرئيسية."
+        error_text = menu_error("القائمة الرئيسية", "تحميل البيانات")
         if update.message:
             await update.message.reply_text(error_text)
         else:
@@ -478,7 +479,7 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
             
     except Exception as e:
         logger.error(f"Error in enhanced wallet handler: {e}")
-        error_msg = f"{EMOJIS['error']} حدث خطأ في عرض المحفظة."
+        error_msg = wallet_error("عرض تفاصيل المحفظة")
         if update.message:
             await update.message.reply_text(error_msg)
         else:
@@ -582,7 +583,7 @@ async def handle_text_message(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in handle text message: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في معالجة الرسالة.")
+        await update.message.reply_text(unexpected_error("معالجة الرسالة النصية"))
 
 # Enhanced User Features
 
@@ -808,7 +809,7 @@ async def process_balance_send(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in process balance send: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في إرسال الرصيد.")
+        await update.message.reply_text(wallet_error("إرسال الرصيد"))
 
 # New Enhanced Transfer System
 
@@ -889,7 +890,7 @@ async def process_transfer_step1(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in process transfer step 1: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في البحث عن المستخدم.")
+        await update.message.reply_text(search_error("المستخدم", "قاعدة البيانات"))
 
 async def process_transfer_step2(update: Update, context: CallbackContext):
     """Process step 2 - Get amount and show confirmation"""
@@ -971,7 +972,7 @@ async def process_transfer_step2(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in process transfer step 2: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في معالجة المبلغ.")
+        await update.message.reply_text(wallet_error("معالجة مبلغ التحويل"))
 
 async def process_simple_admin_send(update: Update, context: CallbackContext):
     """Simple admin money sending"""
@@ -1062,7 +1063,7 @@ async def process_simple_admin_send(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in simple admin send: {e}")
-        await update.message.reply_text("❌ حدث خطأ في الإرسال.")
+        await update.message.reply_text(wallet_error("إرسال الرصيد"))
 
 async def process_simple_transfer(update: Update, context: CallbackContext):
     """Simple user-to-user transfer"""
@@ -1181,7 +1182,7 @@ async def process_simple_transfer(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in simple transfer: {e}")
-        await update.message.reply_text("❌ حدث خطأ في التحويل.")
+        await update.message.reply_text(wallet_error("تنفيذ التحويل"))
 
 async def enhanced_placeholder_handler(update: Update, context: CallbackContext, title: str, description: str):
     """Enhanced placeholder for future features"""
@@ -1280,9 +1281,9 @@ async def personal_reports_handler(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in personal_reports_handler: {e}")
         if update.message:
-            await update.message.reply_text("❌ حدث خطأ في التقارير الشخصية.")
+            await update.message.reply_text(ErrorMessages.report_error("الشخصية"))
         else:
-            await update.callback_query.edit_message_text("❌ حدث خطأ في التقارير الشخصية.")
+            await update.callback_query.edit_message_text(ErrorMessages.report_error("الشخصية"))
 
 # promotions_handler removed - unified with enhanced promotions_handler in main bot
 
@@ -3005,7 +3006,7 @@ async def redeem_coupon_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in redeem coupon handler: {e}")
-        error_text = f"{EMOJIS['error']} حدث خطأ في شحن الكوبون."
+        error_text = coupon_error("شحن الكوبون")
         try:
             if update.callback_query:
                 await update.callback_query.edit_message_text(error_text)
@@ -3225,7 +3226,7 @@ async def cancel_coupon_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in cancel coupon handler: {e}")
-        await query.edit_message_text("❌ حدث خطأ في الإلغاء.")
+        await query.edit_message_text(unexpected_error("إلغاء العملية"))
 
 # معالجات الميزات الجديدة
 
@@ -3277,7 +3278,7 @@ async def contact_support_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in contact support handler: {e}")
-        await query.edit_message_text("❌ حدث خطأ في عرض معلومات الدعم.")
+        await query.edit_message_text(menu_error("معلومات الدعم", "تحميل البيانات"))
 
 async def process_supplier_network_creation(update: Update, context: CallbackContext):
     """معالجة إضافة الشبكة للمزود خطوة بخطوة"""

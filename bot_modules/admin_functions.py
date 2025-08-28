@@ -12,7 +12,7 @@ from telegram.ext import CallbackContext
 from bot_modules.config import *
 from bot_modules.database import get_db_connection
 from bot_modules.utils import *
-from bot_modules.enhanced_error_messages import ErrorMessages, perm_error, db_error
+from bot_modules.enhanced_error_messages import ErrorMessages, perm_error, db_error, unexpected_error, menu_error, wallet_error, coupon_error
 
 logger = logging.getLogger(__name__)
 
@@ -232,7 +232,7 @@ async def process_balance_issue(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in process balance issue: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في تحويل الرصيد.")
+        await update.message.reply_text(wallet_error("تحويل الرصيد للمستخدم"))
 
 # Add transfer to user button in admin panel
 async def admin_send_money_handler(update: Update, context: CallbackContext):
@@ -266,7 +266,7 @@ async def admin_send_money_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in admin send money: {e}")
-        await query.edit_message_text("❌ حدث خطأ في إرسال الرصيد.")
+        await query.edit_message_text(wallet_error("إرسال الرصيد"))
         
 
 
@@ -347,7 +347,7 @@ async def activate_suppliers_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in activate suppliers handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحميل قائمة المزودين.")
+        await query.edit_message_text(ErrorMessages.supplier_error("تحميل قائمة المزودين"))
 
 async def activate_single_supplier(update: Update, context: CallbackContext, supplier_id: str):
     """Activate a single supplier"""
@@ -415,7 +415,7 @@ async def activate_single_supplier(update: Update, context: CallbackContext, sup
         
     except Exception as e:
         logger.error(f"Error activating supplier: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تفعيل المزود.")
+        await query.edit_message_text(ErrorMessages.supplier_error("تفعيل المزود"))
 
 async def activate_all_suppliers(update: Update, context: CallbackContext):
     """Activate all pending suppliers"""
@@ -485,7 +485,7 @@ async def activate_all_suppliers(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error activating all suppliers: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تفعيل المزودين.")
+        await query.edit_message_text(ErrorMessages.supplier_error("تفعيل جماعي للمزودين"))
 
 async def platform_management_handler(update: Update, context: CallbackContext):
     """Handle platform management for super admin"""
@@ -549,7 +549,7 @@ async def platform_management_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in platform management: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحميل إدارة المنصة.")
+        await query.edit_message_text(ErrorMessages.admin_error("تحميل إدارة المنصة"))
 
 # Additional admin handlers for missing callbacks
 async def placeholder_handler(update, context, feature_name):
@@ -579,7 +579,7 @@ async def placeholder_handler(update, context, feature_name):
         
     except Exception as e:
         logger.error(f"Error in placeholder handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ.")
+        await query.edit_message_text(unexpected_error("تنفيذ العملية المطلوبة"))
 
 # Placeholder handlers for missing features
 
@@ -657,7 +657,7 @@ async def backup_handler(update, context):
         
     except Exception as e:
         logger.error(f"Error in backup handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحميل إدارة النسخ الاحتياطي.")
+        await query.edit_message_text(ErrorMessages.admin_error("تحميل إدارة النسخ الاحتياطي"))
 async def executive_reports_handler(update: Update, context: CallbackContext):
     """التقارير التنفيذية الشاملة"""
     try:
@@ -826,7 +826,7 @@ async def executive_reports_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in executive reports: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في التقارير التنفيذية.")
+        await query.edit_message_text(ErrorMessages.report_error("التنفيذية للإدارة"))
 
 
 
@@ -903,7 +903,7 @@ async def manage_admins_handler(update, context):
         
     except Exception as e:
         logger.error(f"Error in manage admins handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحميل إدارة المشرفين.")
+        await query.edit_message_text(ErrorMessages.admin_error("تحميل إدارة المشرفين"))
 
 async def dashboard_handler(update, context):
     """Handle dashboard display"""
@@ -988,7 +988,7 @@ async def dashboard_handler(update, context):
         
     except Exception as e:
         logger.error(f"Error in dashboard handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحميل لوحة المعلومات.")
+        await query.edit_message_text(menu_error("لوحة المعلومات", "تحميل البيانات"))
 
 async def view_all_suppliers_handler(update, context):
     return await placeholder_handler(update, context, "عرض جميع المزودين")
@@ -1039,7 +1039,7 @@ async def issue_recharge_cards_handler(update: Update, context: CallbackContext)
         
     except Exception as e:
         logger.error(f"Error in issue recharge cards handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في بدء عملية إصدار البطاقات.")
+        await query.edit_message_text(ErrorMessages.card_error("بدء إصدار البطاقات"))
 
 async def process_recharge_cards_issue(update: Update, context: CallbackContext):
     """Process recharge cards issuance from super admin"""
@@ -1131,7 +1131,7 @@ async def process_recharge_cards_issue(update: Update, context: CallbackContext)
         
     except Exception as e:
         logger.error(f"Error in process recharge cards issue: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في إصدار البطاقات.")
+        await update.message.reply_text(ErrorMessages.card_error("إصدار البطاقات"))
 
 async def admin_wallet_handler(update: Update, context: CallbackContext):
     """Simple admin wallet - view balance and add money"""
@@ -1193,7 +1193,7 @@ async def admin_wallet_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in admin wallet: {e}")
-        await query.edit_message_text("❌ حدث خطأ في عرض المحفظة.")
+        await query.edit_message_text(wallet_error("عرض محفظة الإدارة"))
 
 
 
@@ -1235,7 +1235,7 @@ async def broadcast_message_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in broadcast message handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في بدء الإرسال الجماعي.")
+        await query.edit_message_text(ErrorMessages.notification_error("بدء الإرسال الجماعي"))
 
 async def process_broadcast_message(update: Update, context: CallbackContext):
     """Process broadcast message from super admin"""
@@ -1321,7 +1321,7 @@ async def process_broadcast_message(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in process broadcast message: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في الإرسال الجماعي.")
+        await update.message.reply_text(ErrorMessages.notification_error("تنفيذ الإرسال الجماعي"))
 
 async def update_commands_handler(update: Update, context: CallbackContext):
     """Update bot sidebar commands"""
@@ -1354,7 +1354,7 @@ async def update_commands_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in update commands handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحديث الأوامر.")
+        await query.edit_message_text(ErrorMessages.admin_error("تحديث أوامر البوت"))
 
 def generate_card_code():
     """Generate unique recharge card code"""
@@ -1414,7 +1414,7 @@ async def system_settings_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in system settings handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إدارة إعدادات النظام.")
+        await query.edit_message_text(ErrorMessages.settings_error("النظام"))
 
 async def dashboard_handler(update: Update, context: CallbackContext):
     """Handle dashboard view"""
@@ -1548,7 +1548,7 @@ async def dashboard_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in dashboard handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض لوحة المعلومات.")
+        await query.edit_message_text(menu_error("لوحة المعلومات", "عرض البيانات"))
 
 async def manage_admins_handler(update: Update, context: CallbackContext):
     """إدارة المشرفين المتقدمة مع جميع الصلاحيات"""
@@ -1651,7 +1651,7 @@ async def manage_admins_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in manage admins handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إدارة المشرفين.")
+        await query.edit_message_text(ErrorMessages.admin_error("إدارة المشرفين"))
 
 async def manage_users_handler(update: Update, context: CallbackContext):
     """إدارة المستخدمين المتقدمة للمشرف الأعلى"""
@@ -1767,7 +1767,7 @@ async def manage_users_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in manage users handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إدارة المستخدمين.")
+        await query.edit_message_text(ErrorMessages.admin_error("إدارة المستخدمين"))
 
 async def backup_handler(update: Update, context: CallbackContext):
     """Handle backup operations"""
@@ -1802,7 +1802,7 @@ async def backup_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in backup handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إدارة النسخ الاحتياطي.")
+        await query.edit_message_text(ErrorMessages.admin_error("إدارة النسخ الاحتياطي"))
 
 # Placeholder functions for features that need detailed implementation
 async def platform_management_handler(update, context):
@@ -2414,7 +2414,7 @@ async def commission_management_handler(update: Update, context: CallbackContext
         
     except Exception as e:
         logger.error(f"Error in commission management: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إدارة العمولات.")
+        await query.edit_message_text(ErrorMessages.admin_error("إدارة العمولات"))
 
 async def edit_commission_handler(update: Update, context: CallbackContext):
     """تعديل العمولات"""
@@ -2475,7 +2475,7 @@ async def edit_commission_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in edit commission handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تعديل العمولات.")
+        await query.edit_message_text(ErrorMessages.admin_error("تعديل العمولات"))
 
 async def edit_specific_commission(update: Update, context: CallbackContext, commission_id: str):
     """تعديل عمولة محددة"""
@@ -2548,7 +2548,7 @@ async def edit_specific_commission(update: Update, context: CallbackContext, com
         
     except Exception as e:
         logger.error(f"Error in edit specific commission: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تعديل العمولة.")
+        await query.edit_message_text(ErrorMessages.admin_error("تعديل العمولة المحددة"))
 
 # Update ADMIN_CALLBACKS with newly defined handlers
 ADMIN_CALLBACKS.update({
@@ -2693,7 +2693,7 @@ async def create_coupons_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in create coupons handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض إنشاء الكوبونات.")
+        await query.edit_message_text(coupon_error("عرض واجهة إنشاء الكوبونات"))
 
 async def create_quick_coupon_handler(update: Update, context: CallbackContext, amount: int):
     """إنشاء كوبون سريع بقيمة محددة"""
@@ -2766,7 +2766,7 @@ async def create_quick_coupon_handler(update: Update, context: CallbackContext, 
         
     except Exception as e:
         logger.error(f"Error creating quick coupon: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إنشاء الكوبون.")
+        await query.edit_message_text(coupon_error("إنشاء الكوبون"))
 
 async def coupons_stats_handler(update: Update, context: CallbackContext):
     """عرض إحصائيات الكوبونات"""
@@ -2824,7 +2824,7 @@ async def coupons_stats_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in coupons stats: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض الإحصائيات.")
+        await query.edit_message_text(coupon_error("عرض إحصائيات الكوبونات"))
 
 async def list_coupons_handler(update: Update, context: CallbackContext):
     """عرض قائمة الكوبونات"""
@@ -2881,5 +2881,5 @@ async def list_coupons_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in list coupons: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض قائمة الكوبونات.")
+        await query.edit_message_text(coupon_error("عرض قائمة الكوبونات"))
 
