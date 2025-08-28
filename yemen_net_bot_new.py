@@ -239,6 +239,19 @@ async def button_click_handler(update: Update, context):
         elif callback_data.startswith('network_'):
             network_id = callback_data.split('_')[1]
             return await show_network_details(update, context, network_id)
+        elif callback_data.startswith('buy_from_network_'):
+            network_id = callback_data.split('_')[3]
+            return await show_network_categories(update, context, network_id)
+        elif callback_data.startswith('select_category_'):
+            parts = callback_data.split('_')
+            network_id = parts[2]
+            price = parts[3]
+            return await confirm_card_purchase(update, context, network_id, price)
+        elif callback_data.startswith('confirm_purchase_'):
+            parts = callback_data.split('_')
+            network_id = parts[2]
+            price = parts[3]
+            return await process_card_purchase(update, context, network_id, price)
         elif callback_data == 'all_networks':
             return await view_networks_handler(update, context)
         elif callback_data == 'mobile_networks':
@@ -4646,6 +4659,319 @@ async def wallet_page_handler(update: Update, context: CallbackContext):
             "حاول العودة للمحفظة الرئيسية وأعد المحاولة",
             "PAGE_NAV_ERROR"
         ))
+
+async def show_network_categories(update: Update, context: CallbackContext, network_id: str):
+    """عرض فئات الكروت المتاحة في الشبكة للشراء"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        if not user:
+            await query.edit_message_text(
+                "❌ يرجى التسجيل أولاً /start",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton('🔙 العودة', callback_data='search_networks')
+                ]])
+            )
+            return
+        
+        # الحصول على معلومات الشبكة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT name, provider FROM networks WHERE id = ? AND is_active = 1', (network_id,))
+        network = cursor.fetchone()
+        
+        if not network:
+            await query.edit_message_text(
+                "❌ الشبكة غير موجودة أو غير متاحة",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton('🔙 العودة', callback_data='search_networks')
+                ]])
+            )
+            return
+        
+        network_name, provider = network
+        
+        # الحصول على فئات الكروت المتاحة
+        cursor.execute('''
+            SELECT DISTINCT nc.card_value as price, COUNT(*) as stock_count
+            FROM network_cards nc
+            WHERE nc.network_id = ? AND nc.is_sold = 0
+            GROUP BY nc.card_value
+            ORDER BY nc.card_value ASC
+        ''', (network_id,))
+        categories = cursor.fetchall()
+        
+        conn.close()
+        
+        categories_text = f"""
+🛒 **شراء كروت من {network_name}** 🛒
+
+👤 **{user['full_name']}**
+💰 رصيدك: **{user['balance']:,.2f}** ريال
+
+🏪 **المزود:** {provider}
+
+💳 **الفئات المتاحة:**
+
+"""
+        
+        keyboard = []
+        
+        if categories:
+            for price, stock_count in categories:
+                # إضافة زر لكل فئة
+                button_text = f"💰 {price:,.0f} ريال ({stock_count} كرت متاح)"
+                keyboard.append([InlineKeyboardButton(
+                    button_text,
+                    callback_data=f"select_category_{network_id}_{price}"
+                )])
+                
+                categories_text += f"""
+🎫 **كرت بقيمة {price:,.0f} ريال**
+📦 المتاح: **{stock_count}** كرت
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+        else:
+            categories_text += "❌ لا توجد فئات متاحة حالياً"
+        
+        # إضافة أزرار العودة
+        keyboard.extend([
+            [InlineKeyboardButton('🔙 تفاصيل الشبكة', callback_data=f'network_{network_id}'),
+             InlineKeyboardButton('🔍 البحث في الشبكات', callback_data='search_networks')],
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ])
+        
+        await query.edit_message_text(categories_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in show network categories: {e}")
+        from enhanced_error_messages import ErrorMessages
+        await query.edit_message_text(ErrorMessages.custom_error(
+            "عرض فئات الكروت",
+            "فشل في تحميل فئات الكروت المتاحة",
+            "تحقق من الاتصال وحاول مرة أخرى",
+            "CATEGORIES_ERROR"
+        ))
+
+async def confirm_card_purchase(update: Update, context: CallbackContext, network_id: str, price: str):
+    """تأكيد شراء الكرت"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        if not user:
+            await query.edit_message_text("❌ يرجى التسجيل أولاً /start")
+            return
+        
+        # الحصول على معلومات الشبكة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT name, provider FROM networks WHERE id = ? AND is_active = 1', (network_id,))
+        network = cursor.fetchone()
+        
+        if not network:
+            await query.edit_message_text("❌ الشبكة غير موجودة أو غير متاحة")
+            return
+        
+        network_name, provider = network
+        card_price = float(price)
+        
+        # التحقق من توفر الكرت
+        cursor.execute('''
+            SELECT COUNT(*) FROM network_cards 
+            WHERE network_id = ? AND card_value = ? AND is_sold = 0
+        ''', (network_id, card_price))
+        available_count = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        if available_count == 0:
+            await query.edit_message_text(
+                f"❌ عذراً، لا توجد كروت متاحة بقيمة {card_price:,.0f} ريال",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton('🔙 العودة للفئات', callback_data=f'buy_from_network_{network_id}')
+                ]])
+            )
+            return
+        
+        # التحقق من الرصيد
+        if user['balance'] < card_price:
+            await query.edit_message_text(
+                f"❌ رصيدك ({user['balance']:,.2f} ريال) غير كافي لشراء كرت بقيمة {card_price:,.0f} ريال",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton('💳 شحن الرصيد', callback_data='enhanced_wallet'),
+                    InlineKeyboardButton('🔙 العودة', callback_data=f'buy_from_network_{network_id}')
+                ]])
+            )
+            return
+        
+        # عرض تأكيد الشراء
+        confirm_text = f"""
+🛒 **تأكيد الشراء** 🛒
+
+👤 **{user['full_name']}**
+💰 رصيدك: **{user['balance']:,.2f}** ريال
+
+📋 **تفاصيل الشراء:**
+🏪 الشبكة: **{network_name}**
+👤 المزود: **{provider}**
+💰 قيمة الكرت: **{card_price:,.0f}** ريال
+📦 متاح: **{available_count}** كرت
+
+💳 **بعد الشراء:**
+رصيدك الجديد: **{user['balance'] - card_price:,.0f}** ريال
+
+❓ **هل أنت متأكد من الشراء؟**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('✅ نعم، أريد الشراء', callback_data=f'confirm_purchase_{network_id}_{price}'),
+             InlineKeyboardButton('❌ لا، إلغاء', callback_data=f'buy_from_network_{network_id}')]
+        ]
+        
+        await query.edit_message_text(confirm_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in confirm card purchase: {e}")
+        from enhanced_error_messages import ErrorMessages
+        await query.edit_message_text(ErrorMessages.custom_error(
+            "تأكيد الشراء",
+            "فشل في تحميل معلومات التأكيد",
+            "حاول مرة أخرى أو تواصل مع الدعم",
+            "CONFIRM_ERROR"
+        ))
+
+async def process_card_purchase(update: Update, context: CallbackContext, network_id: str, price: str):
+    """تنفيذ شراء الكرت"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        if not user:
+            await query.edit_message_text("❌ يرجى التسجيل أولاً /start")
+            return
+        
+        # الحصول على معلومات الشبكة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # بدء معاملة قاعدة البيانات
+        cursor.execute('BEGIN TRANSACTION')
+        
+        try:
+            cursor.execute('SELECT name, provider, supplier_id FROM networks WHERE id = ? AND is_active = 1', (network_id,))
+            network = cursor.fetchone()
+            
+            if not network:
+                raise Exception("الشبكة غير موجودة أو غير متاحة")
+            
+            network_name, provider, supplier_id = network
+            card_price = float(price)
+            
+            # التحقق من توفر الكرت (مع قفل للصف لتجنب التضارب)
+            cursor.execute('''
+                SELECT id FROM network_cards 
+                WHERE network_id = ? AND card_value = ? AND is_sold = 0
+                LIMIT 1
+            ''', (network_id, card_price))
+            
+            card_result = cursor.fetchone()
+            if not card_result:
+                raise Exception(f"لا توجد كروت متاحة بقيمة {card_price:,.0f} ريال")
+            
+            card_id = card_result[0]
+            
+            # التحقق من الرصيد مرة أخرى
+            cursor.execute('SELECT balance FROM users WHERE telegram_id = ?', (user['telegram_id'],))
+            current_balance = cursor.fetchone()[0]
+            
+            if current_balance < card_price:
+                raise Exception(f"رصيدك ({current_balance:,.2f} ريال) غير كافي")
+            
+            # تحديث حالة الكرت إلى مباع
+            cursor.execute('UPDATE network_cards SET is_sold = 1, sold_at = datetime("now") WHERE id = ?', (card_id,))
+            
+            # خصم المبلغ من رصيد المشتري
+            cursor.execute('UPDATE users SET balance = balance - ? WHERE telegram_id = ?', (card_price, user['telegram_id']))
+            
+            # إضافة المبلغ لرصيد المزود
+            cursor.execute('UPDATE users SET balance = balance + ? WHERE id = ?', (card_price, supplier_id))
+            
+            # إنشاء معاملة في السجل
+            import uuid
+            transaction_id = str(uuid.uuid4())
+            
+            cursor.execute('''
+                INSERT INTO transactions (id, from_user, to_user, amount, type, description, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, datetime("now"))
+            ''', (transaction_id, user['id'], supplier_id, card_price, 'card_purchase', 
+                  f"شراء كرت {card_price:,.0f} ريال من شبكة {network_name}"))
+            
+            # الحصول على معلومات الكرت
+            cursor.execute('SELECT card_code FROM network_cards WHERE id = ?', (card_id,))
+            card_code = cursor.fetchone()[0]
+            
+            # تأكيد المعاملة
+            cursor.execute('COMMIT')
+            
+            # عرض نتيجة الشراء الناجح
+            success_text = f"""
+✅ **تم الشراء بنجاح!** ✅
+
+👤 **{user['full_name']}**
+
+📋 **تفاصيل الشراء:**
+🏪 الشبكة: **{network_name}**
+👤 المزود: **{provider}**
+💰 المبلغ المدفوع: **{card_price:,.0f}** ريال
+
+🎫 **بيانات الكرت:**
+🔢 رقم الكرت: `{card_code}`
+💰 القيمة: **{card_price:,.0f}** ريال
+
+💳 **رصيدك الجديد:** {current_balance - card_price:,.2f} ريال
+
+📋 **معرف المعاملة:** `{transaction_id[:8]}`
+⏰ **وقت الشراء:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+🎉 **شكراً لاستخدام خدماتنا!**
+"""
+            
+            keyboard = [
+                [InlineKeyboardButton('🛒 شراء كرت آخر', callback_data=f'buy_from_network_{network_id}'),
+                 InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet')],
+                [InlineKeyboardButton('🔍 البحث في الشبكات', callback_data='search_networks'),
+                 InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            ]
+            
+            await query.edit_message_text(success_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            
+        except Exception as e:
+            # إلغاء المعاملة في حالة الخطأ
+            cursor.execute('ROLLBACK')
+            raise e
+            
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        logger.error(f"Error in process card purchase: {e}")
+        from enhanced_error_messages import ErrorMessages
+        await query.edit_message_text(
+            ErrorMessages.custom_error(
+                "تنفيذ الشراء",
+                f"فشل في إتمام عملية الشراء - {str(e)}",
+                "تحقق من رصيدك وتوفر الكروت وحاول مرة أخرى",
+                "PURCHASE_ERROR"
+            ),
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton('🔄 إعادة المحاولة', callback_data=f'buy_from_network_{network_id}'),
+                 InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            ])
+        )
 
 
 # معالجات إدارة الشبكات للمشرف الأعلى
