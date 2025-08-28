@@ -399,10 +399,14 @@ async def button_click_handler(update: Update, context):
             await process_network_selection(update, context)
         elif callback_data.startswith('select_category_'):
             await process_category_selection(update, context)
+        elif callback_data.startswith('price_'):
+            await process_price_selection(update, context)
         elif callback_data == 'cancel_upload':
             await cancel_upload(update, context)
         elif callback_data == 'confirm_upload':
             await confirm_upload(update, context)
+        elif callback_data == 'confirm_simplified_upload':
+            await confirm_simplified_upload(update, context)
         elif callback_data == 'notification_settings':
             await notification_settings_handler(update, context)
         elif callback_data == 'choose_upload_method':
@@ -1414,30 +1418,35 @@ async def upload_cards_handler(update: Update, context):
         upload_text = f"""
 📤 **رفع كروت الشبكة** 📤
 
-🎯 **طريقة رفع الكروت:**
+👤 **{user['full_name']}**
 
-📋 **الصيغة المدعومة:**
-1️⃣ **ملف نصي (.txt)** - كل رقم في سطر منفصل
-2️⃣ **ملف إكسل (.xlsx)** - عمود الأرقام
+🎯 **الطريقة المبسطة الجديدة:**
 
-📝 **صيغة الأرقام:**
-• كل رقم من 6 إلى 14 رقم
-• يمكن إضافة القيمة: `رقم_الكارت,القيمة`
-• مثال: `123456789012,50`
+📋 **فقط ملف نصي (.txt)**
+• كل رقم كرت في سطر منفصل
+• مثال:
+```
+123456789012
+123456789013
+123456789014
+```
 
-⚡ **خطوات الرفع:**
-1. أرسل الملف (نصي أو إكسل)
-2. اختر الشبكة المرتبطة
-3. تأكيد الرفع والمعالجة
+🔄 **خطوات سريعة:**
+1️⃣ **ارفع ملف TXT** مع أرقام الكروت
+2️⃣ **اختر السعر** من القائمة
+3️⃣ **أدخل حجم الكرت** (مثل: 1 جيجا)
 
-🚀 **ابدأ برفع ملف الكروت الآن!**
+📁 **ارفع ملف TXT الآن مباشرة!**
+(قم بسحب وإفلات الملف في المحادثة)
 """
         
         keyboard = [
-            [InlineKeyboardButton('📁 اختر طريقة الرفع', callback_data='choose_upload_method')],
             [InlineKeyboardButton('📋 عرض سجل الرفع', callback_data='upload_history')],
             [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
         ]
+        
+        # تفعيل وضع انتظار الملف
+        context.user_data['awaiting_card_upload'] = True
         
         await query.edit_message_text(upload_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
@@ -1892,7 +1901,7 @@ async def help_handler(update: Update, context):
             await update.message.reply_text(error_text)
 
 async def handle_document(update: Update, context: CallbackContext):
-    """Handle uploaded documents for card upload"""
+    """Handle uploaded documents for simplified card upload - TXT only"""
     try:
         if not update.message or not update.message.document:
             return
@@ -1900,6 +1909,11 @@ async def handle_document(update: Update, context: CallbackContext):
         user = get_user(update.message.from_user.id)
         if not user or user['role'] != 'supplier':
             await update.message.reply_text("❌ هذه الميزة متاحة للمزودين فقط.")
+            return
+        
+        # التحقق من وضع انتظار رفع الكروت
+        if not context.user_data.get('awaiting_card_upload'):
+            await update.message.reply_text("❌ لم يتم طلب رفع كروت. اذهب للوحة المزود أولاً.")
             return
         
         document = update.message.document
@@ -1911,10 +1925,26 @@ async def handle_document(update: Update, context: CallbackContext):
             await update.message.reply_text("❌ حجم الملف كبير جداً. الحد الأقصى 10 ميجابايت.")
             return
         
-        # Check file type
-        allowed_extensions = ['.txt', '.csv', '.xlsx', '.xls']
-        if not any(file_name.lower().endswith(ext) for ext in allowed_extensions):
-            await update.message.reply_text("❌ نوع الملف غير مدعوم. يرجى رفع ملف .txt أو .csv أو .xlsx")
+        # Check file type - TXT only for simplified process
+        if not file_name.lower().endswith('.txt'):
+            await update.message.reply_text("""
+❌ **ملف غير مدعوم**
+
+🎯 **النظام المبسط الجديد:**
+يدعم فقط ملفات **TXT** (.txt)
+
+📋 **كيفية إنشاء الملف:**
+• افتح برنامج Notepad أو أي محرر نصوص
+• اكتب كل رقم كرت في سطر منفصل
+• احفظ الملف بصيغة TXT
+
+💡 **مثال على المحتوى:**
+```
+123456789012
+123456789013
+123456789014
+```
+""", parse_mode='Markdown')
             return
         
         # Download file with timeout and memory management
@@ -1968,44 +1998,453 @@ async def handle_document(update: Update, context: CallbackContext):
             'timestamp': datetime.now().timestamp()  # For cleanup tracking
         }
         
-        # Get user's networks for selection
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT id, name FROM networks WHERE supplier_id = ? AND is_active = 1', (user['id'],))
-        networks = cursor.fetchall()
-        conn.close()
+        # تحليل محتوى الملف للتحقق من صحته
+        lines = [line.strip() for line in content.split('\n') if line.strip()]
+        valid_cards = []
         
-        if not networks:
+        for line in lines:
+            # إزالة أي مسافات وتحقق من صحة الرقم
+            card_number = line.strip()
+            if len(card_number) >= 6 and card_number.isdigit():
+                valid_cards.append(card_number)
+        
+        if not valid_cards:
             await update.message.reply_text("""
-❌ **لا توجد شبكات مفعلة**
+❌ **لا توجد أرقام كروت صحيحة في الملف**
 
-يجب أن يكون لديك شبكة مفعلة لرفع الكروت.
-اتصل بالإدارة لتفعيل شبكاتك أو أضف شبكة جديدة.
+📋 **تأكد من:**
+• كل رقم في سطر منفصل
+• الأرقام تحتوي على 6 أرقام على الأقل
+• عدم وجود رموز أو حروف
+
+💡 **مثال صحيح:**
+```
+123456789012
+123456789013
+123456789014
+```
 """, parse_mode='Markdown')
             return
         
-        # Show network selection
-        keyboard = []
-        for network in networks:
-            keyboard.append([InlineKeyboardButton(f"📶 {network['name']}", callback_data=f"select_network_{network['id']}")])
+        # حفظ الكروت الصحيحة
+        context.user_data['upload_file']['valid_cards'] = valid_cards
+        context.user_data['awaiting_card_upload'] = False
         
-        keyboard.append([InlineKeyboardButton("❌ إلغاء", callback_data="cancel_upload")])
-        
-        await update.message.reply_text(f"""
-📤 **ملف جاهز للرفع**
-
-📁 **اسم الملف:** {file_name}
-📊 **حجم الملف:** {file_size/1024:.1f} كيلوبايت
-
-🎯 **خطوة 1: اختر الشبكة المرتبطة بهذه الكروت:**
-""", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        # الانتقال مباشرة لاختيار السعر
+        await show_price_selection(update, context, file_name, len(valid_cards))
         
     except Exception as e:
         logger.error(f"Error handling document: {e}")
+        from enhanced_error_messages import ErrorMessages
         await update.message.reply_text(ErrorMessages.file_error(
             "معالجة الملف المرفوع",
-            "ملف غير معروف",
-            "حجم غير محدد"
+            "TXT",
+            f"{file_size/1024:.1f} KB" if 'file_size' in locals() else "غير محدد"
+        ))
+
+async def show_price_selection(update: Update, context: CallbackContext, filename: str, card_count: int):
+    """عرض خيارات اختيار السعر"""
+    try:
+        # خيارات السعر الافتراضية
+        price_options = [
+            ("10", "10 ريال"),
+            ("15", "15 ريال"), 
+            ("20", "20 ريال"),
+            ("25", "25 ريال"),
+            ("30", "30 ريال"),
+            ("50", "50 ريال"),
+            ("75", "75 ريال"),
+            ("100", "100 ريال"),
+            ("custom", "سعر مخصص")
+        ]
+        
+        price_text = f"""
+💰 **اختيار سعر الكروت** 💰
+
+📁 **الملف:** {filename}
+📊 **عدد الكروت:** {card_count} كرت
+
+🎯 **خطوة 2: اختر سعر الكرت الواحد:**
+"""
+        
+        keyboard = []
+        # إنشاء صفوف الأزرار (3 أزرار في كل صف)
+        for i in range(0, len(price_options), 3):
+            row = []
+            for j in range(3):
+                if i + j < len(price_options):
+                    price_value, price_label = price_options[i + j]
+                    row.append(InlineKeyboardButton(price_label, callback_data=f"price_{price_value}"))
+            keyboard.append(row)
+        
+        # زر الإلغاء
+        keyboard.append([InlineKeyboardButton("❌ إلغاء", callback_data="cancel_upload")])
+        
+        await update.message.reply_text(price_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error showing price selection: {e}")
+        from enhanced_error_messages import ErrorMessages
+        await update.message.reply_text(ErrorMessages.custom_error(
+            "اختيار السعر",
+            "فشل في عرض خيارات الأسعار",
+            "حاول إعادة رفع الملف مرة أخرى",
+            "PRICE_SELECT_ERROR"
+        ))
+
+async def process_price_selection(update: Update, context: CallbackContext):
+    """معالجة اختيار السعر"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        callback_data = query.data
+        price_value = callback_data.split('_')[1]
+        
+        upload_data = context.user_data.get('upload_file')
+        if not upload_data:
+            await query.edit_message_text("❌ لم يتم العثور على بيانات الملف. يرجى إعادة رفع الملف.")
+            return
+        
+        if price_value == "custom":
+            # طلب إدخال سعر مخصص
+            custom_text = f"""
+💰 **إدخال سعر مخصص** 💰
+
+📁 **الملف:** {upload_data['filename']}
+📊 **عدد الكروت:** {len(upload_data['valid_cards'])} كرت
+
+✍️ **أدخل السعر المطلوب (بالريال):**
+مثال: 35 أو 47.5
+"""
+            
+            keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="cancel_upload")]]
+            
+            await query.edit_message_text(custom_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            context.user_data['awaiting_custom_price'] = True
+            return
+        
+        # حفظ السعر المختار
+        context.user_data['selected_price'] = float(price_value)
+        
+        # الانتقال لإدخال حجم الكرت
+        await show_card_size_input(update, context)
+        
+    except Exception as e:
+        logger.error(f"Error processing price selection: {e}")
+        from enhanced_error_messages import ErrorMessages
+        await query.edit_message_text(ErrorMessages.custom_error(
+            "اختيار السعر",
+            "فشل في معالجة السعر المختار",
+            "حاول اختيار السعر مرة أخرى",
+            "PRICE_PROCESS_ERROR"
+        ))
+
+async def show_card_size_input(update: Update, context: CallbackContext):
+    """عرض طلب إدخال حجم الكرت"""
+    try:
+        query = update.callback_query
+        upload_data = context.user_data.get('upload_file')
+        selected_price = context.user_data.get('selected_price')
+        
+        size_text = f"""
+📏 **إدخال حجم الكرت** 📏
+
+📁 **الملف:** {upload_data['filename']}
+📊 **عدد الكروت:** {len(upload_data['valid_cards'])} كرت
+💰 **السعر:** {selected_price} ريال للكرت
+
+🎯 **خطوة 3: أدخل حجم الكرت**
+
+✍️ **أمثلة على الحجم:**
+• 1 جيجا
+• 2 جيجا
+• 5 جيجا
+• 500 ميجا
+• 1.5 جيجا
+
+📝 **اكتب حجم الكرت الآن:**
+"""
+        
+        keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="cancel_upload")]]
+        
+        await query.edit_message_text(size_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        context.user_data['awaiting_card_size'] = True
+        
+    except Exception as e:
+        logger.error(f"Error showing card size input: {e}")
+        from enhanced_error_messages import ErrorMessages
+        await query.edit_message_text(ErrorMessages.custom_error(
+            "إدخال حجم الكرت",
+            "فشل في عرض شاشة إدخال الحجم",
+            "حاول إعادة اختيار السعر",
+            "SIZE_INPUT_ERROR"
+        ))
+
+async def handle_text_message(update: Update, context: CallbackContext):
+    """معالج الرسائل النصية لإدخال السعر المخصص وحجم الكرت"""
+    try:
+        user = get_user(update.message.from_user.id)
+        if not user or user['role'] != 'supplier':
+            return
+        
+        message_text = update.message.text.strip()
+        
+        # التحقق من إدخال السعر المخصص
+        if context.user_data.get('awaiting_custom_price'):
+            try:
+                price = float(message_text.replace(',', '.'))
+                if price <= 0:
+                    await update.message.reply_text("❌ السعر يجب أن يكون أكبر من صفر. حاول مرة أخرى:")
+                    return
+                
+                # حفظ السعر المخصص
+                context.user_data['selected_price'] = price
+                context.user_data['awaiting_custom_price'] = False
+                
+                # الانتقال لإدخال حجم الكرت
+                await show_card_size_input_from_text(update, context)
+                
+            except ValueError:
+                await update.message.reply_text("❌ يرجى إدخال رقم صحيح للسعر. مثال: 35 أو 47.5")
+            return
+        
+        # التحقق من إدخال حجم الكرت
+        if context.user_data.get('awaiting_card_size'):
+            # حفظ حجم الكرت
+            context.user_data['card_size'] = message_text
+            context.user_data['awaiting_card_size'] = False
+            
+            # عرض ملخص نهائي وتأكيد الرفع
+            await show_final_confirmation(update, context)
+            return
+            
+    except Exception as e:
+        logger.error(f"Error in handle_text_message: {e}")
+        from enhanced_error_messages import ErrorMessages
+        await update.message.reply_text(ErrorMessages.custom_error(
+            "معالجة الرسالة",
+            "فشل في معالجة النص المدخل",
+            "تأكد من صحة البيانات وحاول مرة أخرى",
+            "TEXT_PROCESS_ERROR"
+        ))
+
+async def show_card_size_input_from_text(update: Update, context: CallbackContext):
+    """عرض طلب إدخال حجم الكرت من الرسالة النصية"""
+    try:
+        upload_data = context.user_data.get('upload_file')
+        selected_price = context.user_data.get('selected_price')
+        
+        size_text = f"""
+📏 **إدخال حجم الكرت** 📏
+
+📁 **الملف:** {upload_data['filename']}
+📊 **عدد الكروت:** {len(upload_data['valid_cards'])} كرت
+💰 **السعر:** {selected_price} ريال للكرت
+
+🎯 **خطوة 3: أدخل حجم الكرت**
+
+✍️ **أمثلة على الحجم:**
+• 1 جيجا
+• 2 جيجا  
+• 5 جيجا
+• 500 ميجا
+• 1.5 جيجا
+
+📝 **اكتب حجم الكرت الآن:**
+"""
+        
+        keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="cancel_upload")]]
+        
+        await update.message.reply_text(size_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        context.user_data['awaiting_card_size'] = True
+        
+    except Exception as e:
+        logger.error(f"Error showing card size input from text: {e}")
+        from enhanced_error_messages import ErrorMessages
+        await update.message.reply_text(ErrorMessages.custom_error(
+            "إدخال حجم الكرت",
+            "فشل في عرض شاشة إدخال الحجم",
+            "حاول إعادة العملية من البداية",
+            "SIZE_INPUT_ERROR"
+        ))
+
+async def show_final_confirmation(update: Update, context: CallbackContext):
+    """عرض الملخص النهائي وتأكيد الرفع"""
+    try:
+        upload_data = context.user_data.get('upload_file')
+        selected_price = context.user_data.get('selected_price')
+        card_size = context.user_data.get('card_size')
+        
+        # الحصول على شبكة المستخدم (في النظام الجديد كل مزود له شبكة واحدة)
+        user = get_user(update.message.from_user.id)
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, name FROM networks WHERE supplier_id = ? AND is_active = 1', (user['id'],))
+        network = cursor.fetchone()
+        conn.close()
+        
+        if not network:
+            await update.message.reply_text("""
+❌ **لا توجد شبكة مفعلة**
+
+يجب أن يكون لديك شبكة مفعلة لرفع الكروت.
+اتصل بالإدارة لتفعيل شبكتك.
+""", parse_mode='Markdown')
+            context.user_data.clear()
+            return
+        
+        # حفظ معرف الشبكة
+        context.user_data['selected_network_id'] = network['id']
+        
+        total_value = len(upload_data['valid_cards']) * selected_price
+        
+        confirmation_text = f"""
+✅ **تأكيد رفع الكروت** ✅
+
+📁 **الملف:** {upload_data['filename']}
+📶 **الشبكة:** {network['name']}
+📊 **عدد الكروت:** {len(upload_data['valid_cards'])} كرت
+💰 **سعر الكرت:** {selected_price} ريال
+📏 **حجم الكرت:** {card_size}
+💵 **إجمالي القيمة:** {total_value} ريال
+
+🔍 **معاينة أول 5 كروت:**
+```
+{chr(10).join(upload_data['valid_cards'][:5])}
+{"..." if len(upload_data['valid_cards']) > 5 else ""}
+```
+
+🚀 **هل تريد إتمام عملية الرفع؟**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton("✅ تأكيد الرفع", callback_data="confirm_simplified_upload")],
+            [InlineKeyboardButton("❌ إلغاء", callback_data="cancel_upload")]
+        ]
+        
+        await update.message.reply_text(confirmation_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error showing final confirmation: {e}")
+        from enhanced_error_messages import ErrorMessages
+        await update.message.reply_text(ErrorMessages.custom_error(
+            "التأكيد النهائي",
+            "فشل في عرض ملخص العملية",
+            "حاول إعادة العملية من البداية",
+            "CONFIRMATION_ERROR"
+        ))
+
+async def confirm_simplified_upload(update: Update, context: CallbackContext):
+    """تأكيد الرفع في النظام المبسط"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        upload_data = context.user_data.get('upload_file')
+        selected_price = context.user_data.get('selected_price')
+        card_size = context.user_data.get('card_size')
+        network_id = context.user_data.get('selected_network_id')
+        
+        if not all([upload_data, selected_price, card_size, network_id]):
+            await query.edit_message_text("❌ بيانات غير مكتملة. يرجى إعادة العملية من البداية.")
+            return
+        
+        # إنشاء batch_id لهذه العملية
+        import uuid
+        batch_id = str(uuid.uuid4())
+        
+        # تسجيل عملية الرفع في قاعدة البيانات
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO upload_batches (id, supplier_id, network_id, filename, total_cards, 
+                                        successful_cards, failed_cards, upload_status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        ''', (batch_id, user['id'], network_id, upload_data['filename'], 
+              len(upload_data['valid_cards']), 0, 0, 'processing'))
+        conn.commit()
+        conn.close()
+        
+        # معالجة الكروت مع السعر والحجم
+        successful_count = 0
+        failed_count = 0
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        for card_number in upload_data['valid_cards']:
+            try:
+                # التحقق من عدم وجود الكرت مسبقاً
+                cursor.execute('SELECT id FROM network_cards WHERE card_number = ?', (card_number,))
+                if cursor.fetchone():
+                    failed_count += 1
+                    continue
+                
+                # إدراج الكرت الجديد
+                cursor.execute('''
+                    INSERT INTO network_cards (network_id, card_number, price, size, status, 
+                                               created_at, batch_id, added_by)
+                    VALUES (?, ?, ?, ?, 'available', datetime('now'), ?, ?)
+                ''', (network_id, card_number, selected_price, card_size, batch_id, user['id']))
+                
+                successful_count += 1
+                
+            except Exception as e:
+                logger.error(f"Error inserting card {card_number}: {e}")
+                failed_count += 1
+        
+        # تحديث إحصائيات batch
+        cursor.execute('''
+            UPDATE upload_batches 
+            SET successful_cards = ?, failed_cards = ?, upload_status = ? 
+            WHERE id = ?
+        ''', (successful_count, failed_count, 'completed', batch_id))
+        
+        conn.commit()
+        conn.close()
+        
+        # مسح بيانات العملية
+        context.user_data.clear()
+        
+        # إرسال نتائج العملية
+        total_value = successful_count * selected_price
+        success_rate = (successful_count / len(upload_data['valid_cards']) * 100) if upload_data['valid_cards'] else 0
+        
+        result_text = f"""
+🎉 **اكتمل رفع الكروت بنجاح!** 🎉
+
+📁 **الملف:** {upload_data['filename']}
+📏 **حجم الكرت:** {card_size}
+
+📊 **النتائج:**
+✅ **نجح:** {successful_count} كرت
+❌ **فشل:** {failed_count} كرت
+📈 **معدل النجاح:** {success_rate:.1f}%
+
+💰 **تفاصيل مالية:**
+💵 **سعر الكرت:** {selected_price} ريال
+💸 **إجمالي القيمة:** {total_value} ريال
+
+🏪 **العودة للوحة المزود للإدارة والمتابعة**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')],
+            [InlineKeyboardButton('📋 سجل الرفع', callback_data='upload_history')],
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(result_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in confirm simplified upload: {e}")
+        from enhanced_error_messages import ErrorMessages
+        await query.edit_message_text(ErrorMessages.custom_error(
+            "تأكيد الرفع",
+            "فشل في إتمام عملية رفع الكروت",
+            "تحقق من الاتصال وحاول مرة أخرى",
+            "UPLOAD_CONFIRM_ERROR"
         ))
 
 async def process_network_selection(update: Update, context: CallbackContext):
