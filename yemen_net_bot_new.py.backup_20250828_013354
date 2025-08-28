@@ -28,38 +28,29 @@ from telegram.ext import (
 
 # Import our modular components
 try:
-    # Import configuration and database
     from config import *
     from database import init_db, get_db_connection
-    
-    # Import utilities
-    from utils import (
-        get_user, recalc_and_set_user_balance,
-        get_or_create_supplier_code, get_cards_stats_by_category,
-        get_card_categories, process_uploaded_cards, calculate_user_rating,
-        get_user_permissions
-    )
-    
-    # Import handlers
+    from utils import *
     from handlers import (
         COMMAND_HANDLERS, CONVERSATION_STATES, handle_text_message, show_main_menu,
         redeem_coupon_handler, cancel_coupon_handler, quick_transfer_handler,
         select_user_for_transfer, process_amount_selection, process_card_purchase,
-        skip_network_location, search_by_type_handler, choose_role
+        skip_network_location, search_by_type_handler, choose_role,
+
     )
-    
-    # Import admin functions
     from admin_functions import (
-        ADMIN_CALLBACKS, activate_single_supplier, admin_panel_handler,
-        admin_add_offers_handler, accounting_system_handler,
-        create_coupons_handler, create_quick_coupon_handler,
-        coupons_stats_handler, list_coupons_handler
+        ADMIN_CALLBACKS, activate_single_supplier,
+
+        admin_panel_handler
     )
-    
-    # Import management modules
     from customer_management import CustomerManagement
     from admin_management import AdminManagement
-    from enhanced_error_messages import ErrorMessages, db_error, perm_error, net_error, unexpected_error, menu_error, wallet_error, search_error, coupon_error
+    from enhanced_error_messages import ErrorMessages, db_error, perm_error, net_error
+    # Import additional utilities
+    from utils import (
+        get_or_create_supplier_code, get_cards_stats_by_category,
+        get_card_categories, process_uploaded_cards, recalc_and_set_user_balance
+    )
 except ImportError as e:
     print(f"Error importing modules: {e}")
     print("Make sure all module files are in the bot_modules directory")
@@ -216,8 +207,12 @@ async def button_click_handler(update: Update, context):
             await query.edit_message_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
             return
         
-        # Update user activity (temporarily disabled to avoid errors)
-        # TODO: Re-implement update_user_activity function
+        # Update user activity
+        try:
+            update_user_activity(user['id'])
+        except sqlite3.Error as e:
+            logger.error(f"Failed to update user activity for {user['id']}: {e}")
+            # Continue execution, this is not critical
         
         # Route to appropriate handlers
         
@@ -337,30 +332,6 @@ async def button_click_handler(update: Update, context):
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
                 return
         
-        # Coupon quick creation handlers
-        elif callback_data.startswith('create_quick_coupon_'):
-            if user['role'] != 'super_admin':
-                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
-                return
-            amount = int(callback_data.split('_')[-1])
-            from bot_modules.admin_functions import create_quick_coupon_handler
-            return await create_quick_coupon_handler(update, context, amount)
-        
-        # Additional coupon handlers
-        elif callback_data == 'coupons_stats':
-            if user['role'] != 'super_admin':
-                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
-                return
-            from bot_modules.admin_functions import coupons_stats_handler
-            return await coupons_stats_handler(update, context)
-        
-        elif callback_data == 'list_coupons':
-            if user['role'] != 'super_admin':
-                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
-                return
-            from bot_modules.admin_functions import list_coupons_handler
-            return await list_coupons_handler(update, context)
-        
         # Supplier activation (specific handling)
         elif callback_data.startswith('activate_supplier_'):
             if user['role'] == 'super_admin':
@@ -456,8 +427,14 @@ async def button_click_handler(update: Update, context):
             await mark_all_read_handler(update, context)
         elif callback_data == 'recharge_balance':
             await recharge_balance_handler(update, context)
+        elif callback_data == 'personal_reports':
+            await personal_reports_handler(update, context)
+        elif callback_data == 'promotions':
+            await promotions_handler(update, context)
         elif callback_data == 'my_notifications':
             await my_notifications_handler(update, context)
+        elif callback_data == 'account_settings':
+            await account_settings_handler(update, context)
         elif callback_data == 'transfer_history':
             await transfer_history_handler(update, context)
         elif callback_data == 'update_profile':
@@ -498,12 +475,6 @@ async def button_click_handler(update: Update, context):
 
                 # Default fallback for unrecognized callbacks
         else:
-            # Handle unified commands (search_networks and promotions now handled here)
-            if callback_data == 'search_networks':
-                return await search_networks_handler(update, context)
-            elif callback_data == 'promotions':
-                return await promotions_handler(update, context)
-            
             # Try dynamic dispatch to existing command handlers before fallback UI
             try:
                 if callback_data in COMMAND_HANDLERS:
@@ -581,7 +552,7 @@ async def button_click_handler(update: Update, context):
         try:
             if update.callback_query:
                 await update.callback_query.edit_message_text(
-                    unexpected_error("معالجة الضغط على الزر", f"زر '{callback_data}'"),
+                    f"{EMOJIS['error']} حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.",
                     reply_markup=InlineKeyboardMarkup([
                         [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
                     ])
@@ -590,6 +561,62 @@ async def button_click_handler(update: Update, context):
             pass
 
 # Placeholder handlers for features being implemented
+async def personal_reports_handler(update: Update, context):
+    """Show personal reports"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        # Get user statistics
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT COUNT(*) as total_purchases, SUM(amount) as total_spent
+            FROM transactions 
+            WHERE from_user = ? AND type = 'purchase'
+        ''', (user['id'],))
+        
+        stats = cursor.fetchone()
+        total_purchases = stats['total_purchases'] or 0
+        total_spent = stats['total_spent'] or 0.0
+        
+        conn.close()
+        
+        report_text = f"""
+📊 **تقاريري الشخصية** 📊
+
+👤 **{user['full_name']}**
+
+📈 **إحصائيات الشراء:**
+🛒 إجمالي المشتريات: **{total_purchases}**
+💰 إجمالي المبلغ المصروف: **{total_spent:.2f}** ريال
+📅 عضو منذ: {user['created_at'][:10]}
+⚡ آخر نشاط: {user['last_activity'][:10]}
+
+🎯 **معدلات الاستخدام:**
+📊 متوسط الشراء الشهري: قيد الحساب
+🔥 الشبكة المفضلة: قيد التحليل
+⭐ تقييمي: {calculate_user_rating(user['id'])['average_rating']}/5
+
+📈 **التقارير المفصلة متاحة الآن في القوائم المتقدمة**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton(f'📊 تحليل مفصل', callback_data='detailed_analysis')],
+            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(report_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in personal reports handler: {e}")
+        await query.edit_message_text(ErrorMessages.custom_error(
+            "عرض التقارير", 
+            "فشل في تحميل بيانات التقارير من قاعدة البيانات", 
+            "تحقق من الاتصال وأعد المحاولة، أو تواصل مع الدعم إذا استمرت المشكلة",
+            "REPORT_ERROR"
+        ))
 
 async def my_ratings_handler(update: Update, context):
     """Show user ratings"""
@@ -693,11 +720,114 @@ async def my_notifications_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in my notifications handler: {e}")
-        await query.edit_message_text(ErrorMessages.notification_error("عرض قائمة الإشعارات"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض الإشعارات.")
 
+async def promotions_handler(update: Update, context):
+    """Show available promotions"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        # Get active promotions
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT * FROM promotions 
+            WHERE is_active = 1 
+            AND start_date <= ? 
+            AND end_date >= ?
+            AND (target_user_role IS NULL OR target_user_role = ?)
+            ORDER BY created_at DESC 
+            LIMIT 5
+        ''', (datetime.now(), datetime.now(), user['role']))
+        
+        promotions = cursor.fetchall()
+        conn.close()
+        
+        promo_text = f"""
+🎁 **العروض والخصومات** 🎁
 
+👤 **{user['full_name']}**
 
+🔥 **العروض المتاحة حالياً:**
+"""
+        
+        if promotions:
+            for promo in promotions:
+                discount_text = f"{promo['discount_percentage']}%" if promo['discount_percentage'] > 0 else f"{promo['discount_amount']} ريال"
+                promo_text += f"""
+💫 **{promo['title']}**
+📝 {promo['description'][:50]}...
+💰 خصم: {discount_text}
+📅 ينتهي: {promo['end_date'][:10]}
+---
+"""
+        else:
+            promo_text += "\nلا توجد عروض متاحة حالياً"
+        
+        keyboard = [
+            [InlineKeyboardButton(f'🎯 تفاصيل العروض', callback_data='promotion_details')],
+            [InlineKeyboardButton(f'📜 استخدام كود خصم', callback_data='use_promo_code')],
+            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(promo_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in promotions handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض العروض.")
 
+async def account_settings_handler(update: Update, context):
+    """Show account settings"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        permissions = get_user_permissions(user['id'])
+        
+                # تحديد نوع الحساب
+        role_names = {
+            'user': 'عميل', 
+ 
+            'supplier': 'مزود', 
+            'admin': 'مشرف', 
+            'super_admin': 'مشرف أعلى'
+        }
+        
+        settings_text = f"""
+⚙️ **إعدادات الحساب** ⚙️
+
+👤 **معلومات الحساب:**
+📛 الاسم: **{user['full_name']}**
+📞 الهاتف: **{user['phone']}**
+🏷️ النوع: **{USER_ROLES.get(user['role'], user['role'])}**
+💳 رقم المحفظة: **{user['wallet_number']}**
+📅 تاريخ التسجيل: {user['created_at'][:10]}
+⚡ الحالة: {"مفعل" if user['is_active'] else "غير مفعل"}
+
+🔐 **الصلاحيات:**
+"""
+        
+        if permissions:
+            for perm in permissions:
+                settings_text += f"✅ {PERMISSIONS.get(perm, perm)}\n"
+        else:
+            settings_text += "📋 الصلاحيات الأساسية فقط"
+        
+        keyboard = [
+            [InlineKeyboardButton(f'🔔 إعدادات الإشعارات', callback_data='notification_preferences'),
+             InlineKeyboardButton(f'🔒 الأمان والخصوصية', callback_data='privacy_settings')],
+            [InlineKeyboardButton(f'📱 تغيير رقم الهاتف', callback_data='change_phone'),
+             InlineKeyboardButton(f'🎫 دعوة صديق', callback_data='invite_friend')],
+            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(settings_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in account settings handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض الإعدادات.")
 
 async def buy_cards_handler(update: Update, context):
     """Handle buy cards request"""
@@ -771,7 +901,7 @@ async def buy_cards_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in buy cards handler: {e}")
-        await query.edit_message_text(menu_error("صفحة الشراء", "شراء الكروت"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض صفحة الشراء.")
 
 async def transfer_handler(update: Update, context):
     """Handle transfer request"""
@@ -812,7 +942,7 @@ async def transfer_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in transfer handler: {e}")
-        await query.edit_message_text(wallet_error("عرض صفحة التحويل"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض صفحة التحويل.")
 
 # Additional missing handlers
 
@@ -950,7 +1080,7 @@ async def view_networks_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in view networks handler: {e}")
-        await query.edit_message_text(search_error(None, "عرض قائمة الشبكات"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض الشبكات.")
 
 async def search_user_handler(update: Update, context):
     """Handle search user"""
@@ -993,7 +1123,7 @@ async def search_user_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in search user handler: {e}")
-        await query.edit_message_text(search_error("المستخدم", "قاعدة بيانات المستخدمين"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في البحث.")
 
 async def my_sent_ratings_handler(update: Update, context):
     """Handle my sent ratings"""
@@ -1172,7 +1302,7 @@ async def transaction_details_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in transaction details handler: {e}")
-        await query.edit_message_text(wallet_error("عرض تفاصيل المعاملات"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض تفاصيل المعاملات.")
 
 async def wallet_stats_handler(update: Update, context):
     """Handle wallet statistics"""
@@ -1272,7 +1402,7 @@ async def wallet_stats_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in wallet stats handler: {e}")
-        await query.edit_message_text(wallet_error("حساب إحصائيات المحفظة"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض إحصائيات المحفظة.")
 
 # Enhanced supplier handlers
 async def upload_cards_handler(update: Update, context):
@@ -1463,7 +1593,7 @@ async def cards_reports_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in cards reports handler: {e}")
-        await query.edit_message_text(ErrorMessages.report_error("الكروت والمبيعات"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تقارير الكروت.")
 
 async def sales_stats_handler(update: Update, context):
     """Handle sales statistics"""
@@ -1569,7 +1699,7 @@ async def sales_stats_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in sales stats handler: {e}")
-        await query.edit_message_text(ErrorMessages.report_error("إحصائيات المبيعات"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إحصائيات المبيعات.")
 
 async def upload_history_handler(update: Update, context):
     """Handle upload history"""
@@ -1624,7 +1754,7 @@ async def upload_history_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in upload history handler: {e}")
-        await query.edit_message_text(ErrorMessages.upload_error("عرض سجل الرفع"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في سجل الرفع.")
 
 async def supplier_settings_handler(update: Update, context):
     """Handle supplier settings"""
@@ -1717,7 +1847,7 @@ async def supplier_settings_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in supplier settings handler: {e}")
-        await query.edit_message_text(ErrorMessages.supplier_error("عرض الإعدادات"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إعدادات المزود.")
 
 async def help_handler(update: Update, context):
     """Show help information"""
@@ -1764,7 +1894,7 @@ async def help_handler(update: Update, context):
             
     except Exception as e:
         logger.error(f"Error in help handler: {e}")
-        error_text = menu_error("صفحة المساعدة", "عرض المساعدة")
+        error_text = f"{EMOJIS['error']} حدث خطأ في عرض المساعدة."
         if update.callback_query:
             await update.callback_query.edit_message_text(error_text)
         else:
@@ -2052,50 +2182,42 @@ async def show_card_size_input(update: Update, context: CallbackContext):
         ))
 
 async def handle_text_message(update: Update, context: CallbackContext):
-    """معالج الرسائل النصية لجميع المستخدمين"""
+    """معالج الرسائل النصية لإدخال السعر المخصص وحجم الكرت"""
     try:
         user = get_user(update.message.from_user.id)
-        if not user:
+        if not user or user['role'] != 'supplier':
             return
-            
-        # استيراد معالج النصوص من handlers.py للحالات العامة
-        from bot_modules.handlers import handle_text_message as general_text_handler
         
-        # إذا كان المستخدم مورد ولديه حالات خاصة
-        if user['role'] == 'supplier':
-            message_text = update.message.text.strip()
-            
-            # التحقق من إدخال السعر المخصص
-            if context.user_data.get('awaiting_custom_price'):
-                try:
-                    price = float(message_text.replace(',', '.'))
-                    if price <= 0:
-                        await update.message.reply_text("❌ السعر يجب أن يكون أكبر من صفر. حاول مرة أخرى:")
-                        return
-                    
-                    # حفظ السعر المخصص
-                    context.user_data['selected_price'] = price
-                    context.user_data['awaiting_custom_price'] = False
-                    
-                    # الانتقال لإدخال حجم الكرت
-                    await show_card_size_input_from_text(update, context)
-                    
-                except ValueError:
-                    await update.message.reply_text("❌ يرجى إدخال رقم صحيح للسعر. مثال: 35 أو 47.5")
-                return
-            
-            # التحقق من إدخال حجم الكرت
-            if context.user_data.get('awaiting_card_size'):
-                # حفظ حجم الكرت
-                context.user_data['card_size'] = message_text
-                context.user_data['awaiting_card_size'] = False
+        message_text = update.message.text.strip()
+        
+        # التحقق من إدخال السعر المخصص
+        if context.user_data.get('awaiting_custom_price'):
+            try:
+                price = float(message_text.replace(',', '.'))
+                if price <= 0:
+                    await update.message.reply_text("❌ السعر يجب أن يكون أكبر من صفر. حاول مرة أخرى:")
+                    return
                 
-                # عرض ملخص نهائي وتأكيد الرفع
-                await show_final_confirmation(update, context)
-                return
+                # حفظ السعر المخصص
+                context.user_data['selected_price'] = price
+                context.user_data['awaiting_custom_price'] = False
+                
+                # الانتقال لإدخال حجم الكرت
+                await show_card_size_input_from_text(update, context)
+                
+            except ValueError:
+                await update.message.reply_text("❌ يرجى إدخال رقم صحيح للسعر. مثال: 35 أو 47.5")
+            return
         
-        # للمستخدمين الآخرين (العملاء والمشرفين) - استخدام المعالج العام
-        await general_text_handler(update, context)
+        # التحقق من إدخال حجم الكرت
+        if context.user_data.get('awaiting_card_size'):
+            # حفظ حجم الكرت
+            context.user_data['card_size'] = message_text
+            context.user_data['awaiting_card_size'] = False
+            
+            # عرض ملخص نهائي وتأكيد الرفع
+            await show_final_confirmation(update, context)
+            return
             
     except Exception as e:
         logger.error(f"Error in handle_text_message: {e}")
@@ -2224,27 +2346,8 @@ async def confirm_simplified_upload(update: Update, context: CallbackContext):
         card_size = context.user_data.get('card_size')
         network_id = context.user_data.get('selected_network_id')
         
-        # التحقق من البيانات المطلوبة مع رسائل مفصلة
-        missing_data = []
-        if not upload_data:
-            missing_data.append("ملف الكروت")
-        if not selected_price:
-            missing_data.append("سعر الكرت")
-        if not card_size:
-            missing_data.append("حجم الكرت")
-        if not network_id:
-            missing_data.append("معرف الشبكة")
-            
-        if missing_data:
-            await query.edit_message_text(f"""
-❌ **بيانات مفقودة**
-
-البيانات التالية مطلوبة لإتمام العملية:
-{chr(10).join(['• ' + item for item in missing_data])}
-
-يرجى إعادة العملية من البداية.
-""", parse_mode='Markdown')
-            context.user_data.clear()
+        if not all([upload_data, selected_price, card_size, network_id]):
+            await query.edit_message_text("❌ بيانات غير مكتملة. يرجى إعادة العملية من البداية.")
             return
         
         # إنشاء batch_id لهذه العملية
@@ -2255,7 +2358,7 @@ async def confirm_simplified_upload(update: Update, context: CallbackContext):
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO card_upload_batches (id, supplier_id, network_id, filename, total_cards, 
+            INSERT INTO upload_batches (id, supplier_id, network_id, filename, total_cards, 
                                         successful_cards, failed_cards, upload_status, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
         ''', (batch_id, user['id'], network_id, upload_data['filename'], 
@@ -2273,19 +2376,17 @@ async def confirm_simplified_upload(update: Update, context: CallbackContext):
         for card_number in upload_data['valid_cards']:
             try:
                 # التحقق من عدم وجود الكرت مسبقاً
-                cursor.execute('SELECT id FROM network_cards WHERE card_code = ?', (card_number,))
+                cursor.execute('SELECT id FROM network_cards WHERE card_number = ?', (card_number,))
                 if cursor.fetchone():
                     failed_count += 1
                     continue
                 
-                # إدراج الكرت الجديد - إنشاء ID فريد
-                import uuid
-                card_id = str(uuid.uuid4())
+                # إدراج الكرت الجديد
                 cursor.execute('''
-                    INSERT INTO network_cards (id, supplier_id, network_id, card_code, card_value, 
-                                               upload_batch_id, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-                ''', (card_id, user['id'], network_id, card_number, selected_price, batch_id))
+                    INSERT INTO network_cards (network_id, card_number, price, size, status, 
+                                               created_at, batch_id, added_by)
+                    VALUES (?, ?, ?, ?, 'available', datetime('now'), ?, ?)
+                ''', (network_id, card_number, selected_price, card_size, batch_id, user['id']))
                 
                 successful_count += 1
                 
@@ -2295,7 +2396,7 @@ async def confirm_simplified_upload(update: Update, context: CallbackContext):
         
         # تحديث إحصائيات batch
         cursor.execute('''
-            UPDATE card_upload_batches 
+            UPDATE upload_batches 
             SET successful_cards = ?, failed_cards = ?, upload_status = ? 
             WHERE id = ?
         ''', (successful_count, failed_count, 'completed', batch_id))
@@ -2409,7 +2510,7 @@ async def process_network_selection(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error processing network selection: {e}")
-        await query.edit_message_text(search_error("الشبكة", "معالجة الاختيار"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في اختيار الشبكة.")
 
 async def process_category_selection(update: Update, context: CallbackContext):
     """Process category selection for file upload"""
@@ -2476,7 +2577,7 @@ async def process_category_selection(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error processing category selection: {e}")
-        await query.edit_message_text(ErrorMessages.card_error("اختيار فئة الكرت"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في اختيار الفئة.")
 
 async def cancel_upload(update: Update, context: CallbackContext):
     """Cancel file upload"""
@@ -2562,7 +2663,7 @@ async def confirm_upload(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error confirming upload: {e}")
-        await query.edit_message_text(ErrorMessages.upload_error("تأكيد الرفع"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في معالجة الرفع.")
 
 async def notification_settings_handler(update: Update, context: CallbackContext):
     """Handle notification settings"""
@@ -2633,7 +2734,7 @@ async def notification_settings_handler(update: Update, context: CallbackContext
         
     except Exception as e:
         logger.error(f"Error in notification settings handler: {e}")
-        await query.edit_message_text(ErrorMessages.notification_error("تحديث الإعدادات"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إعدادات الإشعارات.")
 
 async def choose_upload_method_handler(update: Update, context: CallbackContext):
     """Handle upload method selection"""
@@ -2670,7 +2771,7 @@ async def choose_upload_method_handler(update: Update, context: CallbackContext)
         
     except Exception as e:
         logger.error(f"Error in choose upload method handler: {e}")
-        await query.edit_message_text(ErrorMessages.upload_error("اختيار طريقة الرفع"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في اختيار طريقة الرفع.")
 
 async def network_details_handler(update: Update, context: CallbackContext):
     """Handle network details view"""
@@ -2724,7 +2825,7 @@ async def network_details_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in network details handler: {e}")
-        await query.edit_message_text(search_error("تفاصيل الشبكة", "قاعدة البيانات"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض تفاصيل الشبكات.")
 
 async def privacy_settings_handler(update: Update, context: CallbackContext):
     """Handle privacy settings"""
@@ -2791,19 +2892,13 @@ async def privacy_settings_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in privacy settings handler: {e}")
-        await query.edit_message_text(ErrorMessages.settings_error("الخصوصية"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إعدادات الخصوصية.")
 
 async def search_networks_handler(update: Update, context: CallbackContext):
     """Handle network search functionality - interactive search"""
     try:
-        # دعم كل من الأوامر المباشرة والأزرار
-        if update.callback_query:
-            query = update.callback_query
-            user = get_user(query.from_user.id)
-            is_callback = True
-        else:
-            user = get_user(update.message.from_user.id)
-            is_callback = False
+        query = update.callback_query
+        user = get_user(query.from_user.id)
         
         search_text = f"""
 🔍 **البحث في الشبكات** 🔍
@@ -2835,27 +2930,17 @@ async def search_networks_handler(update: Update, context: CallbackContext):
         # Set context for search mode
         context.user_data['awaiting_network_search'] = True
         
-        if is_callback:
-            await update.callback_query.edit_message_text(search_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        else:
-            await update.message.reply_text(search_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await query.edit_message_text(search_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
     except Exception as e:
         logger.error(f"Error in search networks handler: {e}")
         from enhanced_error_messages import ErrorMessages
-        error_text = ErrorMessages.custom_error(
+        await query.edit_message_text(ErrorMessages.custom_error(
             "البحث في الشبكات",
             "فشل في تحميل واجهة البحث",
             "تحقق من الاتصال وحاول مرة أخرى",
             "SEARCH_INIT_ERROR"
-        )
-        try:
-            if update.callback_query:
-                await update.callback_query.edit_message_text(error_text)
-            else:
-                await update.message.reply_text(error_text)
-        except:
-            pass
+        ))
 
 async def filter_by_category_handler(update: Update, context: CallbackContext):
     """Handle filtering cards by category"""
@@ -2898,7 +2983,7 @@ async def filter_by_category_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in filter by category handler: {e}")
-        await query.edit_message_text(ErrorMessages.card_error("فلترة حسب الفئة"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في فلترة الكروت.")
 
 async def sales_reports_handler(update: Update, context: CallbackContext):
     """Handle sales reports"""
@@ -2989,7 +3074,7 @@ async def sales_reports_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in sales reports handler: {e}")
-        await query.edit_message_text(ErrorMessages.report_error("المبيعات"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تقارير المبيعات.")
 
 async def add_network_handler(update: Update, context: CallbackContext):
     """Handle add network"""
@@ -3066,7 +3151,7 @@ async def add_network_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in add network handler: {e}")
-        await query.edit_message_text(ErrorMessages.supplier_error("إضافة شبكة جديدة"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إضافة الشبكة.")
 
 async def promotion_details_handler(update: Update, context: CallbackContext):
     """Handle promotion details"""
@@ -3149,7 +3234,7 @@ async def promotion_details_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in promotion details handler: {e}")
-        await query.edit_message_text(menu_error("العروض والخصومات", "عرض التفاصيل"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تفاصيل العروض.")
 
 async def mark_all_read_handler(update: Update, context: CallbackContext):
     """Handle mark all notifications as read"""
@@ -3160,7 +3245,7 @@ async def mark_all_read_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in mark all read handler: {e}")
-        await query.edit_message_text(ErrorMessages.notification_error("تحديث حالة القراءة"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحديث الإشعارات.")
 
 async def show_network_details(update: Update, context: CallbackContext, network_id: str):
     """Show detailed information about a specific network"""
@@ -3249,7 +3334,7 @@ async def show_network_details(update: Update, context: CallbackContext, network
         
     except Exception as e:
         logger.error(f"Error in show network details: {e}")
-        await query.edit_message_text(search_error("تفاصيل الشبكة", "قاعدة البيانات"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض تفاصيل الشبكة.")
 
 async def legacy_search_networks_handler(update: Update, context: CallbackContext):
     """Legacy search function - shows all networks (deprecated)"""
@@ -3324,7 +3409,7 @@ async def legacy_search_networks_handler(update: Update, context: CallbackContex
         
     except Exception as e:
         logger.error(f"Error in search networks handler: {e}")
-        await query.edit_message_text(search_error("الشبكات", "واجهة البحث"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في البحث عن الشبكات.")
 
 async def transfer_to_friend_handler(update: Update, context: CallbackContext):
     """معالج تحويل الرصيد للأصدقاء"""
@@ -3365,7 +3450,7 @@ async def transfer_to_friend_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in transfer handler: {e}")
-        await query.edit_message_text(wallet_error("عرض صفحة التحويل"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض صفحة التحويل.")
 
 async def personal_reports_handler(update: Update, context: CallbackContext):
     """معالج التقارير الشخصية"""
@@ -3448,7 +3533,7 @@ async def personal_reports_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in personal reports handler: {e}")
-        await query.edit_message_text(ErrorMessages.report_error("الشخصية"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في التقارير الشخصية.")
 
 async def promotions_handler(update: Update, context: CallbackContext):
     """معالج العروض والخصومات"""
@@ -3531,7 +3616,7 @@ async def promotions_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in promotions handler: {e}")
-        await query.edit_message_text(menu_error("العروض والخصومات", "عرض العروض"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في العروض والخصومات.")
 
 async def my_notifications_handler(update: Update, context: CallbackContext):
     """معالج إشعاراتي"""
@@ -3611,7 +3696,7 @@ async def my_notifications_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in my notifications handler: {e}")
-        await query.edit_message_text(ErrorMessages.notification_error("عرض الإشعارات"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في الإشعارات.")
 
 async def account_settings_handler(update: Update, context: CallbackContext):
     """معالج إعدادات الحساب"""
@@ -3678,7 +3763,7 @@ async def account_settings_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in account settings handler: {e}")
-        await query.edit_message_text(ErrorMessages.settings_error("الحساب"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إعدادات الحساب.")
 
 async def transfer_history_handler(update: Update, context: CallbackContext):
     """معالج سجل التحويلات"""
@@ -3762,7 +3847,7 @@ async def transfer_history_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in transfer history handler: {e}")
-        await query.edit_message_text(wallet_error("عرض سجل التحويلات"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في سجل التحويلات.")
 
 async def update_profile_handler(update: Update, context: CallbackContext):
     """معالج تحديث البيانات الشخصية"""
@@ -3803,7 +3888,7 @@ async def update_profile_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in update profile handler: {e}")
-        await query.edit_message_text(ErrorMessages.settings_error("البيانات الشخصية"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحديث البيانات.")
 
 async def change_password_handler(update: Update, context: CallbackContext):
     """معالج تغيير كلمة المرور"""
@@ -3851,7 +3936,7 @@ async def change_password_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in change password handler: {e}")
-        await query.edit_message_text(ErrorMessages.settings_error("كلمة المرور"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إعدادات كلمة المرور.")
 
 async def contact_admin_handler(update: Update, context: CallbackContext):
     """معالج التواصل مع الإدارة"""
@@ -3912,7 +3997,7 @@ async def contact_admin_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in contact admin handler: {e}")
-        await query.edit_message_text(menu_error("معلومات التواصل", "الدعم الفني"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في معلومات التواصل.")
 
 async def account_status_handler(update: Update, context: CallbackContext):
     """معالج حالة الحساب"""
@@ -4003,7 +4088,7 @@ async def account_status_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in account status handler: {e}")
-        await query.edit_message_text(ErrorMessages.settings_error("حالة الحساب"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في حالة الحساب.")
 
 async def recharge_balance_handler(update: Update, context: CallbackContext):
     """Handle balance recharge"""
@@ -4051,7 +4136,7 @@ async def recharge_balance_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in recharge balance handler: {e}")
-        await query.edit_message_text(wallet_error("شحن الرصيد"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في شحن الرصيد.")
 
 async def confirm_transfer_handler(update: Update, context: CallbackContext, confirmed: bool):
     """Handle transfer confirmation"""
@@ -4186,7 +4271,7 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
         
     except Exception as e:
         logger.error(f"Error in confirm transfer handler: {e}")
-        await query.edit_message_text(wallet_error("تنفيذ التحويل"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تنفيذ التحويل.")
 
 def main():
     """Main function to start the bot with enhanced error handling"""
@@ -4285,7 +4370,7 @@ def main():
                     elif isinstance(error, BotPermissionError):
                         message = f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية."
                     else:
-                        message = unexpected_error("تنفيذ العملية", "معالجة الطلب")
+                        message = f"{EMOJIS['error']} حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى."
                     
                     await asyncio.wait_for(
                         context.bot.send_message(
@@ -4308,12 +4393,6 @@ def main():
         for command, handler in COMMAND_HANDLERS.items():
             if command not in ['start']:  # start is already in conversation handler
                 application.add_handler(CommandHandler(command, handler))
-        
-        # Add unified command handlers (removed from handlers.py)
-        application.add_handler(CommandHandler('wifi_search', search_networks_handler))
-        application.add_handler(CommandHandler('search_networks', search_networks_handler))
-        application.add_handler(CommandHandler('promotions', promotions_handler))
-        application.add_handler(CommandHandler('redeem_coupon', redeem_coupon_handler))
         
         # Start the bot with enhanced error handling
         logger.info(f'{EMOJIS["fire"]} Starting Pottagrm Enhanced Bot v2.1.0...')

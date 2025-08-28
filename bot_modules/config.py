@@ -26,20 +26,31 @@ AGENT_COMMISSION_RATE = float(os.getenv('AGENT_COMMISSION_RATE', '0.05'))
 
 # Enhanced Bot command menu
 QUICK_COMMANDS = [
+    # أوامر أساسية
     BotCommand('start', '🏠 البداية - القائمة الرئيسية'),
     BotCommand('menu', '📋 القائمة السريعة'),
+    
+    # المحفظة والمعاملات
     BotCommand('wallet', '💳 محفظتي المطورة'),
-    BotCommand('buy', '🛒 شراء كروت الشبكة'),
     BotCommand('transfer', '💸 تحويل رصيد لصديق'),
-    BotCommand('balance', '💰 عرض الرصيد والمعاملات'),
-    BotCommand('reports', '📊 تقاريري الشخصية'),
-    BotCommand('ratings', '⭐ تقييماتي ومراجعاتي'),
-    BotCommand('notifications', '🔔 إشعاراتي وتنبيهاتي'),
+    
+    # الشبكات والكروت
+    BotCommand('search_networks', '🔍 البحث الذكي عن الشبكات'),
+    BotCommand('buy', '🛒 شراء كروت الشحن'),
+    
+    # العروض والكوبونات
     BotCommand('promotions', '🎁 العروض والخصومات'),
+    BotCommand('redeem_coupon', '🎟️ شحن بكوبون'),
+    
+    # التقارير والإحصائيات
+    BotCommand('reports', '📊 تقاريري الشخصية'),
+    BotCommand('notifications', '🔔 إشعاراتي'),
+    
+    # الإعدادات والحساب
     BotCommand('settings', '⚙️ إعدادات الحساب'),
-    BotCommand('invite', '👥 دعوة الأصدقاء'),
-    BotCommand('wifi_search', '🔍 البحث عن شبكة واي فاي'),
-    BotCommand('send_balance', '💸 إرسال رصيد لصديق'),
+    BotCommand('ratings', '⭐ تقييماتي ومراجعاتي'),
+    
+    # الإدارة والمساعدة
     BotCommand('admin', '👑 لوحة الإدارة'),
     BotCommand('help', '❓ المساعدة والدعم'),
     BotCommand('cancel', '❌ إلغاء العملية الحالية'),
@@ -89,7 +100,6 @@ TRANSFER_TARGET, TRANSFER_AMOUNT, TRANSFER_CONFIRM = range(6, 9)
 # User roles
 USER_ROLES = {
     'customer': 'عميل',
-    'agent': 'وكيل',
     'supplier': 'مزود',
     'admin': 'مشرف',
     'super_admin': 'مشرف أعلى'

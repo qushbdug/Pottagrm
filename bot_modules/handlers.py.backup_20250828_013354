@@ -11,7 +11,6 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext, ConversationHandler
 from bot_modules.config import *
 from bot_modules.utils import *
-from bot_modules.enhanced_error_messages import ErrorMessages, unexpected_error, menu_error, wallet_error, search_error, coupon_error, perm_error
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +26,7 @@ async def start(update: Update, context: CallbackContext) -> int:
             return await register_new_user(update, context)
     except Exception as e:
         logger.error(f"Error in start handler: {e}")
-        await update.message.reply_text(unexpected_error("العملية المطلوبة", "النظام"))
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ. يرجى المحاولة مرة أخرى.")
         return ConversationHandler.END
 
 async def wallet_handler(update: Update, context: CallbackContext):
@@ -58,7 +57,7 @@ async def admin_handler(update: Update, context: CallbackContext):
         return await admin_panel_handler(update, context)
     except Exception as e:
         logger.error(f"Error in admin handler: {e}")
-        await update.message.reply_text(perm_error("إدارة النظام", "غير معروف"))
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في الوصول للوحة الإدارة.")
 
 async def cancel(update: Update, context: CallbackContext) -> int:
     """Handle cancellation"""
@@ -75,7 +74,7 @@ async def cancel(update: Update, context: CallbackContext) -> int:
             return ConversationHandler.END
     except Exception as e:
         logger.error(f"Error in cancel handler: {e}")
-        await update.message.reply_text(unexpected_error("تنفيذ الطلب"))
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ.")
         return ConversationHandler.END
 
 # Registration handlers
@@ -102,7 +101,7 @@ async def register_new_user(update: Update, context: CallbackContext) -> int:
         return GET_FULL_NAME
     except Exception as e:
         logger.error(f"Error in register new user: {e}")
-        await update.message.reply_text(ErrorMessages.validation_error("التسجيل", "بيانات المستخدم"))
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في بدء التسجيل.")
         return ConversationHandler.END
 
 async def get_full_name(update: Update, context: CallbackContext) -> int:
@@ -121,7 +120,7 @@ async def get_full_name(update: Update, context: CallbackContext) -> int:
         return GET_PHONE
     except Exception as e:
         logger.error(f"Error in get full name: {e}")
-        await update.message.reply_text(unexpected_error("العملية المطلوبة", "النظام"))
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ. يرجى المحاولة مرة أخرى.")
         return GET_FULL_NAME
 
 async def get_phone(update: Update, context: CallbackContext) -> int:
@@ -170,7 +169,7 @@ async def get_phone(update: Update, context: CallbackContext) -> int:
         return CHOOSE_ROLE
     except Exception as e:
         logger.error(f"Error in get phone: {e}")
-        await update.message.reply_text(unexpected_error("العملية المطلوبة", "النظام"))
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ. يرجى المحاولة مرة أخرى.")
         return GET_PHONE
 
 async def choose_role(update: Update, context: CallbackContext) -> int:
@@ -195,7 +194,7 @@ async def choose_role(update: Update, context: CallbackContext) -> int:
                 break
         
         if not wallet_number:
-            await query.edit_message_text(wallet_error("إنشاء رقم المحفظة"))
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إنشاء رقم المحفظة.")
             return ConversationHandler.END
         
         # Generate invite code
@@ -284,7 +283,7 @@ async def choose_role(update: Update, context: CallbackContext) -> int:
         
     except Exception as e:
         logger.error(f"Error in choose role: {e}")
-        await query.edit_message_text(ErrorMessages.validation_error("إنشاء الحساب", "اختيار الدور"))
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إنشاء الحساب.")
         return ConversationHandler.END
 
 # Menu handlers
@@ -321,7 +320,7 @@ async def show_main_menu(update: Update, context: CallbackContext, role: str) ->
         
     except Exception as e:
         logger.error(f"Error in show main menu: {e}")
-        error_text = menu_error("القائمة الرئيسية", "تحميل البيانات")
+        error_text = f"{EMOJIS['error']} حدث خطأ في تحميل القائمة الرئيسية."
         if update.message:
             await update.message.reply_text(error_text)
         else:
@@ -479,7 +478,7 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
             
     except Exception as e:
         logger.error(f"Error in enhanced wallet handler: {e}")
-        error_msg = wallet_error("عرض تفاصيل المحفظة")
+        error_msg = f"{EMOJIS['error']} حدث خطأ في عرض المحفظة."
         if update.message:
             await update.message.reply_text(error_msg)
         else:
@@ -489,7 +488,11 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
 async def handle_text_message(update: Update, context: CallbackContext):
     """Handle text messages for special operations"""
     try:
-
+        # Check if waiting for money creation
+        if context.user_data.get('awaiting_money_creation'):
+            from bot_modules.admin_functions import process_money_creation
+            return await process_money_creation(update, context)
+        
         # Check if waiting for balance issue
         if context.user_data.get('awaiting_balance_issue'):
             from bot_modules.admin_functions import process_balance_issue
@@ -505,7 +508,9 @@ async def handle_text_message(update: Update, context: CallbackContext):
             from bot_modules.admin_functions import process_broadcast_message
             return await process_broadcast_message(update, context)
         
-        # WiFi search removed - now handled by unified search in main bot
+        # Check if waiting for WiFi search
+        if context.user_data.get('awaiting_wifi_search'):
+            return await process_wifi_search(update, context)
         
         # Check if waiting for transfer step 1 (wallet number)
         if context.user_data.get('awaiting_transfer_step1'):
@@ -583,13 +588,247 @@ async def handle_text_message(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in handle text message: {e}")
-        await update.message.reply_text(unexpected_error("معالجة الرسالة النصية"))
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في معالجة الرسالة.")
 
 # Enhanced User Features
 
-# wifi_search_handler removed - unified with search_networks_handler in main bot
+async def wifi_search_handler(update: Update, context: CallbackContext):
+    """البحث عن الشبكات المتاحة"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            if update.message:
+                await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
+            else:
+                await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
+            return
+        
+        # الحصول على الشبكات المتاحة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # احصل على عدد الشبكات النشطة
+        cursor.execute('SELECT COUNT(*) FROM networks WHERE is_active = 1')
+        active_networks_count = cursor.fetchone()[0]
+        
+        # احصل على عدد فئات الكروت المتاحة
+        cursor.execute('''
+            SELECT COUNT(*) FROM card_categories cc 
+            JOIN networks n ON cc.network_id = n.id 
+            WHERE n.is_active = 1 AND cc.is_available = 1
+        ''')
+        available_categories_count = cursor.fetchone()[0]
+        
+        # احصه على إجمالي المخزون
+        cursor.execute('''
+            SELECT SUM(cc.stock_count) FROM card_categories cc 
+            JOIN networks n ON cc.network_id = n.id 
+            WHERE n.is_active = 1 AND cc.is_available = 1
+        ''')
+        total_stock = cursor.fetchone()[0] or 0
+        
+        conn.close()
+        
+        if active_networks_count == 0:
+            text = f"""
+📶 **البحث عن شبكات الواي فاي** 📶
 
-# process_wifi_search removed - unified with search_networks_handler in main bot
+👤 مرحباً **{user['full_name']}**
+💰 رصيدك: **{user['balance']:,.2f}** ريال
+
+🏪 **لا توجد شبكات متاحة حالياً**
+
+📋 **نحن نتعامل حصرياً مع:**
+• 🌐 كروت شبكات الواي فاي المنزلية
+• 💳 كروت الخدمات المقدمة من المزودين المعتمدين
+• 📶 شبكات الإنترنت اللاسلكي
+
+⏳ **الشبكات ستظهر عندما:**
+• يقوم المزودون بإضافة شبكاتهم
+• يتم رفع كروت الواي فاي المتاحة
+• يتم تفعيل الخدمات الجديدة
+
+💡 **للمزودين:**
+يمكنكم إضافة شبكاتكم من لوحة المزود
+
+🔔 **سيتم إشعارك فور توفر شبكات جديدة!**
+"""
+        else:
+            text = f"""
+📶 **البحث عن شبكات الواي فاي** 📶
+
+👤 مرحباً **{user['full_name']}**
+💰 رصيدك: **{user['balance']:,.2f}** ريال
+
+📊 **إحصائيات الشبكات:**
+🌐 الشبكات المتاحة: **{active_networks_count}** شبكة
+💳 فئات الكروت: **{available_categories_count}** فئة
+📦 إجمالي المخزون: **{total_stock:,}** كرت
+
+🔍 **خيارات البحث:**
+
+1️⃣ **عرض جميع الشبكات**
+   استعرض كافة الشبكات المضافة من المزودين
+
+2️⃣ **البحث بالاسم**
+   ابحث عن شبكة واي فاي معينة
+
+3️⃣ **حسب نوع الخدمة**
+   شبكات الواي فاي المنزلية
+
+4️⃣ **حسب السعر**
+   اختر حسب ميزانيتك
+"""
+        
+        if active_networks_count == 0:
+            keyboard = [
+                [InlineKeyboardButton('🔄 تحديث الشبكات', callback_data='search_networks'),
+                 InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')],
+                [InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet'),
+                 InlineKeyboardButton('📞 الدعم الفني', callback_data='help')],
+                [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            ]
+        else:
+            keyboard = [
+                [InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks'),
+                 InlineKeyboardButton('🔍 بحث بالاسم', callback_data='search_by_network_name')],
+                [InlineKeyboardButton('📶 شبكات الواي فاي', callback_data='wifi_networks'),
+                 InlineKeyboardButton('🏠 شبكات منزلية', callback_data='home_networks')],
+                [InlineKeyboardButton('💰 حسب السعر', callback_data='networks_by_price'),
+                 InlineKeyboardButton('⭐ الأكثر طلباً', callback_data='popular_networks')],
+                [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            ]
+        
+        if update.message:
+            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        else:
+            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in WiFi search: {e}")
+        error_msg = "❌ حدث خطأ في البحث"
+        if update.message:
+            await update.message.reply_text(error_msg)
+        else:
+            await update.callback_query.edit_message_text(error_msg)
+
+async def process_wifi_search(update: Update, context: CallbackContext):
+    """Process WiFi search query"""
+    try:
+        if not context.user_data.get('awaiting_wifi_search'):
+            return
+        
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.message.reply_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
+            return
+        
+        search_term = update.message.text.strip()
+        
+        if len(search_term) < 2:
+            await update.message.reply_text(f"{EMOJIS['error']} كلمة البحث قصيرة جداً. أدخل على الأقل حرفين.")
+            return
+        
+        # Search in networks
+        from bot_modules.database import get_db_connection
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Search by name, code, or city
+        cursor.execute('''
+            SELECT n.*, u.full_name as supplier_name 
+            FROM networks n
+            JOIN users u ON n.supplier_id = u.id
+            WHERE (n.name LIKE ? OR COALESCE(n.network_code, '') LIKE ? OR n.city LIKE ?)
+            AND n.is_active = 1 AND n.is_approved = 1
+            ORDER BY n.name
+            LIMIT 20
+        ''', (f'%{search_term}%', f'%{search_term}%', f'%{search_term}%'))
+        
+        networks = cursor.fetchall()
+        
+        # Get card categories for each network
+        results = []
+        for network in networks:
+            cursor.execute('''
+                SELECT COUNT(*) as categories_count, MIN(price) as min_price, MAX(price) as max_price
+                FROM card_categories 
+                WHERE network_id = ? AND is_available = 1
+            ''', (network['id'],))
+            
+            category_info = cursor.fetchone()
+            
+            results.append({
+                'network': network,
+                'categories_count': category_info['categories_count'],
+                'min_price': category_info['min_price'],
+                'max_price': category_info['max_price']
+            })
+        
+        conn.close()
+        
+        # Clear user state
+        context.user_data.pop('awaiting_wifi_search', None)
+        
+        if not results:
+            await update.message.reply_text(f"""
+{EMOJIS['error']} **لم يتم العثور على نتائج**
+
+🔍 **كلمة البحث:** `{search_term}`
+
+💡 **اقتراحات:**
+• تأكد من صحة الإملاء
+• جرب كلمات أخرى
+• ابحث باسم المدينة
+• استخدم /wifi_search للبحث مرة أخرى
+""", parse_mode='Markdown')
+            return
+        
+        # Format results
+        results_text = f"""
+🔍 **نتائج البحث عن: {search_term}**
+
+📊 **تم العثور على {len(results)} شبكة**
+
+"""
+        
+        for i, result in enumerate(results[:10], 1):
+            network = result['network']
+            min_price = result['min_price'] or 0
+            max_price = result['max_price'] or 0
+            
+            price_range = f"{min_price:.0f}" if min_price == max_price else f"{min_price:.0f} - {max_price:.0f}"
+            
+            network_code = network.get('network_code') or 'غير محدد'
+            supplier_name = result.get('network', {}).get('supplier_name') or network.get('supplier_name', 'غير محدد')
+            
+            results_text += f"""
+**{i}. {network['name']}**
+🆔 الكود: `{network_code}`
+🌍 المدينة: {network['city']}
+👤 المزود: {supplier_name}
+🎫 الفئات: {result['categories_count']} فئة
+💰 الأسعار: {price_range} ريال
+
+"""
+        
+        if len(results) > 10:
+            results_text += f"\n... و {len(results) - 10} شبكة أخرى"
+        
+        results_text += f"""
+───────────────────
+💡 لشراء البطاقات استخدم /buy
+🔍 للبحث مرة أخرى استخدم /wifi_search
+"""
+        
+        await update.message.reply_text(results_text, parse_mode='Markdown')
+        
+        # Log the search
+        logger.info(f"User {user['full_name']} searched for WiFi: {search_term} - Found {len(results)} results")
+        
+    except Exception as e:
+        logger.error(f"Error in process WiFi search: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في البحث.")
 
 async def send_balance_handler(update: Update, context: CallbackContext):
     """إرسال رصيد مع البحث المتقدم"""
@@ -809,7 +1048,7 @@ async def process_balance_send(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in process balance send: {e}")
-        await update.message.reply_text(wallet_error("إرسال الرصيد"))
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في إرسال الرصيد.")
 
 # New Enhanced Transfer System
 
@@ -890,7 +1129,7 @@ async def process_transfer_step1(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in process transfer step 1: {e}")
-        await update.message.reply_text(search_error("المستخدم", "قاعدة البيانات"))
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في البحث عن المستخدم.")
 
 async def process_transfer_step2(update: Update, context: CallbackContext):
     """Process step 2 - Get amount and show confirmation"""
@@ -972,7 +1211,7 @@ async def process_transfer_step2(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in process transfer step 2: {e}")
-        await update.message.reply_text(wallet_error("معالجة مبلغ التحويل"))
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في معالجة المبلغ.")
 
 async def process_simple_admin_send(update: Update, context: CallbackContext):
     """Simple admin money sending"""
@@ -1063,7 +1302,7 @@ async def process_simple_admin_send(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in simple admin send: {e}")
-        await update.message.reply_text(wallet_error("إرسال الرصيد"))
+        await update.message.reply_text("❌ حدث خطأ في الإرسال.")
 
 async def process_simple_transfer(update: Update, context: CallbackContext):
     """Simple user-to-user transfer"""
@@ -1182,7 +1421,7 @@ async def process_simple_transfer(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in simple transfer: {e}")
-        await update.message.reply_text(wallet_error("تنفيذ التحويل"))
+        await update.message.reply_text("❌ حدث خطأ في التحويل.")
 
 async def enhanced_placeholder_handler(update: Update, context: CallbackContext, title: str, description: str):
     """Enhanced placeholder for future features"""
@@ -1281,11 +1520,24 @@ async def personal_reports_handler(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in personal_reports_handler: {e}")
         if update.message:
-            await update.message.reply_text(ErrorMessages.report_error("الشخصية"))
+            await update.message.reply_text("❌ حدث خطأ في التقارير الشخصية.")
         else:
-            await update.callback_query.edit_message_text(ErrorMessages.report_error("الشخصية"))
+            await update.callback_query.edit_message_text("❌ حدث خطأ في التقارير الشخصية.")
 
-# promotions_handler removed - unified with enhanced promotions_handler in main bot
+async def promotions_handler(update: Update, context: CallbackContext):
+    try:
+        text = """
+🎁 العروض والخصومات
+
+لا توجد عروض متاحة حالياً.
+"""
+        kb = [[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]
+        if update.message:
+            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
+        else:
+            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
+    except Exception as e:
+        logger.error(f"Error in promotions_handler: {e}")
 
 async def my_notifications_handler(update: Update, context: CallbackContext):
     try:
@@ -1692,7 +1944,104 @@ async def select_user_for_transfer(update: Update, context: CallbackContext, sel
         logger.error(f"Error in select user for transfer: {e}")
         await update.callback_query.edit_message_text("❌ حدث خطأ في اختيار المستخدم")
 
-# show_all_networks removed - "view all networks" option eliminated as requested
+async def show_all_networks(update: Update, context: CallbackContext):
+    """عرض جميع الشبكات المتاحة"""
+    try:
+        user = get_user(update.effective_user.id)
+        if not user:
+            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
+            return
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # الحصول على جميع الشبكات مع فئات الكروت
+        cursor.execute('''
+            SELECT 
+                n.id, n.name, n.provider, n.description, n.location,
+                COUNT(cc.id) as card_types,
+                SUM(cc.stock_count) as total_stock,
+                MIN(cc.price) as min_price,
+                MAX(cc.price) as max_price
+            FROM networks n
+            LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
+            WHERE n.is_active = 1
+            GROUP BY n.id, n.name, n.provider, n.description, n.location
+            ORDER BY n.name
+        ''')
+        
+        networks = cursor.fetchall()
+        conn.close()
+        
+        if not networks:
+            await update.callback_query.edit_message_text(
+                "❌ **لا توجد شبكات متاحة حالياً**\n\n"
+                "تحقق لاحقاً للحصول على التحديثات"
+            )
+            return
+
+        text = f"""
+🌐 **جميع الشبكات المتاحة** 🌐
+
+👤 **{user['full_name']}**
+💰 رصيدك: **{user['balance']:,.2f}** ريال
+
+📊 **عدد الشبكات:** {len(networks)} شبكة
+
+"""
+
+        keyboard = []
+        for network in networks:
+            network_id, name, provider, description, location, card_types, total_stock, min_price, max_price = network
+            
+            # تنسيق معلومات الشبكة
+            stock_status = "📦" if total_stock and total_stock > 0 else "❌"
+            price_range = ""
+            if min_price and max_price:
+                if min_price == max_price:
+                    price_range = f"{min_price:,.0f} ريال"
+                else:
+                    price_range = f"{min_price:,.0f} - {max_price:,.0f} ريال"
+            
+            text += f"""
+🏢 **{name}**
+📝 {description or 'شبكة واي فاي منزلية'}
+📍 الموقع: {location or 'غير محدد'}
+👤 المزود: {provider}
+💳 الفئات: {card_types or 0} فئة
+📦 المخزون: {total_stock or 0} كرت
+💰 الأسعار: {price_range or 'غير محدد'}
+━━━━━━━━━━━━━━━━━━━━━━━━━
+
+"""
+            
+            # إضافة زر للشبكة
+            button_text = f"{stock_status} {name}"
+            if total_stock and total_stock > 0:
+                button_text += f" ({total_stock})"
+            
+            keyboard.append([InlineKeyboardButton(
+                button_text,
+                callback_data=f"network_{network_id}"
+            )])
+
+        # إضافة أزرار إضافية
+        keyboard.extend([
+            [InlineKeyboardButton('🔍 بحث متقدم', callback_data='search_networks'),
+             InlineKeyboardButton('💰 ترتيب بالسعر', callback_data='networks_by_price')],
+            [InlineKeyboardButton('🔙 عودة', callback_data='search_networks'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ])
+
+        await update.callback_query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+
+    except Exception as e:
+        logger.error(f"Error in show all networks: {e}")
+        await update.callback_query.edit_message_text("❌ حدث خطأ في عرض الشبكات")
 
 async def show_network_details(update: Update, context: CallbackContext, network_id: str):
     """عرض تفاصيل شبكة معينة"""
@@ -1779,8 +2128,8 @@ async def show_network_details(update: Update, context: CallbackContext, network
 
         # إضافة أزرار إضافية
         keyboard.extend([
-            [InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet'),
-             InlineKeyboardButton('🔙 العودة', callback_data='search_networks')],
+            [InlineKeyboardButton('🔙 جميع الشبكات', callback_data='all_networks'),
+             InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet')],
             [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ])
 
@@ -1866,7 +2215,7 @@ async def show_mobile_networks(update: Update, context: CallbackContext):
         # إضافة أزرار إضافية
         keyboard.extend([
             [InlineKeyboardButton('🏠 إنترنت منزلي', callback_data='home_networks'),
-             InlineKeyboardButton('🔍 بحث ذكي', callback_data='search_networks')],
+             InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks')],
             [InlineKeyboardButton('🔙 عودة', callback_data='search_networks'),
              InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ])
@@ -1953,7 +2302,7 @@ async def show_home_networks(update: Update, context: CallbackContext):
         # إضافة أزرار إضافية
         keyboard.extend([
             [InlineKeyboardButton('📱 شبكات المحمول', callback_data='mobile_networks'),
-             InlineKeyboardButton('🔍 بحث ذكي', callback_data='search_networks')],
+             InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks')],
             [InlineKeyboardButton('🔙 عودة', callback_data='search_networks'),
              InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ])
@@ -2235,11 +2584,12 @@ COMMAND_HANDLERS = {
     'wallet': wallet_handler,
     'admin': admin_handler,
     'cancel': cancel,
-    # wifi_search and search_networks now handled by unified system in main bot
+    'wifi_search': wifi_search_handler,
     'send_balance': send_balance_handler,
+    'search_networks': wifi_search_handler,
     'transfer_to_friend': send_balance_handler,
     'personal_reports': personal_reports_handler,
-    # promotions now handled by enhanced system in main bot
+    'promotions': promotions_handler,
     'my_notifications': my_notifications_handler,
     'account_settings': account_settings_handler,
     'my_ratings': my_ratings_handler,
@@ -2264,7 +2614,7 @@ COMMAND_HANDLERS = {
     'search_by_name': lambda u, c: search_by_type_handler(u, c, "name"),
     'search_by_phone': lambda u, c: search_by_type_handler(u, c, "phone"),
     'search_by_username': lambda u, c: search_by_type_handler(u, c, "username"),
-    # 'all_networks' removed - "view all networks" option eliminated
+    'all_networks': show_all_networks,
     'mobile_networks': show_mobile_networks,
     'home_networks': show_home_networks,
     'search_by_network_name': lambda u, c: search_networks_by_name(u, c),
@@ -2785,8 +3135,8 @@ async def search_networks_by_name(update: Update, context: CallbackContext):
 """
         
         keyboard = [
-            [InlineKeyboardButton('📍 بحث بالموقع', callback_data='search_by_location'),
-             InlineKeyboardButton('🔍 بحث ذكي', callback_data='search_networks')],
+            [InlineKeyboardButton('🌐 عرض جميع الشبكات', callback_data='all_networks'),
+             InlineKeyboardButton('📍 بحث بالموقع', callback_data='search_by_location')],
             [InlineKeyboardButton('🔙 عودة', callback_data='search_networks'),
              InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
         ]
@@ -2867,7 +3217,7 @@ async def process_network_search(update: Update, context: CallbackContext, searc
             
             keyboard = [
                 [InlineKeyboardButton('🔍 بحث جديد', callback_data='search_by_network_name'),
-                 InlineKeyboardButton('🔍 بحث ذكي', callback_data='search_networks')],
+                 InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks')],
                 [InlineKeyboardButton('🔙 عودة', callback_data='search_networks')]
             ]
             
@@ -2923,7 +3273,7 @@ async def process_network_search(update: Update, context: CallbackContext, searc
         # إضافة أزرار إضافية
         keyboard.extend([
             [InlineKeyboardButton('🔍 بحث جديد', callback_data='search_by_network_name'),
-             InlineKeyboardButton('🔍 بحث ذكي', callback_data='search_networks')],
+             InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks')],
             [InlineKeyboardButton('🔙 عودة', callback_data='search_networks'),
              InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ])
@@ -2944,22 +3294,12 @@ async def process_network_search(update: Update, context: CallbackContext, searc
 async def redeem_coupon_handler(update: Update, context: CallbackContext):
     """معالج شحن الرصيد بكوبون"""
     try:
-        # دعم كل من الأوامر المباشرة والأزرار
-        if update.callback_query:
-            query = update.callback_query
-            await query.answer()
-            user = get_user(query.from_user.id)
-            is_callback = True
-        else:
-            user = get_user(update.message.from_user.id)
-            is_callback = False
-            
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
         if not user:
-            error_text = f"{EMOJIS['error']} يرجى إرسال /start أولاً."
-            if is_callback:
-                await update.callback_query.edit_message_text(error_text)
-            else:
-                await update.message.reply_text(error_text)
+            await query.edit_message_text(f"{EMOJIS['error']} يرجى إرسال /start أولاً.")
             return
         
         # تنظيف أي حالات سابقة
@@ -2991,29 +3331,15 @@ async def redeem_coupon_handler(update: Update, context: CallbackContext):
              InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
-        if is_callback:
-            await update.callback_query.edit_message_text(
-                text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
-        else:
-            await update.message.reply_text(
-                text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
         
     except Exception as e:
         logger.error(f"Error in redeem coupon handler: {e}")
-        error_text = coupon_error("شحن الكوبون")
-        try:
-            if update.callback_query:
-                await update.callback_query.edit_message_text(error_text)
-            else:
-                await update.message.reply_text(error_text)
-        except:
-            pass
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في شحن الكوبون.")
 
 async def process_coupon_redemption(update: Update, context: CallbackContext):
     """معالجة استخدام الكوبون"""
@@ -3226,7 +3552,7 @@ async def cancel_coupon_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in cancel coupon handler: {e}")
-        await query.edit_message_text(unexpected_error("إلغاء العملية"))
+        await query.edit_message_text("❌ حدث خطأ في الإلغاء.")
 
 # معالجات الميزات الجديدة
 
@@ -3278,7 +3604,7 @@ async def contact_support_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in contact support handler: {e}")
-        await query.edit_message_text(menu_error("معلومات الدعم", "تحميل البيانات"))
+        await query.edit_message_text("❌ حدث خطأ في عرض معلومات الدعم.")
 
 async def process_supplier_network_creation(update: Update, context: CallbackContext):
     """معالجة إضافة الشبكة للمزود خطوة بخطوة"""

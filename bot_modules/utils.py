@@ -366,17 +366,21 @@ def recalc_and_set_user_balance(user_id: int):
             return new_balance
             
         except Exception as e:
+            try:
+                if 'conn' in locals():
+                    conn.close()
+            except:
+                pass
+                
             if "database is locked" in str(e).lower() and attempt < max_retries - 1:
-                logger.warning(f"Database locked, retrying in {retry_delay}s (attempt {attempt + 1}/{max_retries})")
+                # Reduce logging noise and use shorter delays
                 time.sleep(retry_delay)
-                retry_delay *= 2  # Exponential backoff
+                retry_delay = min(retry_delay * 1.5, 0.5)  # Cap at 0.5 seconds
                 continue
             else:
-                logger.error(f"Error recalculating balance: {e}")
-                try:
-                    conn.close()
-                except:
-                    pass
+                # Only log final failure, not individual retries
+                if attempt == max_retries - 1:
+                    logger.debug(f"Balance calculation skipped for user {user_id} (database busy)")
                 return 0
     
     return 0
