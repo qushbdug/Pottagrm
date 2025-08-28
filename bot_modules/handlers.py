@@ -488,11 +488,7 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
 async def handle_text_message(update: Update, context: CallbackContext):
     """Handle text messages for special operations"""
     try:
-        # Check if waiting for money creation
-        if context.user_data.get('awaiting_money_creation'):
-            from bot_modules.admin_functions import process_money_creation
-            return await process_money_creation(update, context)
-        
+
         # Check if waiting for balance issue
         if context.user_data.get('awaiting_balance_issue'):
             from bot_modules.admin_functions import process_balance_issue
