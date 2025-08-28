@@ -626,7 +626,7 @@ async def send_balance_handler(update: Update, context: CallbackContext):
    مثال: `791234567 100`
 
 ⚠️ **ملاحظات مهمة:**
-• رسوم التحويل: 10 ريال
+• رسوم التحويل: مجاني 🆓
 • الحد الأدنى: 50 ريال
 • الحد الأقصى: {min(user['balance'] - 10, 50000):,.0f} ريال
 """
@@ -683,16 +683,16 @@ async def process_balance_send(update: Update, context: CallbackContext):
             await update.message.reply_text(f"{EMOJIS['error']} المبلغ يجب أن يكون أكبر من صفر.")
             return
         
-        # Calculate transfer fee (1%)
-        transfer_fee = amount * 0.01
-        total_deduction = amount + transfer_fee
+        # FREE transfers - no fees
+        transfer_fee = 0.0
+        total_deduction = amount  # No fees!
         
         if total_deduction > user['balance']:
             await update.message.reply_text(f"""
 {EMOJIS['error']} **رصيدك غير كافي!**
 
 💰 المبلغ المطلوب: **{amount:.2f}** ريال
-💳 رسوم التحويل (1%): **{transfer_fee:.2f}** ريال
+🆓 التحويل: **مجاني بدون رسوم**
 📊 إجمالي الخصم: **{total_deduction:.2f}** ريال
 💵 رصيدك الحالي: **{user['balance']:.2f}** ريال
 ❌ النقص: **{total_deduction - user['balance']:.2f}** ريال
@@ -764,7 +764,7 @@ async def process_balance_send(update: Update, context: CallbackContext):
 📤 **تفاصيل التحويل:**
 👤 المستلم: **{target_user['full_name']}**
 💰 المبلغ المرسل: **{amount:.2f}** ريال
-💳 رسوم التحويل: **{transfer_fee:.2f}** ريال
+🆓 التحويل: **مجاني بدون رسوم**
 📊 إجمالي الخصم: **{total_deduction:.2f}** ريال
 
 💵 **الأرصدة:**
@@ -879,7 +879,7 @@ async def process_transfer_step1(update: Update, context: CallbackContext):
 
 💡 **مثال:** `100`
 
-⚠️ **ملاحظة:** سيتم خصم 1% رسوم تحويل
+⚠️ **ملاحظة:** التحويل مجاني بدون رسوم 🆓
 
 📝 أدخل المبلغ:
 
@@ -915,16 +915,16 @@ async def process_transfer_step2(update: Update, context: CallbackContext):
             await update.message.reply_text(f"{EMOJIS['error']} المبلغ يجب أن يكون أكبر من صفر.")
             return
         
-        # Calculate transfer fee (1%)
-        transfer_fee = amount * 0.01
-        total_deduction = amount + transfer_fee
+        # FREE transfers - no fees
+        transfer_fee = 0.0
+        total_deduction = amount  # No fees!
         
         if total_deduction > user['balance']:
             await update.message.reply_text(f"""
 {EMOJIS['error']} **رصيدك غير كافي!**
 
 💰 المبلغ المطلوب: **{amount:.2f}** ريال
-💳 رسوم التحويل (1%): **{transfer_fee:.2f}** ريال
+🆓 التحويل: **مجاني بدون رسوم**
 📊 إجمالي الخصم: **{total_deduction:.2f}** ريال
 💵 رصيدك الحالي: **{user['balance']:.2f}** ريال
 ❌ النقص: **{total_deduction - user['balance']:.2f}** ريال
@@ -947,10 +947,10 @@ async def process_transfer_step2(update: Update, context: CallbackContext):
 👤 المستلم: **{target_name}**
 🆔 رقم المحفظة: **{target_wallet}**
 💰 المبلغ: **{amount:,.2f}** ريال
-💳 رسوم التحويل: **{transfer_fee:.2f}** ريال
+🆓 التحويل: **مجاني بدون رسوم**
 📊 إجمالي الخصم: **{total_deduction:.2f}** ريال
 
-💵 **رصيدك بعد التحويل:** **{user['balance'] - total_deduction:.2f}** ريال
+💵 **رصيدك بعد التحويل:** **{user['balance'] - amount:.2f}** ريال
 
 ❓ **هل تريد المتابعة؟**
 """
@@ -1097,15 +1097,15 @@ async def process_simple_transfer(update: Update, context: CallbackContext):
             await update.message.reply_text("❌ أقل مبلغ للتحويل هو 10 ريال.")
             return
         
-        # Calculate fees
-        transfer_fee = amount * 0.01  # 1%
-        total_deduction = amount + transfer_fee
+        # FREE transfers - no fees
+        transfer_fee = 0.0
+        total_deduction = amount  # No fees!
         
         if total_deduction > user['balance']:
             await update.message.reply_text(f"""❌ رصيدك غير كافي
 
 💰 المبلغ: {amount:.0f} ريال
-💳 الرسوم: {transfer_fee:.0f} ريال
+🆓 الرسوم: مجاني
 📊 المطلوب: {total_deduction:.0f} ريال
 💵 رصيدك: {user['balance']:.0f} ريال""")
             return
@@ -1165,7 +1165,7 @@ async def process_simple_transfer(update: Update, context: CallbackContext):
 
 👤 المستلم: {target_user['full_name']}
 💰 المبلغ: {amount:.0f} ريال
-💳 الرسوم: {transfer_fee:.0f} ريال
+🆓 الرسوم: مجاني
 💵 رصيدك الجديد: {sender_new_balance:.0f} ريال
 """, parse_mode='Markdown')
         
@@ -1658,7 +1658,7 @@ async def select_user_for_transfer(update: Update, context: CallbackContext, sel
 💡 **اكتب المبلغ الذي تريد إرساله:**
 
 ⚠️ **ملاحظات مهمة:**
-• رسوم التحويل: 10 ريال
+• رسوم التحويل: مجاني 🆓
 • الحد الأدنى: 50 ريال
 • الحد الأقصى: {min(user['balance'] - 10, 50000):,.0f} ريال
 • تأكد من صحة البيانات قبل التأكيد
@@ -1986,7 +1986,7 @@ async def quick_transfer_handler(update: Update, context: CallbackContext):
 💡 مثال: `791234567 100`
 
 ⚠️ **ملاحظات مهمة:**
-• رسوم التحويل: 10 ريال
+• رسوم التحويل: مجاني 🆓
 • الحد الأدنى: 50 ريال
 • الحد الأقصى: {min(user['balance'] - 10, 50000):,.0f} ريال
 • تأكد من صحة البيانات قبل الإرسال
@@ -2093,7 +2093,7 @@ async def process_amount_selection(update: Update, context: CallbackContext, amo
         target_id, target_name, target_wallet, target_phone, target_username, target_balance, target_active, target_role = selected_user
         
         transfer_amount = float(amount)
-        fee = 10
+        fee = 0  # FREE transfers - no fees
         total_needed = transfer_amount + fee
         
         # التحقق من الرصيد

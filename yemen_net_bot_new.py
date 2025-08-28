@@ -4100,9 +4100,9 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
         target_user_id = context.user_data.get('target_user_id')
         target_user_name = context.user_data.get('target_user_name')
         amount = context.user_data.get('transfer_amount')
-        transfer_fee = context.user_data.get('transfer_fee')
+        transfer_fee = 0.0  # FREE transfers
         
-        if not all([target_user_id, amount, transfer_fee]):
+        if not all([target_user_id, amount]):
             await query.edit_message_text(f"{EMOJIS['error']} معلومات التحويل مفقودة. يرجى البدء من جديد.")
             return
         
@@ -4131,13 +4131,7 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
             VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', (transfer_id, user['id'], target_user['id'], amount, 'transfer', 'تحويل رصيد من صديق', datetime.now()))
         
-        # Fee transaction
-        fee_id = str(uuid.uuid4())
-        cursor.execute('''
-            INSERT INTO transactions 
-            (id, from_user, amount, type, description, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (fee_id, user['id'], transfer_fee, 'transfer_fee', f'رسوم تحويل رصيد إلى {target_user["full_name"]}', datetime.now()))
+        # No fee transaction - transfers are FREE!
         
         # Update balances
         sender_new_balance = recalc_and_set_user_balance(user['id'])
@@ -4156,8 +4150,8 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
 📤 **تفاصيل التحويل:**
 👤 المستلم: **{target_user['full_name']}**
 💰 المبلغ المرسل: **{amount:.2f}** ريال
-💳 رسوم التحويل: **{transfer_fee:.2f}** ريال
-📊 إجمالي الخصم: **{amount + transfer_fee:.2f}** ريال
+🆓 التحويل: **مجاني بدون رسوم**
+📊 إجمالي الخصم: **{amount:.2f}** ريال (بدون رسوم)
 
 💵 **الأرصدة:**
 🔻 رصيدك الجديد: **{sender_new_balance:.2f}** ريال
