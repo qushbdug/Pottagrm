@@ -30,17 +30,25 @@ async def start(update: Update, context: CallbackContext) -> int:
         return ConversationHandler.END
 
 async def wallet_handler(update: Update, context: CallbackContext):
-    """Handle /wallet command - enhanced wallet view"""
+    """Handle /wallet command - redirect to enhanced wallet from main bot"""
     try:
         user = get_user(update.effective_user.id)
         if not user:
             await update.message.reply_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
             return
 
-        return await enhanced_wallet_handler(update, context)
+        # Import and use the main enhanced wallet handler
+        from yemen_net_bot_new import enhanced_wallet_handler as main_enhanced_wallet
+        return await main_enhanced_wallet(update, context)
     except Exception as e:
         logger.error(f"Error in wallet handler: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في عرض المحفظة.")
+        from enhanced_error_messages import ErrorMessages
+        await update.message.reply_text(ErrorMessages.custom_error(
+            "المحفظة",
+            "فشل في تحميل بيانات المحفظة",
+            "تأكد من التسجيل وحاول مرة أخرى",
+            "WALLET_ERROR"
+        ))
 
 async def admin_handler(update: Update, context: CallbackContext):
     """Handle /admin command"""

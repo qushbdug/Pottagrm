@@ -407,8 +407,6 @@ async def button_click_handler(update: Update, context):
             await network_details_handler(update, context)
         elif callback_data == 'privacy_settings':
             await privacy_settings_handler(update, context)
-        elif callback_data == 'search_networks':
-            await search_networks_handler(update, context)
         elif callback_data == 'filter_by_category':
             await filter_by_category_handler(update, context)
         elif callback_data == 'sales_reports':
@@ -2454,7 +2452,7 @@ async def privacy_settings_handler(update: Update, context: CallbackContext):
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إعدادات الخصوصية.")
 
 async def search_networks_handler(update: Update, context: CallbackContext):
-    """Handle network search functionality"""
+    """Handle network search functionality - interactive search"""
     try:
         query = update.callback_query
         user = get_user(query.from_user.id)
@@ -2464,33 +2462,42 @@ async def search_networks_handler(update: Update, context: CallbackContext):
 
 👤 **{user['full_name']}**
 
-📝 **يمكنك البحث عن:**
-• اسم الشبكة
-• معرف المزود (يبدأ بـ 80)
-• معرف الشبكة
+🎯 **كيفية البحث:**
+• اكتب اسم الشبكة (مثل: `يمن نت`)
+• اكتب اسم المزود (مثل: `أحمد`)  
+• اكتب موقع الشبكة (مثل: `صنعاء`)
+• اكتب معرف الشبكة أو المزود
 
-💡 **لبدء البحث:**
-أرسل كلمة البحث كرسالة نصية بعد هذه الرسالة
+💡 **أرسل مصطلح البحث الآن:**
+سيتم البحث في جميع الحقول تلقائياً
 
-🔍 **أمثلة:**
-• `سبافون`
-• `801234`
-• `صنعاء`
+📋 **أمثلة:**
+• `سبافون` - البحث بالاسم
+• `صنعاء` - البحث بالموقع  
+• `أحمد` - البحث بالمزود
+• `801234` - البحث بالمعرف
 """
         
         keyboard = [
-            [InlineKeyboardButton('📶 عرض جميع شبكاتي', callback_data='manage_networks')],
-            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
+            [InlineKeyboardButton('❌ إلغاء البحث', callback_data='buy_cards')],
+            [InlineKeyboardButton('📊 عرض جميع الشبكات', callback_data='view_networks')],
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
         # Set context for search mode
-        context.user_data['search_mode'] = 'networks'
+        context.user_data['awaiting_network_search'] = True
         
         await query.edit_message_text(search_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
     except Exception as e:
         logger.error(f"Error in search networks handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في البحث.")
+        from enhanced_error_messages import ErrorMessages
+        await query.edit_message_text(ErrorMessages.custom_error(
+            "البحث في الشبكات",
+            "فشل في تحميل واجهة البحث",
+            "تحقق من الاتصال وحاول مرة أخرى",
+            "SEARCH_INIT_ERROR"
+        ))
 
 async def filter_by_category_handler(update: Update, context: CallbackContext):
     """Handle filtering cards by category"""
@@ -2886,8 +2893,8 @@ async def show_network_details(update: Update, context: CallbackContext, network
         logger.error(f"Error in show network details: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض تفاصيل الشبكة.")
 
-async def search_networks_handler(update: Update, context: CallbackContext):
-    """Handle network search with filters"""
+async def legacy_search_networks_handler(update: Update, context: CallbackContext):
+    """Legacy search function - shows all networks (deprecated)"""
     try:
         query = update.callback_query
         
