@@ -3880,13 +3880,13 @@ def main():
             states=CONVERSATION_STATES,
             fallbacks=[
                 CommandHandler('cancel', COMMAND_HANDLERS['cancel']),
-                CallbackQueryHandler(lambda u, c: show_main_menu(u, c, get_user(u.effective_user.id)['role'] if get_user(u.effective_user.id) else 'customer'), pattern='^main_menu$'),
                 MessageHandler(filters.TEXT & filters.Regex(r'^/cancel$'), COMMAND_HANDLERS['cancel']),
             ],
             name='yemen_net_conversation',
             persistent=True,
             allow_reentry=True,
             per_message=False,
+            per_chat=True,
         )
         
         # Enhanced error handler
