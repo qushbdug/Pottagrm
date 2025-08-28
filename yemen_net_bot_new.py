@@ -2218,8 +2218,27 @@ async def confirm_simplified_upload(update: Update, context: CallbackContext):
         card_size = context.user_data.get('card_size')
         network_id = context.user_data.get('selected_network_id')
         
-        if not all([upload_data, selected_price, card_size, network_id]):
-            await query.edit_message_text("❌ بيانات غير مكتملة. يرجى إعادة العملية من البداية.")
+        # التحقق من البيانات المطلوبة مع رسائل مفصلة
+        missing_data = []
+        if not upload_data:
+            missing_data.append("ملف الكروت")
+        if not selected_price:
+            missing_data.append("سعر الكرت")
+        if not card_size:
+            missing_data.append("حجم الكرت")
+        if not network_id:
+            missing_data.append("معرف الشبكة")
+            
+        if missing_data:
+            await query.edit_message_text(f"""
+❌ **بيانات مفقودة**
+
+البيانات التالية مطلوبة لإتمام العملية:
+{chr(10).join(['• ' + item for item in missing_data])}
+
+يرجى إعادة العملية من البداية.
+""", parse_mode='Markdown')
+            context.user_data.clear()
             return
         
         # إنشاء batch_id لهذه العملية
@@ -2230,7 +2249,7 @@ async def confirm_simplified_upload(update: Update, context: CallbackContext):
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO upload_batches (id, supplier_id, network_id, filename, total_cards, 
+            INSERT INTO card_upload_batches (id, supplier_id, network_id, filename, total_cards, 
                                         successful_cards, failed_cards, upload_status, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
         ''', (batch_id, user['id'], network_id, upload_data['filename'], 
@@ -2248,17 +2267,19 @@ async def confirm_simplified_upload(update: Update, context: CallbackContext):
         for card_number in upload_data['valid_cards']:
             try:
                 # التحقق من عدم وجود الكرت مسبقاً
-                cursor.execute('SELECT id FROM network_cards WHERE card_number = ?', (card_number,))
+                cursor.execute('SELECT id FROM network_cards WHERE card_code = ?', (card_number,))
                 if cursor.fetchone():
                     failed_count += 1
                     continue
                 
-                # إدراج الكرت الجديد
+                # إدراج الكرت الجديد - إنشاء ID فريد
+                import uuid
+                card_id = str(uuid.uuid4())
                 cursor.execute('''
-                    INSERT INTO network_cards (network_id, card_number, price, size, status, 
-                                               created_at, batch_id, added_by)
-                    VALUES (?, ?, ?, ?, 'available', datetime('now'), ?, ?)
-                ''', (network_id, card_number, selected_price, card_size, batch_id, user['id']))
+                    INSERT INTO network_cards (id, supplier_id, network_id, card_code, card_value, 
+                                               upload_batch_id, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                ''', (card_id, user['id'], network_id, card_number, selected_price, batch_id))
                 
                 successful_count += 1
                 
@@ -2268,7 +2289,7 @@ async def confirm_simplified_upload(update: Update, context: CallbackContext):
         
         # تحديث إحصائيات batch
         cursor.execute('''
-            UPDATE upload_batches 
+            UPDATE card_upload_batches 
             SET successful_cards = ?, failed_cards = ?, upload_status = ? 
             WHERE id = ?
         ''', (successful_count, failed_count, 'completed', batch_id))
