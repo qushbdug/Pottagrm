@@ -2796,8 +2796,14 @@ async def privacy_settings_handler(update: Update, context: CallbackContext):
 async def search_networks_handler(update: Update, context: CallbackContext):
     """Handle network search functionality - interactive search"""
     try:
-        query = update.callback_query
-        user = get_user(query.from_user.id)
+        # دعم كل من الأوامر المباشرة والأزرار
+        if update.callback_query:
+            query = update.callback_query
+            user = get_user(query.from_user.id)
+            is_callback = True
+        else:
+            user = get_user(update.message.from_user.id)
+            is_callback = False
         
         search_text = f"""
 🔍 **البحث في الشبكات** 🔍
@@ -2829,17 +2835,27 @@ async def search_networks_handler(update: Update, context: CallbackContext):
         # Set context for search mode
         context.user_data['awaiting_network_search'] = True
         
-        await query.edit_message_text(search_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        if is_callback:
+            await update.callback_query.edit_message_text(search_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        else:
+            await update.message.reply_text(search_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
     except Exception as e:
         logger.error(f"Error in search networks handler: {e}")
         from enhanced_error_messages import ErrorMessages
-        await query.edit_message_text(ErrorMessages.custom_error(
+        error_text = ErrorMessages.custom_error(
             "البحث في الشبكات",
             "فشل في تحميل واجهة البحث",
             "تحقق من الاتصال وحاول مرة أخرى",
             "SEARCH_INIT_ERROR"
-        ))
+        )
+        try:
+            if update.callback_query:
+                await update.callback_query.edit_message_text(error_text)
+            else:
+                await update.message.reply_text(error_text)
+        except:
+            pass
 
 async def filter_by_category_handler(update: Update, context: CallbackContext):
     """Handle filtering cards by category"""

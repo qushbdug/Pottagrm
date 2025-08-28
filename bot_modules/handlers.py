@@ -2943,12 +2943,22 @@ async def process_network_search(update: Update, context: CallbackContext, searc
 async def redeem_coupon_handler(update: Update, context: CallbackContext):
     """معالج شحن الرصيد بكوبون"""
     try:
-        query = update.callback_query
-        await query.answer()
-        
-        user = get_user(query.from_user.id)
+        # دعم كل من الأوامر المباشرة والأزرار
+        if update.callback_query:
+            query = update.callback_query
+            await query.answer()
+            user = get_user(query.from_user.id)
+            is_callback = True
+        else:
+            user = get_user(update.message.from_user.id)
+            is_callback = False
+            
         if not user:
-            await query.edit_message_text(f"{EMOJIS['error']} يرجى إرسال /start أولاً.")
+            error_text = f"{EMOJIS['error']} يرجى إرسال /start أولاً."
+            if is_callback:
+                await update.callback_query.edit_message_text(error_text)
+            else:
+                await update.message.reply_text(error_text)
             return
         
         # تنظيف أي حالات سابقة
@@ -2980,15 +2990,29 @@ async def redeem_coupon_handler(update: Update, context: CallbackContext):
              InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
+        if is_callback:
+            await update.callback_query.edit_message_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
         
     except Exception as e:
         logger.error(f"Error in redeem coupon handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في شحن الكوبون.")
+        error_text = f"{EMOJIS['error']} حدث خطأ في شحن الكوبون."
+        try:
+            if update.callback_query:
+                await update.callback_query.edit_message_text(error_text)
+            else:
+                await update.message.reply_text(error_text)
+        except:
+            pass
 
 async def process_coupon_redemption(update: Update, context: CallbackContext):
     """معالجة استخدام الكوبون"""
