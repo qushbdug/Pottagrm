@@ -935,7 +935,164 @@ async def executive_reports_handler(update: Update, context: CallbackContext):
         logger.error(f"Error in executive reports: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في التقارير التنفيذية.")
 
+async def manage_users_handler(update, context):
+    """Handle user management"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # Get user statistics
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT COUNT(*) as total_users FROM users')
+        total_users = cursor.fetchone()['total_users']
+        
+        cursor.execute("SELECT COUNT(*) as active_users FROM users WHERE is_active = 1")
+        active_users = cursor.fetchone()['active_users']
+        
+        cursor.execute("SELECT COUNT(*) as suppliers FROM users WHERE role = 'supplier'")
+        suppliers = cursor.fetchone()['suppliers']
+        
+        cursor.execute("SELECT COUNT(*) as customers FROM users WHERE role = 'customer'")
+        customers = cursor.fetchone()['customers']
+        
+        cursor.execute("SELECT COUNT(*) as banned_users FROM users WHERE is_active = 0")
+        banned_users = cursor.fetchone()['banned_users']
+        
+        # Get recent registrations
+        cursor.execute('''
+            SELECT full_name, created_at 
+            FROM users 
+            WHERE role IN ('customer', 'supplier')
+            ORDER BY created_at DESC 
+            LIMIT 3
+        ''')
+        recent_users = cursor.fetchall()
+        
+        conn.close()
+        
+        text = f"""
+👥 **إدارة المستخدمين** 👥
 
+📊 **إحصائيات المستخدمين:**
+📈 إجمالي المستخدمين: **{total_users:,}**
+🟢 المستخدمين النشطين: **{active_users:,}**
+🏪 المزودين: **{suppliers:,}**
+👤 العملاء: **{customers:,}**
+🚫 المحظورين: **{banned_users:,}**
+
+🆕 **آخر المنضمين:**
+"""
+        
+        for new_user in recent_users:
+            created_date = new_user['created_at'][:16] if new_user['created_at'] else 'غير محدد'
+            text += f"\n• {new_user['full_name']} - {created_date}"
+        
+        text += "\n\n🔧 **إدارة شاملة:**"
+        
+        keyboard = [
+            [InlineKeyboardButton('👥 عرض جميع المستخدمين', callback_data='users_list_all'),
+             InlineKeyboardButton('🔍 البحث عن مستخدم', callback_data='users_search')],
+            [InlineKeyboardButton('📊 تقارير المستخدمين', callback_data='users_reports'),
+             InlineKeyboardButton('💰 إدارة الأرصدة', callback_data='users_balance_mgmt')],
+            [InlineKeyboardButton('🚫 المستخدمين المحظورين', callback_data='users_banned'),
+             InlineKeyboardButton('⭐ أفضل المستخدمين', callback_data='users_top')],
+            [InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel'),
+             InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in manage users handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحميل إدارة المستخدمين.")
+
+async def system_settings_handler(update, context):
+    """Handle system settings management"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # Get current system settings
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Create settings table if it doesn't exist
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                description TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Insert default values if they don't exist
+        default_settings = [
+
+            ('transfer_fee', '1', 'رسوم التحويل بالنسبة المئوية'),
+            ('system_status', 'active', 'حالة النظام العامة'),
+            ('maintenance_mode', 'off', 'وضع الصيانة')
+        ]
+        
+        for key, value, desc in default_settings:
+            cursor.execute('INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)', 
+                          (key, value, desc))
+        
+        # Get current settings
+        cursor.execute('SELECT * FROM settings')
+        settings = cursor.fetchall()
+        conn.commit()
+        conn.close()
+        
+        # Convert to dict for easy access
+        settings_dict = {s['key']: s['value'] for s in settings}
+        
+        text = f"""
+🔧 **إعدادات النظام** 🔧
+
+📊 **العمولات والرسوم:**
+
+💸 رسوم التحويل: **{settings_dict.get('transfer_fee', '1')}%**
+
+⚙️ **حالة النظام:**
+🟢 النظام: **{settings_dict.get('system_status', 'active')}**
+🔧 الصيانة: **{settings_dict.get('maintenance_mode', 'off')}**
+
+🔧 **إعدادات متقدمة:**
+📈 إحصائيات مفصلة
+🔒 إعدادات الأمان
+📧 إعدادات الإشعارات
+"""
+        
+        keyboard = [
+
+            [InlineKeyboardButton('💸 تعديل رسوم التحويل', callback_data='system_edit_transfer_fee'),
+             InlineKeyboardButton('🔄 إعادة تحميل الإعدادات', callback_data='system_reload_config')],
+            [InlineKeyboardButton('📊 إحصائيات النظام', callback_data='system_stats'),
+             InlineKeyboardButton('🔒 إعدادات الأمان', callback_data='system_security')],
+            [InlineKeyboardButton('🔧 وضع الصيانة', callback_data='system_maintenance_toggle'),
+             InlineKeyboardButton('📧 إعدادات الإشعارات', callback_data='system_notifications')],
+            [InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel'),
+             InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in system settings handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحميل إعدادات النظام.")
 
 async def security_monitoring_handler(update, context):
     return await placeholder_handler(update, context, "مراقبة الأمان")
@@ -2926,13 +3083,4 @@ ADMIN_CALLBACKS.update({
     'export_pdf_report': lambda u, c: placeholder_handler(u, c, "تصدير PDF"),
     'export_excel': lambda u, c: placeholder_handler(u, c, "تصدير Excel"),
 })
-
-# إضافة الدوال المفقودة كـ placeholders
-async def admin_add_offers_handler(update: Update, context: CallbackContext):
-    """إضافة العروض - معالج مؤقت"""
-    await placeholder_handler(update, context, "إضافة العروض")
-
-async def accounting_system_handler(update: Update, context: CallbackContext):
-    """النظام المحاسبي - معالج مؤقت"""
-    await placeholder_handler(update, context, "النظام المحاسبي")
 

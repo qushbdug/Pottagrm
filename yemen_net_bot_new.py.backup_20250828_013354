@@ -28,36 +28,29 @@ from telegram.ext import (
 
 # Import our modular components
 try:
-    # Import configuration and database
     from config import *
     from database import init_db, get_db_connection
-    
-    # Import utilities
-    from utils import (
-        get_user, recalc_and_set_user_balance,
-        get_or_create_supplier_code, get_cards_stats_by_category,
-        get_card_categories, process_uploaded_cards, calculate_user_rating,
-        get_user_permissions
-    )
-    
-    # Import handlers
+    from utils import *
     from handlers import (
         COMMAND_HANDLERS, CONVERSATION_STATES, handle_text_message, show_main_menu,
         redeem_coupon_handler, cancel_coupon_handler, quick_transfer_handler,
         select_user_for_transfer, process_amount_selection, process_card_purchase,
-        skip_network_location, search_by_type_handler, choose_role
+        skip_network_location, search_by_type_handler, choose_role,
+
     )
-    
-    # Import admin functions
     from admin_functions import (
-        ADMIN_CALLBACKS, activate_single_supplier, admin_panel_handler,
-        admin_add_offers_handler, accounting_system_handler
+        ADMIN_CALLBACKS, activate_single_supplier,
+
+        admin_panel_handler
     )
-    
-    # Import management modules
     from customer_management import CustomerManagement
     from admin_management import AdminManagement
     from enhanced_error_messages import ErrorMessages, db_error, perm_error, net_error
+    # Import additional utilities
+    from utils import (
+        get_or_create_supplier_code, get_cards_stats_by_category,
+        get_card_categories, process_uploaded_cards, recalc_and_set_user_balance
+    )
 except ImportError as e:
     print(f"Error importing modules: {e}")
     print("Make sure all module files are in the bot_modules directory")
@@ -214,8 +207,12 @@ async def button_click_handler(update: Update, context):
             await query.edit_message_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
             return
         
-        # Update user activity (temporarily disabled to avoid errors)
-        # TODO: Re-implement update_user_activity function
+        # Update user activity
+        try:
+            update_user_activity(user['id'])
+        except sqlite3.Error as e:
+            logger.error(f"Failed to update user activity for {user['id']}: {e}")
+            # Continue execution, this is not critical
         
         # Route to appropriate handlers
         
@@ -430,8 +427,14 @@ async def button_click_handler(update: Update, context):
             await mark_all_read_handler(update, context)
         elif callback_data == 'recharge_balance':
             await recharge_balance_handler(update, context)
+        elif callback_data == 'personal_reports':
+            await personal_reports_handler(update, context)
+        elif callback_data == 'promotions':
+            await promotions_handler(update, context)
         elif callback_data == 'my_notifications':
             await my_notifications_handler(update, context)
+        elif callback_data == 'account_settings':
+            await account_settings_handler(update, context)
         elif callback_data == 'transfer_history':
             await transfer_history_handler(update, context)
         elif callback_data == 'update_profile':
@@ -558,6 +561,62 @@ async def button_click_handler(update: Update, context):
             pass
 
 # Placeholder handlers for features being implemented
+async def personal_reports_handler(update: Update, context):
+    """Show personal reports"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        # Get user statistics
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT COUNT(*) as total_purchases, SUM(amount) as total_spent
+            FROM transactions 
+            WHERE from_user = ? AND type = 'purchase'
+        ''', (user['id'],))
+        
+        stats = cursor.fetchone()
+        total_purchases = stats['total_purchases'] or 0
+        total_spent = stats['total_spent'] or 0.0
+        
+        conn.close()
+        
+        report_text = f"""
+📊 **تقاريري الشخصية** 📊
+
+👤 **{user['full_name']}**
+
+📈 **إحصائيات الشراء:**
+🛒 إجمالي المشتريات: **{total_purchases}**
+💰 إجمالي المبلغ المصروف: **{total_spent:.2f}** ريال
+📅 عضو منذ: {user['created_at'][:10]}
+⚡ آخر نشاط: {user['last_activity'][:10]}
+
+🎯 **معدلات الاستخدام:**
+📊 متوسط الشراء الشهري: قيد الحساب
+🔥 الشبكة المفضلة: قيد التحليل
+⭐ تقييمي: {calculate_user_rating(user['id'])['average_rating']}/5
+
+📈 **التقارير المفصلة متاحة الآن في القوائم المتقدمة**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton(f'📊 تحليل مفصل', callback_data='detailed_analysis')],
+            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(report_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in personal reports handler: {e}")
+        await query.edit_message_text(ErrorMessages.custom_error(
+            "عرض التقارير", 
+            "فشل في تحميل بيانات التقارير من قاعدة البيانات", 
+            "تحقق من الاتصال وأعد المحاولة، أو تواصل مع الدعم إذا استمرت المشكلة",
+            "REPORT_ERROR"
+        ))
 
 async def my_ratings_handler(update: Update, context):
     """Show user ratings"""
@@ -663,9 +722,112 @@ async def my_notifications_handler(update: Update, context):
         logger.error(f"Error in my notifications handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض الإشعارات.")
 
+async def promotions_handler(update: Update, context):
+    """Show available promotions"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        # Get active promotions
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT * FROM promotions 
+            WHERE is_active = 1 
+            AND start_date <= ? 
+            AND end_date >= ?
+            AND (target_user_role IS NULL OR target_user_role = ?)
+            ORDER BY created_at DESC 
+            LIMIT 5
+        ''', (datetime.now(), datetime.now(), user['role']))
+        
+        promotions = cursor.fetchall()
+        conn.close()
+        
+        promo_text = f"""
+🎁 **العروض والخصومات** 🎁
 
+👤 **{user['full_name']}**
 
+🔥 **العروض المتاحة حالياً:**
+"""
+        
+        if promotions:
+            for promo in promotions:
+                discount_text = f"{promo['discount_percentage']}%" if promo['discount_percentage'] > 0 else f"{promo['discount_amount']} ريال"
+                promo_text += f"""
+💫 **{promo['title']}**
+📝 {promo['description'][:50]}...
+💰 خصم: {discount_text}
+📅 ينتهي: {promo['end_date'][:10]}
+---
+"""
+        else:
+            promo_text += "\nلا توجد عروض متاحة حالياً"
+        
+        keyboard = [
+            [InlineKeyboardButton(f'🎯 تفاصيل العروض', callback_data='promotion_details')],
+            [InlineKeyboardButton(f'📜 استخدام كود خصم', callback_data='use_promo_code')],
+            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(promo_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in promotions handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض العروض.")
 
+async def account_settings_handler(update: Update, context):
+    """Show account settings"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        permissions = get_user_permissions(user['id'])
+        
+                # تحديد نوع الحساب
+        role_names = {
+            'user': 'عميل', 
+ 
+            'supplier': 'مزود', 
+            'admin': 'مشرف', 
+            'super_admin': 'مشرف أعلى'
+        }
+        
+        settings_text = f"""
+⚙️ **إعدادات الحساب** ⚙️
+
+👤 **معلومات الحساب:**
+📛 الاسم: **{user['full_name']}**
+📞 الهاتف: **{user['phone']}**
+🏷️ النوع: **{USER_ROLES.get(user['role'], user['role'])}**
+💳 رقم المحفظة: **{user['wallet_number']}**
+📅 تاريخ التسجيل: {user['created_at'][:10]}
+⚡ الحالة: {"مفعل" if user['is_active'] else "غير مفعل"}
+
+🔐 **الصلاحيات:**
+"""
+        
+        if permissions:
+            for perm in permissions:
+                settings_text += f"✅ {PERMISSIONS.get(perm, perm)}\n"
+        else:
+            settings_text += "📋 الصلاحيات الأساسية فقط"
+        
+        keyboard = [
+            [InlineKeyboardButton(f'🔔 إعدادات الإشعارات', callback_data='notification_preferences'),
+             InlineKeyboardButton(f'🔒 الأمان والخصوصية', callback_data='privacy_settings')],
+            [InlineKeyboardButton(f'📱 تغيير رقم الهاتف', callback_data='change_phone'),
+             InlineKeyboardButton(f'🎫 دعوة صديق', callback_data='invite_friend')],
+            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(settings_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in account settings handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض الإعدادات.")
 
 async def buy_cards_handler(update: Update, context):
     """Handle buy cards request"""
