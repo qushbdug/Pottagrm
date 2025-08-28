@@ -504,9 +504,7 @@ async def handle_text_message(update: Update, context: CallbackContext):
             from bot_modules.admin_functions import process_broadcast_message
             return await process_broadcast_message(update, context)
         
-        # Check if waiting for WiFi search
-        if context.user_data.get('awaiting_wifi_search'):
-            return await process_wifi_search(update, context)
+        # WiFi search removed - now handled by unified search in main bot
         
         # Check if waiting for transfer step 1 (wallet number)
         if context.user_data.get('awaiting_transfer_step1'):
@@ -588,243 +586,9 @@ async def handle_text_message(update: Update, context: CallbackContext):
 
 # Enhanced User Features
 
-async def wifi_search_handler(update: Update, context: CallbackContext):
-    """البحث عن الشبكات المتاحة"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            if update.message:
-                await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
-            else:
-                await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-        
-        # الحصول على الشبكات المتاحة
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # احصل على عدد الشبكات النشطة
-        cursor.execute('SELECT COUNT(*) FROM networks WHERE is_active = 1')
-        active_networks_count = cursor.fetchone()[0]
-        
-        # احصل على عدد فئات الكروت المتاحة
-        cursor.execute('''
-            SELECT COUNT(*) FROM card_categories cc 
-            JOIN networks n ON cc.network_id = n.id 
-            WHERE n.is_active = 1 AND cc.is_available = 1
-        ''')
-        available_categories_count = cursor.fetchone()[0]
-        
-        # احصه على إجمالي المخزون
-        cursor.execute('''
-            SELECT SUM(cc.stock_count) FROM card_categories cc 
-            JOIN networks n ON cc.network_id = n.id 
-            WHERE n.is_active = 1 AND cc.is_available = 1
-        ''')
-        total_stock = cursor.fetchone()[0] or 0
-        
-        conn.close()
-        
-        if active_networks_count == 0:
-            text = f"""
-📶 **البحث عن شبكات الواي فاي** 📶
+# wifi_search_handler removed - unified with search_networks_handler in main bot
 
-👤 مرحباً **{user['full_name']}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
-
-🏪 **لا توجد شبكات متاحة حالياً**
-
-📋 **نحن نتعامل حصرياً مع:**
-• 🌐 كروت شبكات الواي فاي المنزلية
-• 💳 كروت الخدمات المقدمة من المزودين المعتمدين
-• 📶 شبكات الإنترنت اللاسلكي
-
-⏳ **الشبكات ستظهر عندما:**
-• يقوم المزودون بإضافة شبكاتهم
-• يتم رفع كروت الواي فاي المتاحة
-• يتم تفعيل الخدمات الجديدة
-
-💡 **للمزودين:**
-يمكنكم إضافة شبكاتكم من لوحة المزود
-
-🔔 **سيتم إشعارك فور توفر شبكات جديدة!**
-"""
-        else:
-            text = f"""
-📶 **البحث عن شبكات الواي فاي** 📶
-
-👤 مرحباً **{user['full_name']}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
-
-📊 **إحصائيات الشبكات:**
-🌐 الشبكات المتاحة: **{active_networks_count}** شبكة
-💳 فئات الكروت: **{available_categories_count}** فئة
-📦 إجمالي المخزون: **{total_stock:,}** كرت
-
-🔍 **خيارات البحث:**
-
-1️⃣ **عرض جميع الشبكات**
-   استعرض كافة الشبكات المضافة من المزودين
-
-2️⃣ **البحث بالاسم**
-   ابحث عن شبكة واي فاي معينة
-
-3️⃣ **حسب نوع الخدمة**
-   شبكات الواي فاي المنزلية
-
-4️⃣ **حسب السعر**
-   اختر حسب ميزانيتك
-"""
-        
-        if active_networks_count == 0:
-            keyboard = [
-                [InlineKeyboardButton('🔄 تحديث الشبكات', callback_data='search_networks'),
-                 InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')],
-                [InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet'),
-                 InlineKeyboardButton('📞 الدعم الفني', callback_data='help')],
-                [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-            ]
-        else:
-            keyboard = [
-                [InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks'),
-                 InlineKeyboardButton('🔍 بحث بالاسم', callback_data='search_by_network_name')],
-                [InlineKeyboardButton('📶 شبكات الواي فاي', callback_data='wifi_networks'),
-                 InlineKeyboardButton('🏠 شبكات منزلية', callback_data='home_networks')],
-                [InlineKeyboardButton('💰 حسب السعر', callback_data='networks_by_price'),
-                 InlineKeyboardButton('⭐ الأكثر طلباً', callback_data='popular_networks')],
-                [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-            ]
-        
-        if update.message:
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        else:
-            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in WiFi search: {e}")
-        error_msg = "❌ حدث خطأ في البحث"
-        if update.message:
-            await update.message.reply_text(error_msg)
-        else:
-            await update.callback_query.edit_message_text(error_msg)
-
-async def process_wifi_search(update: Update, context: CallbackContext):
-    """Process WiFi search query"""
-    try:
-        if not context.user_data.get('awaiting_wifi_search'):
-            return
-        
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.message.reply_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
-            return
-        
-        search_term = update.message.text.strip()
-        
-        if len(search_term) < 2:
-            await update.message.reply_text(f"{EMOJIS['error']} كلمة البحث قصيرة جداً. أدخل على الأقل حرفين.")
-            return
-        
-        # Search in networks
-        from bot_modules.database import get_db_connection
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Search by name, code, or city
-        cursor.execute('''
-            SELECT n.*, u.full_name as supplier_name 
-            FROM networks n
-            JOIN users u ON n.supplier_id = u.id
-            WHERE (n.name LIKE ? OR COALESCE(n.network_code, '') LIKE ? OR n.city LIKE ?)
-            AND n.is_active = 1 AND n.is_approved = 1
-            ORDER BY n.name
-            LIMIT 20
-        ''', (f'%{search_term}%', f'%{search_term}%', f'%{search_term}%'))
-        
-        networks = cursor.fetchall()
-        
-        # Get card categories for each network
-        results = []
-        for network in networks:
-            cursor.execute('''
-                SELECT COUNT(*) as categories_count, MIN(price) as min_price, MAX(price) as max_price
-                FROM card_categories 
-                WHERE network_id = ? AND is_available = 1
-            ''', (network['id'],))
-            
-            category_info = cursor.fetchone()
-            
-            results.append({
-                'network': network,
-                'categories_count': category_info['categories_count'],
-                'min_price': category_info['min_price'],
-                'max_price': category_info['max_price']
-            })
-        
-        conn.close()
-        
-        # Clear user state
-        context.user_data.pop('awaiting_wifi_search', None)
-        
-        if not results:
-            await update.message.reply_text(f"""
-{EMOJIS['error']} **لم يتم العثور على نتائج**
-
-🔍 **كلمة البحث:** `{search_term}`
-
-💡 **اقتراحات:**
-• تأكد من صحة الإملاء
-• جرب كلمات أخرى
-• ابحث باسم المدينة
-• استخدم /wifi_search للبحث مرة أخرى
-""", parse_mode='Markdown')
-            return
-        
-        # Format results
-        results_text = f"""
-🔍 **نتائج البحث عن: {search_term}**
-
-📊 **تم العثور على {len(results)} شبكة**
-
-"""
-        
-        for i, result in enumerate(results[:10], 1):
-            network = result['network']
-            min_price = result['min_price'] or 0
-            max_price = result['max_price'] or 0
-            
-            price_range = f"{min_price:.0f}" if min_price == max_price else f"{min_price:.0f} - {max_price:.0f}"
-            
-            network_code = network.get('network_code') or 'غير محدد'
-            supplier_name = result.get('network', {}).get('supplier_name') or network.get('supplier_name', 'غير محدد')
-            
-            results_text += f"""
-**{i}. {network['name']}**
-🆔 الكود: `{network_code}`
-🌍 المدينة: {network['city']}
-👤 المزود: {supplier_name}
-🎫 الفئات: {result['categories_count']} فئة
-💰 الأسعار: {price_range} ريال
-
-"""
-        
-        if len(results) > 10:
-            results_text += f"\n... و {len(results) - 10} شبكة أخرى"
-        
-        results_text += f"""
-───────────────────
-💡 لشراء البطاقات استخدم /buy
-🔍 للبحث مرة أخرى استخدم /wifi_search
-"""
-        
-        await update.message.reply_text(results_text, parse_mode='Markdown')
-        
-        # Log the search
-        logger.info(f"User {user['full_name']} searched for WiFi: {search_term} - Found {len(results)} results")
-        
-    except Exception as e:
-        logger.error(f"Error in process WiFi search: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في البحث.")
+# process_wifi_search removed - unified with search_networks_handler in main bot
 
 async def send_balance_handler(update: Update, context: CallbackContext):
     """إرسال رصيد مع البحث المتقدم"""
@@ -1520,20 +1284,7 @@ async def personal_reports_handler(update: Update, context: CallbackContext):
         else:
             await update.callback_query.edit_message_text("❌ حدث خطأ في التقارير الشخصية.")
 
-async def promotions_handler(update: Update, context: CallbackContext):
-    try:
-        text = """
-🎁 العروض والخصومات
-
-لا توجد عروض متاحة حالياً.
-"""
-        kb = [[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]
-        if update.message:
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
-        else:
-            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
-    except Exception as e:
-        logger.error(f"Error in promotions_handler: {e}")
+# promotions_handler removed - unified with enhanced promotions_handler in main bot
 
 async def my_notifications_handler(update: Update, context: CallbackContext):
     try:
@@ -1940,104 +1691,7 @@ async def select_user_for_transfer(update: Update, context: CallbackContext, sel
         logger.error(f"Error in select user for transfer: {e}")
         await update.callback_query.edit_message_text("❌ حدث خطأ في اختيار المستخدم")
 
-async def show_all_networks(update: Update, context: CallbackContext):
-    """عرض جميع الشبكات المتاحة"""
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # الحصول على جميع الشبكات مع فئات الكروت
-        cursor.execute('''
-            SELECT 
-                n.id, n.name, n.provider, n.description, n.location,
-                COUNT(cc.id) as card_types,
-                SUM(cc.stock_count) as total_stock,
-                MIN(cc.price) as min_price,
-                MAX(cc.price) as max_price
-            FROM networks n
-            LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
-            WHERE n.is_active = 1
-            GROUP BY n.id, n.name, n.provider, n.description, n.location
-            ORDER BY n.name
-        ''')
-        
-        networks = cursor.fetchall()
-        conn.close()
-        
-        if not networks:
-            await update.callback_query.edit_message_text(
-                "❌ **لا توجد شبكات متاحة حالياً**\n\n"
-                "تحقق لاحقاً للحصول على التحديثات"
-            )
-            return
-
-        text = f"""
-🌐 **جميع الشبكات المتاحة** 🌐
-
-👤 **{user['full_name']}**
-💰 رصيدك: **{user['balance']:,.2f}** ريال
-
-📊 **عدد الشبكات:** {len(networks)} شبكة
-
-"""
-
-        keyboard = []
-        for network in networks:
-            network_id, name, provider, description, location, card_types, total_stock, min_price, max_price = network
-            
-            # تنسيق معلومات الشبكة
-            stock_status = "📦" if total_stock and total_stock > 0 else "❌"
-            price_range = ""
-            if min_price and max_price:
-                if min_price == max_price:
-                    price_range = f"{min_price:,.0f} ريال"
-                else:
-                    price_range = f"{min_price:,.0f} - {max_price:,.0f} ريال"
-            
-            text += f"""
-🏢 **{name}**
-📝 {description or 'شبكة واي فاي منزلية'}
-📍 الموقع: {location or 'غير محدد'}
-👤 المزود: {provider}
-💳 الفئات: {card_types or 0} فئة
-📦 المخزون: {total_stock or 0} كرت
-💰 الأسعار: {price_range or 'غير محدد'}
-━━━━━━━━━━━━━━━━━━━━━━━━━
-
-"""
-            
-            # إضافة زر للشبكة
-            button_text = f"{stock_status} {name}"
-            if total_stock and total_stock > 0:
-                button_text += f" ({total_stock})"
-            
-            keyboard.append([InlineKeyboardButton(
-                button_text,
-                callback_data=f"network_{network_id}"
-            )])
-
-        # إضافة أزرار إضافية
-        keyboard.extend([
-            [InlineKeyboardButton('🔍 بحث متقدم', callback_data='search_networks'),
-             InlineKeyboardButton('💰 ترتيب بالسعر', callback_data='networks_by_price')],
-            [InlineKeyboardButton('🔙 عودة', callback_data='search_networks'),
-             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-        ])
-
-        await update.callback_query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-
-    except Exception as e:
-        logger.error(f"Error in show all networks: {e}")
-        await update.callback_query.edit_message_text("❌ حدث خطأ في عرض الشبكات")
+# show_all_networks removed - "view all networks" option eliminated as requested
 
 async def show_network_details(update: Update, context: CallbackContext, network_id: str):
     """عرض تفاصيل شبكة معينة"""
@@ -2124,8 +1778,8 @@ async def show_network_details(update: Update, context: CallbackContext, network
 
         # إضافة أزرار إضافية
         keyboard.extend([
-            [InlineKeyboardButton('🔙 جميع الشبكات', callback_data='all_networks'),
-             InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet')],
+            [InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet'),
+             InlineKeyboardButton('🔙 العودة', callback_data='search_networks')],
             [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ])
 
@@ -2211,7 +1865,7 @@ async def show_mobile_networks(update: Update, context: CallbackContext):
         # إضافة أزرار إضافية
         keyboard.extend([
             [InlineKeyboardButton('🏠 إنترنت منزلي', callback_data='home_networks'),
-             InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks')],
+             InlineKeyboardButton('🔍 بحث ذكي', callback_data='search_networks')],
             [InlineKeyboardButton('🔙 عودة', callback_data='search_networks'),
              InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ])
@@ -2298,7 +1952,7 @@ async def show_home_networks(update: Update, context: CallbackContext):
         # إضافة أزرار إضافية
         keyboard.extend([
             [InlineKeyboardButton('📱 شبكات المحمول', callback_data='mobile_networks'),
-             InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks')],
+             InlineKeyboardButton('🔍 بحث ذكي', callback_data='search_networks')],
             [InlineKeyboardButton('🔙 عودة', callback_data='search_networks'),
              InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ])
@@ -2580,12 +2234,11 @@ COMMAND_HANDLERS = {
     'wallet': wallet_handler,
     'admin': admin_handler,
     'cancel': cancel,
-    'wifi_search': wifi_search_handler,
+    # wifi_search and search_networks now handled by unified system in main bot
     'send_balance': send_balance_handler,
-    'search_networks': wifi_search_handler,
     'transfer_to_friend': send_balance_handler,
     'personal_reports': personal_reports_handler,
-    'promotions': promotions_handler,
+    # promotions now handled by enhanced system in main bot
     'my_notifications': my_notifications_handler,
     'account_settings': account_settings_handler,
     'my_ratings': my_ratings_handler,
@@ -2610,7 +2263,7 @@ COMMAND_HANDLERS = {
     'search_by_name': lambda u, c: search_by_type_handler(u, c, "name"),
     'search_by_phone': lambda u, c: search_by_type_handler(u, c, "phone"),
     'search_by_username': lambda u, c: search_by_type_handler(u, c, "username"),
-    'all_networks': show_all_networks,
+    # 'all_networks' removed - "view all networks" option eliminated
     'mobile_networks': show_mobile_networks,
     'home_networks': show_home_networks,
     'search_by_network_name': lambda u, c: search_networks_by_name(u, c),
@@ -3131,8 +2784,8 @@ async def search_networks_by_name(update: Update, context: CallbackContext):
 """
         
         keyboard = [
-            [InlineKeyboardButton('🌐 عرض جميع الشبكات', callback_data='all_networks'),
-             InlineKeyboardButton('📍 بحث بالموقع', callback_data='search_by_location')],
+            [InlineKeyboardButton('📍 بحث بالموقع', callback_data='search_by_location'),
+             InlineKeyboardButton('🔍 بحث ذكي', callback_data='search_networks')],
             [InlineKeyboardButton('🔙 عودة', callback_data='search_networks'),
              InlineKeyboardButton('❌ إلغاء', callback_data='cancel')]
         ]
@@ -3213,7 +2866,7 @@ async def process_network_search(update: Update, context: CallbackContext, searc
             
             keyboard = [
                 [InlineKeyboardButton('🔍 بحث جديد', callback_data='search_by_network_name'),
-                 InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks')],
+                 InlineKeyboardButton('🔍 بحث ذكي', callback_data='search_networks')],
                 [InlineKeyboardButton('🔙 عودة', callback_data='search_networks')]
             ]
             
@@ -3269,7 +2922,7 @@ async def process_network_search(update: Update, context: CallbackContext, searc
         # إضافة أزرار إضافية
         keyboard.extend([
             [InlineKeyboardButton('🔍 بحث جديد', callback_data='search_by_network_name'),
-             InlineKeyboardButton('🌐 جميع الشبكات', callback_data='all_networks')],
+             InlineKeyboardButton('🔍 بحث ذكي', callback_data='search_networks')],
             [InlineKeyboardButton('🔙 عودة', callback_data='search_networks'),
              InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ])

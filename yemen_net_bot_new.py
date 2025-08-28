@@ -498,6 +498,12 @@ async def button_click_handler(update: Update, context):
 
                 # Default fallback for unrecognized callbacks
         else:
+            # Handle unified commands (search_networks and promotions now handled here)
+            if callback_data == 'search_networks':
+                return await search_networks_handler(update, context)
+            elif callback_data == 'promotions':
+                return await promotions_handler(update, context)
+            
             # Try dynamic dispatch to existing command handlers before fallback UI
             try:
                 if callback_data in COMMAND_HANDLERS:
@@ -4286,6 +4292,10 @@ def main():
         for command, handler in COMMAND_HANDLERS.items():
             if command not in ['start']:  # start is already in conversation handler
                 application.add_handler(CommandHandler(command, handler))
+        
+        # Add unified command handlers (removed from handlers.py)
+        application.add_handler(CommandHandler('wifi_search', search_networks_handler))
+        application.add_handler(CommandHandler('promotions', promotions_handler))
         
         # Start the bot with enhanced error handling
         logger.info(f'{EMOJIS["fire"]} Starting Pottagrm Enhanced Bot v2.1.0...')
