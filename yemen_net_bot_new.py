@@ -224,6 +224,10 @@ async def button_click_handler(update: Update, context):
         elif callback_data == 'enhanced_wallet':
             return await enhanced_wallet_handler(update, context)
         
+        # Wallet pagination
+        elif callback_data.startswith('wallet_page_'):
+            return await wallet_page_handler(update, context)
+        
         # Network search and details
         elif callback_data == 'search_networks':
             return await search_networks_handler(update, context)
@@ -441,10 +445,10 @@ async def button_click_handler(update: Update, context):
         # Refresh balance
         elif callback_data == 'refresh_balance':
             new_balance = recalc_and_set_user_balance(user['id'])
-            await query.edit_message_text(
-                f"🔄 **تم تحديث الرصيد**\n\n💰 رصيدك الحالي: **{new_balance:.2f}** ريال",
-                parse_mode='Markdown'
-            )
+            # إعادة تحميل بيانات المستخدم بعد تحديث الرصيد
+            user = get_user(user['id'])
+            # العودة للمحفظة المطورة مع الرصيد المحدث
+            return await enhanced_wallet_handler(update, context)
         
         # Help
         elif callback_data == 'help':
@@ -4051,7 +4055,7 @@ async def process_supplier_network_creation(update: Update, context: CallbackCon
 
 
 async def enhanced_wallet_handler(update: Update, context: CallbackContext):
-    """معالج المحفظة المحسنة - مُصحح"""
+    """معالج المحفظة المحسنة مع نظام التصفح بالصفحات"""
     try:
         # تحديد نوع التحديث (callback أو message)
         if hasattr(update, 'callback_query') and update.callback_query:
@@ -4070,22 +4074,62 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
                 await update.message.reply_text(error_msg)
             return
         
-        # الحصول على المعاملات الحديثة
+        # صفحة افتراضية (الصفحة الأولى)
+        page = 1
+        return await show_wallet_page(update, context, user, page, is_callback)
+        
+    except Exception as e:
+        logger.error(f"Error in enhanced wallet handler: {e}")
+        from enhanced_error_messages import ErrorMessages
+        error_msg = ErrorMessages.custom_error(
+            "المحفظة المطورة",
+            "فشل في تحميل بيانات المحفظة",
+            "تحقق من الاتصال وحاول مرة أخرى",
+            "WALLET_LOAD_ERROR"
+        )
+        
+        if hasattr(update, 'callback_query') and update.callback_query:
+            await update.callback_query.edit_message_text(error_msg)
+        else:
+            await update.message.reply_text(error_msg)
+
+async def show_wallet_page(update: Update, context: CallbackContext, user: dict, page: int, is_callback: bool = True):
+    """عرض صفحة محددة من المحفظة مع نظام التصفح"""
+    try:
+        TRANSACTIONS_PER_PAGE = 4  # 4 معاملات لكل صفحة
+        
+        # الحصول على جميع المعاملات مع إحصائيات التصفح
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # آخر المعاملات
+        # إجمالي عدد المعاملات
+        cursor.execute('''
+            SELECT COUNT(*) FROM transactions 
+            WHERE from_user = ? OR to_user = ?
+        ''', (user['id'], user['id']))
+        total_transactions = cursor.fetchone()[0]
+        
+        # حساب إجمالي الصفحات
+        total_pages = max(1, (total_transactions + TRANSACTIONS_PER_PAGE - 1) // TRANSACTIONS_PER_PAGE)
+        
+        # التأكد من أن رقم الصفحة صحيح
+        page = max(1, min(page, total_pages))
+        
+        # حساب الإزاحة (offset) لقاعدة البيانات
+        offset = (page - 1) * TRANSACTIONS_PER_PAGE
+        
+        # جلب المعاملات للصفحة الحالية
         cursor.execute('''
             SELECT id, from_user, to_user, amount, type, description, created_at
             FROM transactions 
             WHERE from_user = ? OR to_user = ?
             ORDER BY created_at DESC
-            LIMIT 8
-        ''', (user['id'], user['id']))
+            LIMIT ? OFFSET ?
+        ''', (user['id'], user['id'], TRANSACTIONS_PER_PAGE, offset))
         
-        recent_transactions = cursor.fetchall()
+        page_transactions = cursor.fetchall()
         
-        # إحصائيات المعاملات
+        # إحصائيات المعاملات الإجمالية
         cursor.execute('''
             SELECT 
                 COUNT(*) as total_count,
@@ -4096,13 +4140,14 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
         ''', (user['id'], user['id'], user['id'], user['id']))
         
         stats = cursor.fetchone()
-        total_transactions, sent_amount, received_amount = stats
+        total_count, sent_amount, received_amount = stats
         
         conn.close()
         
         # حساب التقييم
         rating_data = calculate_user_rating(user['id'])
         
+        # بناء نص المحفظة
         wallet_text = f"""
 💳 **محفظتي المطورة** 💳
 
@@ -4111,17 +4156,17 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
 💳 **رقم المحفظة:** {user['wallet_number']}
 
 📊 **إحصائيات المحفظة:**
-📤 المرسل: **{sent_amount:,.2f}** ريال ({total_transactions} معاملة)
+📤 المرسل: **{sent_amount:,.2f}** ريال ({total_count} معاملة)
 📥 المستلم: **{received_amount:,.2f}** ريال
 💵 صافي الحركة: **{received_amount - sent_amount:+,.2f}** ريال
 ⭐ تقييمي: **{rating_data['average_rating']}/5**
 
-📋 **آخر المعاملات:**
+📋 **المعاملات (صفحة {page} من {total_pages}):**
 
 """
         
-        if recent_transactions:
-            for transaction in recent_transactions:
+        if page_transactions:
+            for transaction in page_transactions:
                 trans_id, from_user_id, to_user_id, amount, trans_type, description, created_at = transaction
                 
                 # تحديد اتجاه المعاملة
@@ -4148,9 +4193,45 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
         else:
-            wallet_text += "📭 لا توجد معاملات حتى الآن"
+            if total_transactions == 0:
+                wallet_text += "📭 لا توجد معاملات حتى الآن"
+            else:
+                wallet_text += "📭 لا توجد معاملات في هذه الصفحة"
         
-        keyboard = [
+        # بناء لوحة المفاتيح مع أزرار التصفح
+        keyboard = []
+        
+        # أزرار التصفح (إذا كان هناك أكثر من صفحة)
+        if total_pages > 1:
+            navigation_row = []
+            
+            # زر الصفحة السابقة
+            if page > 1:
+                navigation_row.append(InlineKeyboardButton('◀️ السابق', callback_data=f'wallet_page_{page-1}'))
+            
+            # أزرار أرقام الصفحات (حتى 5 صفحات)
+            start_page = max(1, page - 2)
+            end_page = min(total_pages, start_page + 4)
+            
+            for p in range(start_page, end_page + 1):
+                if p == page:
+                    navigation_row.append(InlineKeyboardButton(f'• {p} •', callback_data=f'wallet_page_{p}'))
+                else:
+                    navigation_row.append(InlineKeyboardButton(str(p), callback_data=f'wallet_page_{p}'))
+            
+            # زر الصفحة التالية
+            if page < total_pages:
+                navigation_row.append(InlineKeyboardButton('▶️ التالي', callback_data=f'wallet_page_{page+1}'))
+            
+            # تقسيم أزرار التصفح إلى صفوف إذا كانت كثيرة
+            if len(navigation_row) > 5:
+                keyboard.append(navigation_row[:3])
+                keyboard.append(navigation_row[3:])
+            else:
+                keyboard.append(navigation_row)
+        
+        # أزرار الوظائف الرئيسية
+        keyboard.extend([
             [InlineKeyboardButton('💸 تحويل رصيد', callback_data='transfer_to_friend'),
              InlineKeyboardButton('🛒 شراء كروت', callback_data='buy_cards')],
             [InlineKeyboardButton('🎟️ شحن بكوبون', callback_data='redeem_coupon'),
@@ -4158,7 +4239,7 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
             [InlineKeyboardButton('📈 إحصائيات المحفظة', callback_data='wallet_stats'),
              InlineKeyboardButton('🔄 تحديث الرصيد', callback_data='refresh_balance')],
             [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-        ]
+        ])
         
         if is_callback:
             await update.callback_query.edit_message_text(wallet_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
@@ -4166,13 +4247,45 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
             await update.message.reply_text(wallet_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
     except Exception as e:
-        logger.error(f"Error in enhanced wallet handler: {e}")
-        error_msg = f"{EMOJIS['error']} حدث خطأ في المحفظة. تم إصلاحه الآن."
+        logger.error(f"Error in show wallet page: {e}")
+        from enhanced_error_messages import ErrorMessages
+        error_msg = ErrorMessages.custom_error(
+            "صفحة المحفظة",
+            f"فشل في تحميل الصفحة رقم {page}",
+            "حاول تحديث المحفظة أو العودة للصفحة الأولى",
+            "WALLET_PAGE_ERROR"
+        )
         
-        if hasattr(update, 'callback_query') and update.callback_query:
+        if is_callback:
             await update.callback_query.edit_message_text(error_msg)
         else:
             await update.message.reply_text(error_msg)
+
+async def wallet_page_handler(update: Update, context: CallbackContext):
+    """معالج التنقل بين صفحات المحفظة"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        if not user:
+            await query.edit_message_text(f"{EMOJIS['error']} يرجى التسجيل أولاً.")
+            return
+        
+        # استخراج رقم الصفحة من callback_data
+        callback_data = query.data
+        page = int(callback_data.split('_')[-1])
+        
+        await show_wallet_page(update, context, user, page, is_callback=True)
+        
+    except Exception as e:
+        logger.error(f"Error in wallet page handler: {e}")
+        from enhanced_error_messages import ErrorMessages
+        await query.edit_message_text(ErrorMessages.custom_error(
+            "التنقل بين الصفحات",
+            "فشل في تحميل الصفحة المطلوبة",
+            "حاول العودة للمحفظة الرئيسية وأعد المحاولة",
+            "PAGE_NAV_ERROR"
+        ))
 
 
 # معالجات إدارة الشبكات للمشرف الأعلى
