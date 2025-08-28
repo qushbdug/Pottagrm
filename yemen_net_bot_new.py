@@ -4295,7 +4295,9 @@ def main():
         
         # Add unified command handlers (removed from handlers.py)
         application.add_handler(CommandHandler('wifi_search', search_networks_handler))
+        application.add_handler(CommandHandler('search_networks', search_networks_handler))
         application.add_handler(CommandHandler('promotions', promotions_handler))
+        application.add_handler(CommandHandler('redeem_coupon', redeem_coupon_handler))
         
         # Start the bot with enhanced error handling
         logger.info(f'{EMOJIS["fire"]} Starting Pottagrm Enhanced Bot v2.1.0...')
