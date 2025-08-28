@@ -203,9 +203,9 @@ async def process_balance_issue(update: Update, context: CallbackContext):
         
         await update.message.reply_text(success_text, parse_mode='Markdown')
         
-        # Send notification to receiver
+        # Send notification to receiver (about receiving money from admin)
         try:
-            notification_text = f"""
+            receiver_notification = f"""
 💰 **تم استلام رصيد من الإدارة!** 💰
 
 📥 **تفاصيل الاستلام:**
@@ -218,14 +218,38 @@ async def process_balance_issue(update: Update, context: CallbackContext):
 ───────────────────
 💡 استخدم /wallet لعرض محفظتك
 """
-            
+
             await context.bot.send_message(
                 chat_id=target_user['telegram_id'],
-                text=notification_text,
+                text=receiver_notification,
                 parse_mode='Markdown'
             )
         except Exception as e:
             logger.warning(f"Failed to send notification to receiver {target_user['telegram_id']}: {e}")
+
+        # Send notification to admin (about sending money)
+        try:
+            admin_notification = f"""
+👑 **تم تحويل رصيد من الإدارة** 👑
+
+📤 **تفاصيل التحويل الإداري:**
+👤 المستلم: **{target_user['full_name']}**
+💰 المبلغ المحول: **{amount:,.2f}** ريال
+💵 رصيد المستلم الجديد: **{target_new_balance:,.2f}** ريال
+💬 السبب: {reason}
+🕐 وقت التحويل: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+───────────────────
+💡 تم تسجيل العملية في نظام الإدارة
+"""
+
+            await context.bot.send_message(
+                chat_id=user['telegram_id'],
+                text=admin_notification,
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send notification to admin {user['telegram_id']}: {e}")
         
         # Log the transfer
         logger.info(f"Super admin {user['full_name']} transferred {amount} YER to {target_user['full_name']}")

@@ -779,9 +779,9 @@ async def process_balance_send(update: Update, context: CallbackContext):
         
         await update.message.reply_text(success_text, parse_mode='Markdown')
         
-        # Send notification to receiver
+        # Send notification to receiver (about receiving money)
         try:
-            notification_text = f"""
+            receiver_notification = f"""
 💰 **تم استلام رصيد جديد!** 💰
 
 📥 **تفاصيل الاستلام:**
@@ -798,11 +798,37 @@ async def process_balance_send(update: Update, context: CallbackContext):
             
             await context.bot.send_message(
                 chat_id=target_user['telegram_id'],
-                text=notification_text,
+                text=receiver_notification,
                 parse_mode='Markdown'
             )
         except Exception as e:
             logger.warning(f"Failed to send notification to receiver {target_user['telegram_id']}: {e}")
+
+        # Send notification to sender (about sending money)
+        try:
+            sender_notification = f"""
+📤 **تم خصم رصيد من محفظتك** 📤
+
+💸 **تفاصيل الخصم:**
+👤 المستلم: **{target_user['full_name']}**
+💰 المبلغ المخصوم: **{amount:.2f}** ريال
+🆓 الرسوم: **مجاني**
+💵 رصيدك الجديد: **{sender_new_balance:.2f}** ريال
+
+💬 **السبب:** {reason}
+🕐 **وقت التحويل:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+───────────────────
+💡 استخدم /wallet لعرض محفظتك
+"""
+            
+            await context.bot.send_message(
+                chat_id=user['telegram_id'],
+                text=sender_notification,
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send notification to sender {user['telegram_id']}: {e}")
         
         # Log the transfer
         logger.info(f"User {user['full_name']} sent {amount} YER to {target_user['full_name']} (fee: {transfer_fee})")
@@ -1169,14 +1195,54 @@ async def process_simple_transfer(update: Update, context: CallbackContext):
 💵 رصيدك الجديد: {sender_new_balance:.0f} ريال
 """, parse_mode='Markdown')
         
-        # Notify receiver
+        # Send notification to receiver (about receiving money)
         try:
+            receiver_notification = f"""
+💰 **تم استلام رصيد جديد!** 💰
+
+📥 **تفاصيل الاستلام:**
+👤 المرسل: **{user['full_name']}**
+💰 المبلغ المستلم: **{amount:.0f}** ريال
+💵 رصيدك الجديد: **{receiver_new_balance:.0f}** ريال
+
+🕐 **وقت التحويل:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+───────────────────
+💡 استخدم /wallet لعرض محفظتك
+"""
+            
             await context.bot.send_message(
                 chat_id=target_user['telegram_id'],
-                text=f"💰 تم استلام {amount:.0f} ريال من {user['full_name']}\n💵 رصيدك الجديد: {receiver_new_balance:.0f} ريال"
+                text=receiver_notification,
+                parse_mode='Markdown'
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to send notification to receiver {target_user['telegram_id']}: {e}")
+
+        # Send notification to sender (about sending money)
+        try:
+            sender_notification = f"""
+📤 **تم خصم رصيد من محفظتك** 📤
+
+💸 **تفاصيل الخصم:**
+👤 المستلم: **{target_user['full_name']}**
+💰 المبلغ المخصوم: **{amount:.0f}** ريال
+🆓 الرسوم: **مجاني**
+💵 رصيدك الجديد: **{sender_new_balance:.0f}** ريال
+
+🕐 **وقت التحويل:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+───────────────────
+💡 استخدم /wallet لعرض محفظتك
+"""
+            
+            await context.bot.send_message(
+                chat_id=user['telegram_id'],
+                text=sender_notification,
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send notification to sender {user['telegram_id']}: {e}")
         
         logger.info(f"User {user['full_name']} sent {amount} to {target_user['full_name']} (fee: {transfer_fee})")
         

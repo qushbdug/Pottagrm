@@ -4164,9 +4164,9 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
         
         await query.edit_message_text(success_text, parse_mode='Markdown')
         
-        # Send notification to receiver
+        # Send notification to receiver (about receiving money)
         try:
-            notification_text = f"""
+            receiver_notification = f"""
 💰 **تم استلام رصيد جديد!** 💰
 
 📥 **تفاصيل الاستلام:**
@@ -4182,11 +4182,36 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
             
             await context.bot.send_message(
                 chat_id=target_user['telegram_id'],
-                text=notification_text,
+                text=receiver_notification,
                 parse_mode='Markdown'
             )
         except Exception as e:
             logger.warning(f"Failed to send notification to receiver {target_user['telegram_id']}: {e}")
+
+        # Send notification to sender (about sending money)
+        try:
+            sender_notification = f"""
+📤 **تم خصم رصيد من محفظتك** 📤
+
+💸 **تفاصيل الخصم:**
+👤 المستلم: **{target_user['full_name']}**
+💰 المبلغ المخصوم: **{amount:.2f}** ريال
+🆓 الرسوم: **مجاني**
+💵 رصيدك الجديد: **{sender_new_balance:.2f}** ريال
+
+🕐 **وقت التحويل:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+───────────────────
+💡 استخدم /wallet لعرض محفظتك
+"""
+            
+            await context.bot.send_message(
+                chat_id=user['telegram_id'],
+                text=sender_notification,
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send notification to sender {user['telegram_id']}: {e}")
         
         # Log the transfer
         logger.info(f"User {user['full_name']} sent {amount} YER to {target_user['full_name']} (fee: {transfer_fee})")
@@ -4942,6 +4967,66 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             ]
             
             await query.edit_message_text(success_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            
+            # Send notification to buyer (about purchase)
+            try:
+                buyer_notification = f"""
+🛒 **تم خصم رصيد - شراء كرت** 🛒
+
+💸 **تفاصيل الشراء:**
+🏪 الشبكة: **{network_name}**
+👤 المزود: **{provider}**
+💰 المبلغ المخصوم: **{card_price:,.0f}** ريال
+💳 رصيدك الجديد: **{current_balance - card_price:,.2f}** ريال
+
+🎫 **بيانات الكرت:**
+🔢 رقم الكرت: `{card_code}`
+
+⏰ **وقت الشراء:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+───────────────────
+💡 استخدم /wallet لعرض محفظتك
+"""
+                
+                await context.bot.send_message(
+                    chat_id=user['telegram_id'],
+                    text=buyer_notification,
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                logger.warning(f"Failed to send notification to buyer {user['telegram_id']}: {e}")
+
+            # Send notification to supplier (about sale)
+            try:
+                # Get supplier's telegram_id
+                cursor.execute('SELECT telegram_id FROM users WHERE id = ?', (supplier_id,))
+                supplier_telegram_result = cursor.fetchone()
+                
+                if supplier_telegram_result:
+                    supplier_telegram_id = supplier_telegram_result[0]
+                    
+                    supplier_notification = f"""
+💰 **تم بيع كرت من شبكتك!** 💰
+
+📈 **تفاصيل البيع:**
+🏪 الشبكة: **{network_name}**
+👤 المشتري: **{user['full_name']}**
+💰 المبلغ المحول إليك: **{card_price:,.0f}** ريال
+🎫 نوع الكرت: **{card_price:,.0f} ريال**
+
+⏰ **وقت البيع:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+───────────────────
+💡 استخدم /wallet لعرض محفظتك
+"""
+                    
+                    await context.bot.send_message(
+                        chat_id=supplier_telegram_id,
+                        text=supplier_notification,
+                        parse_mode='Markdown'
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to send notification to supplier: {e}")
             
         except Exception as e:
             # إلغاء المعاملة في حالة الخطأ
