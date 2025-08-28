@@ -3173,12 +3173,11 @@ async def show_network_details(update: Update, context: CallbackContext, network
         
         cursor.execute('''
             SELECT n.id, n.name, n.provider, n.location, n.description, n.created_at,
-                   COUNT(cc.id) as categories_count,
-                   MIN(cc.price) as min_price, MAX(cc.price) as max_price,
-                   COUNT(CASE WHEN c.is_sold = 0 THEN 1 END) as available_cards
+                   COUNT(DISTINCT nc.card_value) as categories_count,
+                   MIN(nc.card_value) as min_price, MAX(nc.card_value) as max_price,
+                   COUNT(CASE WHEN nc.is_sold = 0 THEN 1 END) as available_cards
             FROM networks n
-            LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
-            LEFT JOIN cards c ON cc.id = c.category_id
+            LEFT JOIN network_cards nc ON n.id = nc.network_id
             WHERE n.id = ? AND n.is_active = 1
             GROUP BY n.id, n.name, n.provider, n.location, n.description, n.created_at
         ''', (network_id,))
@@ -3195,12 +3194,13 @@ async def show_network_details(update: Update, context: CallbackContext, network
         
         net_id, name, provider, location, description, created_at, cat_count, min_price, max_price, available_cards = network
         
-        # الحصول على فئات الكروت
+        # الحصول على فئات الكروت من network_cards
         cursor.execute('''
-            SELECT name, price, description
-            FROM card_categories
-            WHERE network_id = ? AND is_available = 1
-            ORDER BY price ASC
+            SELECT DISTINCT nc.card_value as price, COUNT(*) as stock_count
+            FROM network_cards nc
+            WHERE nc.network_id = ? AND nc.is_sold = 0
+            GROUP BY nc.card_value
+            ORDER BY nc.card_value ASC
         ''', (network_id,))
         categories = cursor.fetchall()
         
@@ -3229,11 +3229,11 @@ async def show_network_details(update: Update, context: CallbackContext, network
 """
         
         if categories:
-            for cat_name, price, cat_desc in categories:
+            for price, stock_count in categories:
                 details_text += f"""
-🎫 **{cat_name}**
+🎫 **كرت بقيمة {price:,.0f} ريال**
 💰 السعر: **{price:,.0f}** ريال
-📝 الوصف: {cat_desc or 'غير متاح'}
+📦 المتاح: **{stock_count}** كرت
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
         else:
