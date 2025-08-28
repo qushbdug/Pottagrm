@@ -2824,12 +2824,12 @@ async def process_network_search(update: Update, context: CallbackContext, searc
         cursor.execute('''
             SELECT 
                 n.id, n.name, n.provider, n.description, n.location,
-                COUNT(cc.id) as card_types,
-                SUM(cc.stock_count) as total_stock,
-                MIN(cc.price) as min_price,
-                MAX(cc.price) as max_price
+                COUNT(DISTINCT nc.card_value) as card_types,
+                COUNT(nc.id) as total_stock,
+                MIN(nc.card_value) as min_price,
+                MAX(nc.card_value) as max_price
             FROM networks n
-            LEFT JOIN card_categories cc ON n.id = cc.network_id AND cc.is_available = 1
+            LEFT JOIN network_cards nc ON n.id = nc.network_id AND nc.is_sold = 0
             LEFT JOIN supplier_codes sc ON sc.supplier_id = n.supplier_id
             WHERE n.is_active = 1 AND n.is_approved = 1 AND (
                 n.name LIKE ? OR 
