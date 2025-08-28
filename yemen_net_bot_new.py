@@ -51,7 +51,9 @@ try:
     # Import admin functions
     from admin_functions import (
         ADMIN_CALLBACKS, activate_single_supplier, admin_panel_handler,
-        admin_add_offers_handler, accounting_system_handler
+        admin_add_offers_handler, accounting_system_handler,
+        create_coupons_handler, create_quick_coupon_handler,
+        coupons_stats_handler, list_coupons_handler
     )
     
     # Import management modules
@@ -334,6 +336,30 @@ async def button_click_handler(update: Update, context):
             else:
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
                 return
+        
+        # Coupon quick creation handlers
+        elif callback_data.startswith('create_quick_coupon_'):
+            if user['role'] != 'super_admin':
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+                return
+            amount = int(callback_data.split('_')[-1])
+            from bot_modules.admin_functions import create_quick_coupon_handler
+            return await create_quick_coupon_handler(update, context, amount)
+        
+        # Additional coupon handlers
+        elif callback_data == 'coupons_stats':
+            if user['role'] != 'super_admin':
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+                return
+            from bot_modules.admin_functions import coupons_stats_handler
+            return await coupons_stats_handler(update, context)
+        
+        elif callback_data == 'list_coupons':
+            if user['role'] != 'super_admin':
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+                return
+            from bot_modules.admin_functions import list_coupons_handler
+            return await list_coupons_handler(update, context)
         
         # Supplier activation (specific handling)
         elif callback_data.startswith('activate_supplier_'):

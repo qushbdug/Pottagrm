@@ -2936,3 +2936,235 @@ async def accounting_system_handler(update: Update, context: CallbackContext):
     """النظام المحاسبي - معالج مؤقت"""
     await placeholder_handler(update, context, "النظام المحاسبي")
 
+async def create_coupons_handler(update: Update, context: CallbackContext):
+    """معالج إنشاء الكوبونات للمشرف الأعلى"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text("❌ ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # عرض واجهة إنشاء الكوبونات
+        coupon_text = f"""
+🎟️ **إنشاء كوبونات الشحن** 🎟️
+
+👑 المشرف: **{user['full_name']}**
+
+📋 **تعليمات إنشاء الكوبون:**
+1. اختر نوع الكوبون المطلوب
+2. حدد القيمة والكمية
+3. أضف وصف اختياري
+4. تأكيد الإنشاء
+
+🎯 **أنواع الكوبونات المتاحة:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('💰 كوبون فردي', callback_data='create_single_coupon'),
+             InlineKeyboardButton('📦 كوبونات متعددة', callback_data='create_bulk_coupons')],
+            [InlineKeyboardButton('⚡ كوبون سريع (10 ريال)', callback_data='create_quick_coupon_10'),
+             InlineKeyboardButton('⚡ كوبون سريع (25 ريال)', callback_data='create_quick_coupon_25')],
+            [InlineKeyboardButton('⚡ كوبون سريع (50 ريال)', callback_data='create_quick_coupon_50'),
+             InlineKeyboardButton('⚡ كوبون سريع (100 ريال)', callback_data='create_quick_coupon_100')],
+            [InlineKeyboardButton('📊 إحصائيات الكوبونات', callback_data='coupons_stats'),
+             InlineKeyboardButton('📋 قائمة الكوبونات', callback_data='list_coupons')],
+            [InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(coupon_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in create coupons handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض إنشاء الكوبونات.")
+
+async def create_quick_coupon_handler(update: Update, context: CallbackContext, amount: int):
+    """إنشاء كوبون سريع بقيمة محددة"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text("❌ ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # إنشاء كود كوبون عشوائي
+        import random
+        import string
+        coupon_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        
+        # إدراج الكوبون في قاعدة البيانات
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # إنشاء جدول الكوبونات إذا لم يكن موجوداً
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS coupons (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                coupon_code TEXT UNIQUE NOT NULL,
+                amount REAL NOT NULL,
+                is_used INTEGER DEFAULT 0,
+                used_by INTEGER DEFAULT NULL,
+                created_by INTEGER NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                used_at DATETIME DEFAULT NULL,
+                expiry_date DATETIME DEFAULT NULL,
+                description TEXT DEFAULT NULL,
+                FOREIGN KEY (used_by) REFERENCES users (id),
+                FOREIGN KEY (created_by) REFERENCES users (id)
+            )
+        ''')
+        
+        from datetime import datetime, timedelta
+        expiry_date = datetime.now() + timedelta(days=30)
+        
+        cursor.execute('''
+            INSERT INTO coupons (coupon_code, amount, created_by, expiry_date, description)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (coupon_code, amount, user['id'], expiry_date.isoformat(), f'كوبون سريع {amount} ريال'))
+        
+        conn.commit()
+        conn.close()
+        
+        success_text = f"""
+✅ **تم إنشاء الكوبون بنجاح!** ✅
+
+🎟️ **كود الكوبون:** `{coupon_code}`
+💰 **القيمة:** {amount} ريال
+👑 **المنشئ:** {user['full_name']}
+📅 **تاريخ الانتهاء:** {expiry_date.strftime('%Y-%m-%d')}
+
+📋 **ملاحظة:** احفظ كود الكوبون في مكان آمن
+⚠️ **تحذير:** الكوبون صالح لمدة 30 يوم فقط
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🎟️ إنشاء كوبون آخر', callback_data='super_create_coupons'),
+             InlineKeyboardButton('📋 قائمة الكوبونات', callback_data='list_coupons')],
+            [InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(success_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error creating quick coupon: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إنشاء الكوبون.")
+
+async def coupons_stats_handler(update: Update, context: CallbackContext):
+    """عرض إحصائيات الكوبونات"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text("❌ ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # إحصائيات الكوبونات
+        cursor.execute('SELECT COUNT(*) FROM coupons')
+        total_coupons = cursor.fetchone()[0]
+        
+        cursor.execute('SELECT COUNT(*) FROM coupons WHERE is_used = 1')
+        used_coupons = cursor.fetchone()[0]
+        
+        cursor.execute('SELECT COUNT(*) FROM coupons WHERE is_used = 0')
+        unused_coupons = cursor.fetchone()[0]
+        
+        cursor.execute('SELECT COALESCE(SUM(amount), 0) FROM coupons')
+        total_value = cursor.fetchone()[0]
+        
+        cursor.execute('SELECT COALESCE(SUM(amount), 0) FROM coupons WHERE is_used = 1')
+        used_value = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        stats_text = f"""
+📊 **إحصائيات الكوبونات** 📊
+
+🎟️ **إجمالي الكوبونات:** {total_coupons:,}
+✅ **المستخدمة:** {used_coupons:,}
+⏳ **غير المستخدمة:** {unused_coupons:,}
+
+💰 **القيمة الإجمالية:** {total_value:,.2f} ريال
+💸 **القيمة المستخدمة:** {used_value:,.2f} ريال
+💵 **القيمة المتبقية:** {(total_value - used_value):,.2f} ريال
+
+📈 **معدل الاستخدام:** {(used_coupons / max(total_coupons, 1) * 100):.1f}%
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🎟️ إنشاء كوبون جديد', callback_data='super_create_coupons'),
+             InlineKeyboardButton('📋 قائمة الكوبونات', callback_data='list_coupons')],
+            [InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(stats_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in coupons stats: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض الإحصائيات.")
+
+async def list_coupons_handler(update: Update, context: CallbackContext):
+    """عرض قائمة الكوبونات"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text("❌ ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT coupon_code, amount, is_used, created_at, used_at
+            FROM coupons 
+            ORDER BY created_at DESC 
+            LIMIT 10
+        ''')
+        coupons = cursor.fetchall()
+        conn.close()
+        
+        if not coupons:
+            list_text = """
+📋 **قائمة الكوبونات** 📋
+
+⚠️ لا توجد كوبونات حالياً
+"""
+        else:
+            list_text = """
+📋 **قائمة الكوبونات** 📋
+
+📝 **آخر 10 كوبونات:**
+
+"""
+            for coupon in coupons:
+                status = "✅ مستخدم" if coupon['is_used'] else "⏳ غير مستخدم"
+                list_text += f"""
+🎟️ **{coupon['coupon_code']}**
+💰 {coupon['amount']} ريال - {status}
+📅 {coupon['created_at'][:16]}
+---
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🎟️ إنشاء كوبون جديد', callback_data='super_create_coupons'),
+             InlineKeyboardButton('📊 الإحصائيات', callback_data='coupons_stats')],
+            [InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(list_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in list coupons: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض قائمة الكوبونات.")
+
