@@ -2046,42 +2046,50 @@ async def show_card_size_input(update: Update, context: CallbackContext):
         ))
 
 async def handle_text_message(update: Update, context: CallbackContext):
-    """معالج الرسائل النصية لإدخال السعر المخصص وحجم الكرت"""
+    """معالج الرسائل النصية لجميع المستخدمين"""
     try:
         user = get_user(update.message.from_user.id)
-        if not user or user['role'] != 'supplier':
+        if not user:
             return
-        
-        message_text = update.message.text.strip()
-        
-        # التحقق من إدخال السعر المخصص
-        if context.user_data.get('awaiting_custom_price'):
-            try:
-                price = float(message_text.replace(',', '.'))
-                if price <= 0:
-                    await update.message.reply_text("❌ السعر يجب أن يكون أكبر من صفر. حاول مرة أخرى:")
-                    return
-                
-                # حفظ السعر المخصص
-                context.user_data['selected_price'] = price
-                context.user_data['awaiting_custom_price'] = False
-                
-                # الانتقال لإدخال حجم الكرت
-                await show_card_size_input_from_text(update, context)
-                
-            except ValueError:
-                await update.message.reply_text("❌ يرجى إدخال رقم صحيح للسعر. مثال: 35 أو 47.5")
-            return
-        
-        # التحقق من إدخال حجم الكرت
-        if context.user_data.get('awaiting_card_size'):
-            # حفظ حجم الكرت
-            context.user_data['card_size'] = message_text
-            context.user_data['awaiting_card_size'] = False
             
-            # عرض ملخص نهائي وتأكيد الرفع
-            await show_final_confirmation(update, context)
-            return
+        # استيراد معالج النصوص من handlers.py للحالات العامة
+        from bot_modules.handlers import handle_text_message as general_text_handler
+        
+        # إذا كان المستخدم مورد ولديه حالات خاصة
+        if user['role'] == 'supplier':
+            message_text = update.message.text.strip()
+            
+            # التحقق من إدخال السعر المخصص
+            if context.user_data.get('awaiting_custom_price'):
+                try:
+                    price = float(message_text.replace(',', '.'))
+                    if price <= 0:
+                        await update.message.reply_text("❌ السعر يجب أن يكون أكبر من صفر. حاول مرة أخرى:")
+                        return
+                    
+                    # حفظ السعر المخصص
+                    context.user_data['selected_price'] = price
+                    context.user_data['awaiting_custom_price'] = False
+                    
+                    # الانتقال لإدخال حجم الكرت
+                    await show_card_size_input_from_text(update, context)
+                    
+                except ValueError:
+                    await update.message.reply_text("❌ يرجى إدخال رقم صحيح للسعر. مثال: 35 أو 47.5")
+                return
+            
+            # التحقق من إدخال حجم الكرت
+            if context.user_data.get('awaiting_card_size'):
+                # حفظ حجم الكرت
+                context.user_data['card_size'] = message_text
+                context.user_data['awaiting_card_size'] = False
+                
+                # عرض ملخص نهائي وتأكيد الرفع
+                await show_final_confirmation(update, context)
+                return
+        
+        # للمستخدمين الآخرين (العملاء والمشرفين) - استخدام المعالج العام
+        await general_text_handler(update, context)
             
     except Exception as e:
         logger.error(f"Error in handle_text_message: {e}")
