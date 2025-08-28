@@ -4679,6 +4679,45 @@ async def wallet_page_handler(update: Update, context: CallbackContext):
             "PAGE_NAV_ERROR"
         ))
 
+async def confirm_user_transfer(update: Update, context: CallbackContext, user_id: str, amount: str):
+    """تأكيد التحويل للمستخدم - معالج مفقود"""
+    try:
+        # Get target user info
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM users WHERE id = ?', (int(user_id),))
+        target_user = cursor.fetchone()
+        conn.close()
+        
+        if not target_user:
+            query = update.callback_query
+            await query.edit_message_text(
+                f"{EMOJIS['error']} المستخدم المستهدف غير موجود.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+                ])
+            )
+            return
+        
+        # Set up context for confirm_transfer_handler
+        context.user_data['target_user_id'] = int(user_id)
+        context.user_data['target_user_name'] = target_user['full_name']
+        context.user_data['transfer_amount'] = float(amount)
+        context.user_data['awaiting_transfer_confirmation'] = True
+        
+        # Call the existing confirm_transfer_handler with confirmed=True
+        return await confirm_transfer_handler(update, context, confirmed=True)
+        
+    except Exception as e:
+        logger.error(f"Error in confirm user transfer: {e}")
+        query = update.callback_query
+        await query.edit_message_text(
+            f"{EMOJIS['error']} حدث خطأ في تأكيد التحويل. يرجى المحاولة مرة أخرى.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            ])
+        )
+
 async def show_network_categories(update: Update, context: CallbackContext, network_id: str):
     """عرض فئات الكروت المتاحة في الشبكة للشراء"""
     try:
