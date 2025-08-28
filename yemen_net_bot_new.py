@@ -45,6 +45,7 @@ try:
     )
     from customer_management import CustomerManagement
     from admin_management import AdminManagement
+    from enhanced_error_messages import ErrorMessages, db_error, perm_error, net_error
     # Import additional utilities
     from utils import (
         get_or_create_supplier_code, get_cards_stats_by_category,
@@ -200,7 +201,7 @@ async def button_click_handler(update: Update, context):
                 raise BotValidationError("User not found in database")
         except sqlite3.Error as e:
             logger.error(f"Database error getting user {query.from_user.id}: {e}")
-            await query.edit_message_text(f"{EMOJIS['error']} خطأ في قاعدة البيانات. يرجى المحاولة لاحقاً")
+            await query.edit_message_text(db_error("استرداد بيانات المستخدم", "فشل في الاتصال بقاعدة البيانات"))
             return
         except BotValidationError:
             await query.edit_message_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
@@ -489,7 +490,7 @@ async def button_click_handler(update: Update, context):
         try:
             if update.callback_query:
                 await update.callback_query.edit_message_text(
-                    f"{EMOJIS['error']} خطأ في قاعدة البيانات. يرجى المحاولة لاحقاً.",
+                    db_error("تسجيل الاستعلام", "فشل في حفظ البيانات"),
                     reply_markup=InlineKeyboardMarkup([
                         [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
                     ])
@@ -604,7 +605,12 @@ async def personal_reports_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in personal reports handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض التقارير.")
+        await query.edit_message_text(ErrorMessages.custom_error(
+            "عرض التقارير", 
+            "فشل في تحميل بيانات التقارير من قاعدة البيانات", 
+            "تحقق من الاتصال وأعد المحاولة، أو تواصل مع الدعم إذا استمرت المشكلة",
+            "REPORT_ERROR"
+        ))
 
 async def my_ratings_handler(update: Update, context):
     """Show user ratings"""
@@ -646,7 +652,12 @@ async def my_ratings_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in my ratings handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض التقييمات.")
+        await query.edit_message_text(ErrorMessages.custom_error(
+            "عرض التقييمات",
+            "لا يمكن الوصول إلى بيانات التقييمات حالياً",
+            "تأكد من الاتصال بالإنترنت وحاول مرة أخرى خلال دقائق",
+            "RATING_ERROR"
+        ))
 
 async def my_notifications_handler(update: Update, context):
     """Show user notifications"""
@@ -999,7 +1010,10 @@ async def supplier_panel_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in supplier panel handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في لوحة المزود.")
+        await query.edit_message_text(ErrorMessages.supplier_error(
+            "تحميل لوحة التحكم", 
+            "فشل في الوصول إلى بيانات المزود"
+        ))
 
 async def view_networks_handler(update: Update, context):
     """Handle view networks"""
@@ -1185,7 +1199,12 @@ async def my_sent_ratings_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in my sent ratings handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض التقييمات.")
+        await query.edit_message_text(ErrorMessages.custom_error(
+            "عرض التقييمات المرسلة",
+            "فشل في استرداد قائمة التقييمات التي أرسلتها",
+            "قد تكون قاعدة البيانات مشغولة، حاول مرة أخرى خلال دقائق",
+            "SENT_RATING_ERROR"
+        ))
 
 async def transaction_details_handler(update: Update, context):
     """Handle transaction details"""
@@ -1422,7 +1441,11 @@ async def upload_cards_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in upload cards handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في صفحة رفع الكروت.")
+        await query.edit_message_text(ErrorMessages.upload_error(
+            "الكروت",
+            None,
+            None
+        ).replace("الرفع", "صفحة رفع الكروت").replace("في رفع", "في تحميل صفحة رفع"))
 
 async def manage_networks_handler(update: Update, context):
     """Handle network management"""
@@ -1493,7 +1516,10 @@ async def manage_networks_handler(update: Update, context):
         
     except Exception as e:
         logger.error(f"Error in manage networks handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إدارة الشبكات.")
+        await query.edit_message_text(ErrorMessages.supplier_error(
+            "إدارة الشبكات",
+            "لا يمكن الوصول إلى بيانات الشبكات الخاصة بك حالياً"
+        ))
 
 async def cards_reports_handler(update: Update, context):
     """Handle cards reports"""
@@ -1974,7 +2000,11 @@ async def handle_document(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error handling document: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في معالجة الملف.")
+        await update.message.reply_text(ErrorMessages.file_error(
+            "معالجة الملف المرفوع",
+            "ملف غير معروف",
+            "حجم غير محدد"
+        ))
 
 async def process_network_selection(update: Update, context: CallbackContext):
     """Process network selection for file upload"""

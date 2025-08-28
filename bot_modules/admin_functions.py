@@ -12,6 +12,7 @@ from telegram.ext import CallbackContext
 from bot_modules.config import *
 from bot_modules.database import get_db_connection
 from bot_modules.utils import *
+from bot_modules.enhanced_error_messages import ErrorMessages, perm_error, db_error
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ async def admin_panel_handler(update: Update, context: CallbackContext):
             
     except Exception as e:
         logger.error(f"Error in admin panel handler: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في الوصول للوحة الإدارة.")
+        await update.message.reply_text(perm_error("مشرف أو مشرف أعلى", user.get('role', 'غير محدد') if user else "غير مسجل"))
 
 async def show_super_admin_panel(update: Update, context: CallbackContext, user):
     """Show super admin control panel"""
@@ -103,7 +104,10 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
             
     except Exception as e:
         logger.error(f"Error in super admin panel: {e}")
-        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في تحميل لوحة المشرف الأعلى.")
+        await update.message.reply_text(ErrorMessages.admin_error(
+            "تحميل لوحة المشرف الأعلى",
+            "مشرف أعلى"
+        ))
 
 async def issue_balance_handler(update: Update, context: CallbackContext):
     """Handle balance issuance for super admin - Create money to admin wallet"""
@@ -141,7 +145,10 @@ async def issue_balance_handler(update: Update, context: CallbackContext):
         
     except Exception as e:
         logger.error(f"Error in issue balance handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في بدء عملية إنشاء الرصيد.")
+        await query.edit_message_text(ErrorMessages.admin_error(
+            "إنشاء الرصيد",
+            "فشل في تهيئة نظام إنشاء الرصيد"
+        ))
 
 async def process_money_creation(update: Update, context: CallbackContext):
     """Process money creation for super admin"""
