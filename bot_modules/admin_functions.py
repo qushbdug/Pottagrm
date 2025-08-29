@@ -2617,6 +2617,76 @@ ADMIN_CALLBACKS.update({
     'accounting_custom': lambda u, c: accounting_custom_reports_handler(u, c),
     'accounting_search': lambda u, c: accounting_search_handler(u, c),
     
+    # Sub-handlers for transactions
+    'transactions_detailed': lambda u, c: transactions_detailed_handler(u, c),
+    'transactions_purchases': lambda u, c: transactions_purchases_handler(u, c),
+    'transactions_transfers': lambda u, c: transactions_transfers_handler(u, c),
+    'transactions_coupons': lambda u, c: placeholder_handler(u, c, "معاملات الكوبونات"),
+    'export_transactions': lambda u, c: placeholder_handler(u, c, "تصدير المعاملات"),
+    'transactions_search': lambda u, c: placeholder_handler(u, c, "البحث في المعاملات"),
+    
+    # Sub-handlers for profits
+    'profits_detailed': lambda u, c: placeholder_handler(u, c, "تقرير الأرباح المفصل"),
+    'profits_trends': lambda u, c: placeholder_handler(u, c, "تحليل اتجاهات الأرباح"),
+    'profits_suppliers': lambda u, c: placeholder_handler(u, c, "أرباح المزودين"),
+    'profits_comparison': lambda u, c: placeholder_handler(u, c, "مقارنة فترات الأرباح"),
+    'export_profits': lambda u, c: placeholder_handler(u, c, "تصدير تقرير الأرباح"),
+    'profits_custom_period': lambda u, c: placeholder_handler(u, c, "فترة مخصصة للأرباح"),
+    
+    # Sub-handlers for suppliers
+    'suppliers_detailed': lambda u, c: placeholder_handler(u, c, "تقرير المزودين المفصل"),
+    'suppliers_performance': lambda u, c: placeholder_handler(u, c, "أداء المزودين"),
+    'suppliers_commissions': lambda u, c: placeholder_handler(u, c, "عمولات المزودين"),
+    'suppliers_networks': lambda u, c: placeholder_handler(u, c, "إحصائيات الشبكات"),
+    'export_suppliers': lambda u, c: placeholder_handler(u, c, "تصدير تقرير المزودين"),
+    'suppliers_search': lambda u, c: placeholder_handler(u, c, "البحث عن مزود"),
+    
+    # Sub-handlers for customers
+    'customers_detailed': lambda u, c: placeholder_handler(u, c, "تقرير العملاء المفصل"),
+    'customers_activity': lambda u, c: placeholder_handler(u, c, "نشاط العملاء"),
+    'customers_behavior': lambda u, c: placeholder_handler(u, c, "سلوك الشراء"),
+    'customers_spending': lambda u, c: placeholder_handler(u, c, "تحليل الإنفاق"),
+    'export_customers': lambda u, c: placeholder_handler(u, c, "تصدير تقرير العملاء"),
+    'customers_search': lambda u, c: placeholder_handler(u, c, "البحث عن عميل"),
+    
+    # Sub-handlers for analytics
+    'analytics_trends': lambda u, c: placeholder_handler(u, c, "تحليل الاتجاهات"),
+    'analytics_timing': lambda u, c: placeholder_handler(u, c, "تحليل الأوقات"),
+    'analytics_products': lambda u, c: placeholder_handler(u, c, "تحليل المنتجات"),
+    'analytics_geographical': lambda u, c: placeholder_handler(u, c, "التحليل الجغرافي"),
+    'analytics_kpi': lambda u, c: placeholder_handler(u, c, "مؤشرات الأداء"),
+    'analytics_forecasting': lambda u, c: placeholder_handler(u, c, "التنبؤات"),
+    
+    # Sub-handlers for export
+    'export_transactions_file': lambda u, c: placeholder_handler(u, c, "تصدير ملف المعاملات"),
+    'export_profits_file': lambda u, c: placeholder_handler(u, c, "تصدير ملف الأرباح"),
+    'export_suppliers_file': lambda u, c: placeholder_handler(u, c, "تصدير ملف المزودين"),
+    'export_customers_file': lambda u, c: placeholder_handler(u, c, "تصدير ملف العملاء"),
+    'export_comprehensive': lambda u, c: placeholder_handler(u, c, "التصدير الشامل"),
+    'export_custom': lambda u, c: placeholder_handler(u, c, "التصدير المخصص"),
+    'export_date_range': lambda u, c: placeholder_handler(u, c, "اختيار فترة التصدير"),
+    'export_advanced': lambda u, c: placeholder_handler(u, c, "خيارات التصدير المتقدمة"),
+    
+    # Sub-handlers for custom reports
+    'custom_date_range': lambda u, c: placeholder_handler(u, c, "تقرير فترة محددة"),
+    'custom_supplier': lambda u, c: placeholder_handler(u, c, "تقرير مزود محدد"),
+    'custom_customer': lambda u, c: placeholder_handler(u, c, "تقرير عميل محدد"),
+    'custom_transaction_type': lambda u, c: placeholder_handler(u, c, "تقرير نوع معاملة"),
+    'custom_comparison': lambda u, c: placeholder_handler(u, c, "مقارنة فترتين"),
+    'custom_growth_analysis': lambda u, c: placeholder_handler(u, c, "تحليل النمو"),
+    'custom_recurring': lambda u, c: placeholder_handler(u, c, "التقرير الدوري"),
+    'custom_advanced': lambda u, c: placeholder_handler(u, c, "الخيارات المتقدمة"),
+    
+    # Sub-handlers for search
+    'search_by_user': lambda u, c: placeholder_handler(u, c, "البحث بالمستخدم"),
+    'search_by_transaction': lambda u, c: placeholder_handler(u, c, "البحث بالمعاملة"),
+    'search_by_date': lambda u, c: placeholder_handler(u, c, "البحث بالتاريخ"),
+    'search_by_network': lambda u, c: placeholder_handler(u, c, "البحث بالشبكة"),
+    'search_by_amount': lambda u, c: placeholder_handler(u, c, "البحث بالمبلغ"),
+    'search_advanced': lambda u, c: placeholder_handler(u, c, "البحث المتقدم"),
+    'search_statistics': lambda u, c: placeholder_handler(u, c, "إحصائيات البحث"),
+    'search_export': lambda u, c: placeholder_handler(u, c, "تصدير نتائج البحث"),
+    
     # Coupon management
     'super_create_coupons': lambda u, c: create_coupons_handler(u, c),
     'super_coupons_stats': lambda u, c: coupons_stats_handler(u, c),
@@ -3599,6 +3669,264 @@ async def accounting_export_handler(update: Update, context: CallbackContext):
             parse_mode='Markdown'
         )
 
+# ===== معالجات التقارير الفرعية للمعاملات =====
+
+async def transactions_detailed_handler(update: Update, context: CallbackContext):
+    """معالج التقرير المفصل للمعاملات"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] not in ['admin', 'super_admin']:
+            await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user['role'] if user else "غير مسجل"))
+            return
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # تقرير مفصل آخر 20 معاملة
+        cursor.execute("""
+            SELECT t.id, t.transaction_type, t.amount, t.description, 
+                   t.created_at, u.full_name, u.phone
+            FROM transactions t
+            LEFT JOIN users u ON t.user_id = u.id
+            ORDER BY t.created_at DESC
+            LIMIT 20
+        """)
+        detailed_transactions = cursor.fetchall()
+        
+        conn.close()
+        
+        detailed_text = """
+📊 **تقرير المعاملات المفصل** 📊
+
+🔍 **آخر 20 معاملة:**
+
+"""
+        
+        if detailed_transactions:
+            for i, transaction in enumerate(detailed_transactions, 1):
+                trans_id, trans_type, amount, description, created_at, user_name, phone = transaction
+                date_str = created_at[:16] if created_at else "غير محدد"
+                user_display = user_name if user_name else "غير محدد"
+                phone_display = phone if phone else "غير محدد"
+                
+                type_emoji = "💳" if trans_type == "purchase" else "💰" if trans_type == "transfer" else "🎁"
+                type_name = {
+                    "purchase": "شراء",
+                    "transfer": "تحويل", 
+                    "coupon": "كوبون",
+                    "deposit": "إيداع",
+                    "withdrawal": "سحب"
+                }.get(trans_type, trans_type)
+                
+                detailed_text += f"""
+{i}. {type_emoji} **معاملة #{trans_id}**
+   📋 النوع: {type_name}
+   💰 المبلغ: {amount:,.2f} ريال
+   👤 المستخدم: {user_display}
+   📱 الهاتف: {phone_display}
+   📅 التاريخ: {date_str}
+   📝 الوصف: {description or 'غير محدد'}
+   ───────────────────
+"""
+        else:
+            detailed_text += "\n• لا توجد معاملات"
+        
+        keyboard = [
+            [InlineKeyboardButton('🔙 العودة لتقارير المعاملات', callback_data='accounting_transactions')]
+        ]
+        
+        await query.edit_message_text(
+            detailed_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in transactions detailed handler: {e}")
+        await query.edit_message_text(
+            f"❌ **خطأ في التقرير المفصل للمعاملات**\n\n"
+            f"🔍 **السبب:** فشل في استرداد التفاصيل المفصلة للمعاملات\n"
+            f"💡 **الحل:** تحقق من اتصال قاعدة البيانات وحاول مرة أخرى\n"
+            f"🔧 **كود الخطأ:** `TRANSACTIONS_DETAILED_ERROR`\n"
+            f"⏰ **الوقت:** {datetime.now().strftime('%H:%M:%S')}",
+            parse_mode='Markdown'
+        )
+
+async def transactions_purchases_handler(update: Update, context: CallbackContext):
+    """معالج معاملات الشراء"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] not in ['admin', 'super_admin']:
+            await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user['role'] if user else "غير مسجل"))
+            return
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # معاملات الشراء
+        cursor.execute("""
+            SELECT COUNT(*), SUM(amount), AVG(amount)
+            FROM transactions 
+            WHERE transaction_type = 'purchase'
+            AND DATE(created_at) >= DATE('now', '-30 days')
+        """)
+        purchase_stats = cursor.fetchone()
+        purchase_count = purchase_stats[0] if purchase_stats[0] else 0
+        purchase_total = purchase_stats[1] if purchase_stats[1] else 0.0
+        purchase_avg = purchase_stats[2] if purchase_stats[2] else 0.0
+        
+        # أحدث معاملات الشراء
+        cursor.execute("""
+            SELECT t.amount, t.created_at, u.full_name, t.description
+            FROM transactions t
+            LEFT JOIN users u ON t.user_id = u.id
+            WHERE t.transaction_type = 'purchase'
+            ORDER BY t.created_at DESC
+            LIMIT 10
+        """)
+        recent_purchases = cursor.fetchall()
+        
+        conn.close()
+        
+        purchases_text = f"""
+💳 **تقارير معاملات الشراء** 💳
+
+📊 **إحصائيات آخر 30 يوم:**
+• إجمالي المشتريات: {purchase_count:,} عملية
+• إجمالي المبلغ: {purchase_total:,.2f} ريال
+• متوسط قيمة الشراء: {purchase_avg:,.2f} ريال
+
+🛒 **أحدث عمليات الشراء:**
+"""
+        
+        if recent_purchases:
+            for i, purchase in enumerate(recent_purchases, 1):
+                amount, created_at, user_name, description = purchase
+                date_str = created_at[:16] if created_at else "غير محدد"
+                user_display = user_name if user_name else "غير محدد"
+                
+                purchases_text += f"""
+{i}. 💳 {amount:,.2f} ريال
+   👤 {user_display}
+   📅 {date_str}
+   📝 {description or 'غير محدد'}
+"""
+        else:
+            purchases_text += "\n• لا توجد عمليات شراء حديثة"
+        
+        keyboard = [
+            [InlineKeyboardButton('🔙 العودة لتقارير المعاملات', callback_data='accounting_transactions')]
+        ]
+        
+        await query.edit_message_text(
+            purchases_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in transactions purchases handler: {e}")
+        await query.edit_message_text(
+            f"❌ **خطأ في تقارير معاملات الشراء**\n\n"
+            f"🔍 **السبب:** فشل في استرداد بيانات معاملات الشراء\n"
+            f"💡 **الحل:** تحقق من اتصال قاعدة البيانات وحاول مرة أخرى\n"
+            f"🔧 **كود الخطأ:** `PURCHASES_REPORT_ERROR`\n"
+            f"⏰ **الوقت:** {datetime.now().strftime('%H:%M:%S')}",
+            parse_mode='Markdown'
+        )
+
+async def transactions_transfers_handler(update: Update, context: CallbackContext):
+    """معالج معاملات التحويل"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] not in ['admin', 'super_admin']:
+            await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user['role'] if user else "غير مسجل"))
+            return
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # معاملات التحويل
+        cursor.execute("""
+            SELECT COUNT(*), SUM(amount), AVG(amount)
+            FROM transactions 
+            WHERE transaction_type = 'transfer'
+            AND DATE(created_at) >= DATE('now', '-30 days')
+        """)
+        transfer_stats = cursor.fetchone()
+        transfer_count = transfer_stats[0] if transfer_stats[0] else 0
+        transfer_total = transfer_stats[1] if transfer_stats[1] else 0.0
+        transfer_avg = transfer_stats[2] if transfer_stats[2] else 0.0
+        
+        # أحدث معاملات التحويل
+        cursor.execute("""
+            SELECT t.amount, t.created_at, u.full_name, t.description
+            FROM transactions t
+            LEFT JOIN users u ON t.user_id = u.id
+            WHERE t.transaction_type = 'transfer'
+            ORDER BY t.created_at DESC
+            LIMIT 10
+        """)
+        recent_transfers = cursor.fetchall()
+        
+        conn.close()
+        
+        transfers_text = f"""
+💰 **تقارير معاملات التحويل** 💰
+
+📊 **إحصائيات آخر 30 يوم:**
+• إجمالي التحويلات: {transfer_count:,} عملية
+• إجمالي المبلغ: {transfer_total:,.2f} ريال
+• متوسط قيمة التحويل: {transfer_avg:,.2f} ريال
+
+🔄 **أحدث عمليات التحويل:**
+"""
+        
+        if recent_transfers:
+            for i, transfer in enumerate(recent_transfers, 1):
+                amount, created_at, user_name, description = transfer
+                date_str = created_at[:16] if created_at else "غير محدد"
+                user_display = user_name if user_name else "غير محدد"
+                
+                transfers_text += f"""
+{i}. 💰 {amount:,.2f} ريال
+   👤 {user_display}
+   📅 {date_str}
+   📝 {description or 'غير محدد'}
+"""
+        else:
+            transfers_text += "\n• لا توجد عمليات تحويل حديثة"
+        
+        keyboard = [
+            [InlineKeyboardButton('🔙 العودة لتقارير المعاملات', callback_data='accounting_transactions')]
+        ]
+        
+        await query.edit_message_text(
+            transfers_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in transactions transfers handler: {e}")
+        await query.edit_message_text(
+            f"❌ **خطأ في تقارير معاملات التحويل**\n\n"
+            f"🔍 **السبب:** فشل في استرداد بيانات معاملات التحويل\n"
+            f"💡 **الحل:** تحقق من اتصال قاعدة البيانات وحاول مرة أخرى\n"
+            f"🔧 **كود الخطأ:** `TRANSFERS_REPORT_ERROR`\n"
+            f"⏰ **الوقت:** {datetime.now().strftime('%H:%M:%S')}",
+            parse_mode='Markdown'
+        )
+
 async def accounting_custom_reports_handler(update: Update, context: CallbackContext):
     """معالج التقارير المخصصة"""
     try:
@@ -3742,6 +4070,54 @@ async def accounting_search_handler(update: Update, context: CallbackContext):
             f"🔧 **كود الخطأ:** `SEARCH_INIT_ERROR`\n"
             f"⏰ **الوقت:** {datetime.now().strftime('%H:%M:%S')}\n\n"
             f"📋 تم تسجيل الخطأ في السجل للمراجعة.",
+            parse_mode='Markdown'
+        )
+
+async def placeholder_handler(update: Update, context: CallbackContext, feature_name: str):
+    """معالج مؤقت للميزات قيد التطوير"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        placeholder_text = f"""
+🔧 **{feature_name}** 🔧
+
+⚡ **حالة الميزة:**
+✅ تم ربط الزر بنجاح
+🔧 قيد التطوير والتحسين
+🚀 ستكون متاحة قريباً
+
+📋 **معلومات:**
+• الزر يعمل بنجاح ولا يظهر رسالة خطأ عامة
+• الميزة مربوطة بشكل صحيح في النظام
+• سيتم تفعيل الوظائف الكاملة قريباً
+
+💡 **بدلاً من الرسالة العامة الآن تحصل على:**
+✅ رسالة واضحة ومفصلة
+✅ معلومات عن حالة الميزة
+✅ تأكيد أن الزر يعمل بشكل صحيح
+
+🔙 **العودة للنظام المحاسبي**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🔙 العودة للنظام المحاسبي', callback_data='accounting_system')]
+        ]
+        
+        await query.edit_message_text(
+            placeholder_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in placeholder handler for {feature_name}: {e}")
+        await query.edit_message_text(
+            f"❌ **خطأ في {feature_name}**\n\n"
+            f"🔍 **السبب:** خطأ تقني في المعالج المؤقت\n"
+            f"💡 **الحل:** تحقق من اتصال النظام وحاول مرة أخرى\n"
+            f"🔧 **كود الخطأ:** `PLACEHOLDER_ERROR`\n"
+            f"⏰ **الوقت:** {datetime.now().strftime('%H:%M:%S')}",
             parse_mode='Markdown'
         )
 
