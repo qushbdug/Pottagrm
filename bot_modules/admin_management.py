@@ -117,12 +117,10 @@ class AdminManagement:
             dashboard_text += f"\n⏰ **آخر تحديث:** {datetime.now().strftime('%Y-%m-%d %H:%M')}"
             
             keyboard = [
-                [InlineKeyboardButton('👤 إدارة المشرفين', callback_data='admin_manage_admins'),
-                 InlineKeyboardButton('🔍 البحث عن مشرف', callback_data='admin_search_admin')],
-                [InlineKeyboardButton('➕ إضافة مشرف جديد', callback_data='admin_add_new'),
-                 InlineKeyboardButton('🔐 إدارة الصلاحيات', callback_data='admin_permissions')],
-                [InlineKeyboardButton('📊 تقارير المشرفين', callback_data='admin_reports'),
-                 InlineKeyboardButton('📋 سجل النشاطات', callback_data='admin_activity_log')],
+                [InlineKeyboardButton('➕ إضافة مشرف', callback_data='admin_add_new'),
+                 InlineKeyboardButton('👤 قائمة المشرفين', callback_data='admin_manage_admins')],
+                [InlineKeyboardButton('🔐 تعديل الصلاحيات', callback_data='admin_permissions'),
+                 InlineKeyboardButton('🗑️ حذف مشرف', callback_data='admin_manage_admins')],
                 [InlineKeyboardButton('🔙 العودة للوحة الرئيسية', callback_data='super_admin_panel')]
             ]
             
@@ -172,10 +170,10 @@ class AdminManagement:
                 )
                 return
             
-            admins_text = """
+            admins_text = f"""
 👑 **قائمة المشرفين** 👑
 
-📋 **المشرفين المسجلين:**
+📊 **إجمالي المشرفين:** {len(admins)}
 
 """
             
@@ -190,18 +188,22 @@ class AdminManagement:
                 
                 # حساب آخر نشاط
                 if last_activity:
-                    last_activity_date = datetime.strptime(last_activity, '%Y-%m-%d %H:%M:%S')
-                    days_ago = (datetime.now() - last_activity_date).days
-                    activity_text = f"منذ {days_ago} يوم" if days_ago > 0 else "اليوم"
+                    try:
+                        # محاولة تحويل التاريخ مع معالجة الأخطاء
+                        if '.' in last_activity:
+                            # إزالة الجزء الكسري من الثواني
+                            last_activity = last_activity.split('.')[0]
+                        last_activity_date = datetime.strptime(last_activity, '%Y-%m-%d %H:%M:%S')
+                        days_ago = (datetime.now() - last_activity_date).days
+                        activity_text = f"منذ {days_ago} يوم" if days_ago > 0 else "اليوم"
+                    except (ValueError, TypeError):
+                        activity_text = "غير محدد"
                 else:
                     activity_text = "لا يوجد نشاط"
                 
                 admins_text += f"""
 {i}️⃣ {status_emoji} {role_emoji} **{name}**
-   📱 الهاتف: {phone or 'غير محدد'}
-   🏷️ الدور: **{'مشرف أعلى' if role == 'super_admin' else 'مشرف عادي'}**
-   ⏰ آخر نشاط: {activity_text}
-   📅 تاريخ الإضافة: {created_at[:10]}
+📱 {phone or 'غير محدد'} | 🏷️ {'مشرف أعلى' if role == 'super_admin' else 'مشرف عادي'}
 
 """
                 
@@ -214,8 +216,7 @@ class AdminManagement:
             
             # إضافة أزرار التحكم
             admin_buttons.extend([
-                [InlineKeyboardButton('➕ إضافة مشرف جديد', callback_data='admin_add_new'),
-                 InlineKeyboardButton('🔄 تحديث القائمة', callback_data='admin_manage_admins')],
+                [InlineKeyboardButton('➕ إضافة مشرف', callback_data='admin_add_new')],
                 [InlineKeyboardButton('🔙 العودة', callback_data='admin_dashboard')]
             ])
             
@@ -289,61 +290,44 @@ class AdminManagement:
             status_emoji = "🟢" if admin['is_active'] else "🔴"
             
             # حساب مدة العضوية
-            created_date = datetime.strptime(admin['created_at'], '%Y-%m-%d %H:%M:%S')
-            membership_days = (datetime.now() - created_date).days
+            try:
+                created_at = admin['created_at']
+                if '.' in created_at:
+                    created_at = created_at.split('.')[0]
+                created_date = datetime.strptime(created_at, '%Y-%m-%d %H:%M:%S')
+                membership_days = (datetime.now() - created_date).days
+            except (ValueError, TypeError):
+                membership_days = 0
             
             # آخر نشاط
             if admin['last_activity']:
-                last_activity_date = datetime.strptime(admin['last_activity'], '%Y-%m-%d %H:%M:%S')
-                days_since_activity = (datetime.now() - last_activity_date).days
-                activity_status = f"منذ {days_since_activity} يوم" if days_since_activity > 0 else "نشط اليوم"
+                try:
+                    last_activity = admin['last_activity']
+                    if '.' in last_activity:
+                        last_activity = last_activity.split('.')[0]
+                    last_activity_date = datetime.strptime(last_activity, '%Y-%m-%d %H:%M:%S')
+                    days_since_activity = (datetime.now() - last_activity_date).days
+                    activity_status = f"منذ {days_since_activity} يوم" if days_since_activity > 0 else "نشط اليوم"
+                except (ValueError, TypeError):
+                    activity_status = "غير محدد"
             else:
                 activity_status = "لم يسجل نشاط"
             
             profile_text = f"""
-{role_emoji} **ملف المشرف التفصيلي** {role_emoji}
+{role_emoji} **ملف المشرف** {role_emoji}
 
-📋 **المعلومات الأساسية:**
-👤 الاسم: **{admin['full_name']}**
+👤 **{admin['full_name']}**
 📱 الهاتف: **{admin['phone'] or 'غير محدد'}**
-🆔 معرف Telegram: **{admin['telegram_id']}**
+🆔 المعرف: **{admin['telegram_id']}**
 🏷️ الدور: **{'مشرف أعلى' if admin['role'] == 'super_admin' else 'مشرف عادي'}**
 {status_emoji} الحالة: **{'مفعل' if admin['is_active'] else 'غير مفعل'}**
 
-📊 **إحصائيات العضوية:**
 📅 تاريخ الإضافة: **{admin['created_at'][:10]}**
-⏱️ مدة العضوية: **{membership_days}** يوم
-🔥 آخر نشاط: **{activity_status}**
-
-📈 **إحصائيات النشاط:**
-📅 نشاطات اليوم: **{daily_activities}** نشاط
-📊 نشاطات الشهر: **{monthly_activities}** نشاط
-📋 متوسط النشاط اليومي: **{(monthly_activities/30):.1f}** نشاط
-
-🔐 **الصلاحيات:**
 """
             
-            if permissions:
-                for permission in permissions[:5]:  # أول 5 صلاحيات
-                    profile_text += f"• {permission}\n"
-                if len(permissions) > 5:
-                    profile_text += f"• و {len(permissions) - 5} صلاحيات أخرى...\n"
-            else:
-                profile_text += "• صلاحيات افتراضية حسب الدور\n"
-            
-            profile_text += "\n🔥 **آخر النشاطات:**\n"
-            
-            if recent_activities:
-                for activity in recent_activities[:3]:
-                    profile_text += f"• **{activity[0]}** - {activity[2][:16]}\n"
-            else:
-                profile_text += "• لا توجد نشاطات مسجلة\n"
-            
             keyboard = [
-                [InlineKeyboardButton('🔐 إدارة الصلاحيات', callback_data=f'perm_quick_edit_{admin_id}'),
-                 InlineKeyboardButton('📋 سجل النشاطات', callback_data=f'admin_activities_{admin_id}')],
-                [InlineKeyboardButton('🔄 تحديث البيانات', callback_data=f'admin_profile_{admin_id}'),
-                 InlineKeyboardButton('🗑️ حذف المشرف', callback_data=f'admin_delete_{admin_id}')],
+                [InlineKeyboardButton('🔐 تعديل الصلاحيات', callback_data=f'perm_quick_edit_{admin_id}')],
+                [InlineKeyboardButton('🗑️ حذف المشرف', callback_data=f'admin_delete_{admin_id}')],
                 [InlineKeyboardButton('🔙 العودة للقائمة', callback_data='admin_manage_admins')]
             ]
             
@@ -476,40 +460,16 @@ class AdminManagement:
             admins_with_permissions = get_all_admins_with_permissions()
             
             permissions_text = f"""
-🔐 **نظام إدارة الصلاحيات المتقدم** 🔐
+🔐 **تعديل صلاحيات المشرفين** 🔐
 
-👑 **الصلاحيات الأساسية:**
+👥 **إجمالي المشرفين:** {len(admins_with_permissions)}
+
+💡 **اختر مشرف لتعديل صلاحياته:**
 """
             
-            # عرض الصلاحيات المتاحة
-            for perm_key, perm_info in AVAILABLE_PERMISSIONS.items():
-                permissions_text += f"• **{perm_info['name_ar']}** (`{perm_key}`)\n"
-            
-            permissions_text += f"\n👥 **المشرفين المسجلين:** {len(admins_with_permissions)} مشرف\n"
-            
-            # إحصائيات الصلاحيات
-            perm_stats = {}
-            for perm_key in AVAILABLE_PERMISSIONS.keys():
-                count = sum(1 for admin in admins_with_permissions if admin['permissions'].get(perm_key, False))
-                perm_stats[perm_key] = count
-            
-            permissions_text += f"\n📊 **إحصائيات الصلاحيات:**\n"
-            for perm_key, perm_info in AVAILABLE_PERMISSIONS.items():
-                count = perm_stats.get(perm_key, 0)
-                permissions_text += f"• {perm_info['name_ar']}: **{count}** مشرف\n"
-            
-            permissions_text += f"\n⚡ **اختر عملية:**"
-            
             keyboard = [
-                [InlineKeyboardButton('📋 عرض جميع المشرفين', callback_data='perm_list_all_admins'),
-                 InlineKeyboardButton('🔍 البحث عن مشرف', callback_data='perm_search_admin')],
-                [InlineKeyboardButton('⚙️ تعديل صلاحيات مشرف', callback_data='perm_edit_admin'),
-                 InlineKeyboardButton('👥 مقارنة الصلاحيات', callback_data='perm_compare_admins')],
-                [InlineKeyboardButton('📊 تقرير الصلاحيات المفصل', callback_data='perm_detailed_report'),
-                 InlineKeyboardButton('🔄 مراجعة شاملة', callback_data='perm_full_audit')],
-                [InlineKeyboardButton('➕ منح صلاحية جماعية', callback_data='perm_bulk_grant'),
-                 InlineKeyboardButton('➖ سحب صلاحية جماعية', callback_data='perm_bulk_revoke')],
-                [InlineKeyboardButton('🔙 العودة للوحة الإدارة', callback_data='admin_dashboard')]
+                [InlineKeyboardButton('📋 قائمة المشرفين', callback_data='perm_list_all_admins')],
+                [InlineKeyboardButton('🔙 العودة', callback_data='admin_dashboard')]
             ]
             
             await query.edit_message_text(
@@ -550,29 +510,20 @@ class AdminManagement:
             total_pages = (len(admins_list) - 1) // items_per_page + 1
             
             list_text = f"""
-📋 **قائمة المشرفين والصلاحيات** 📋
+📋 **المشرفين والصلاحيات** 📋
 
-📄 **الصفحة:** {page + 1} من {total_pages}
 👥 **إجمالي المشرفين:** {len(admins_list)}
 
 """
             
             for admin in current_admins:
                 role_emoji = "👑" if admin['role'] == 'super_admin' else "🛡️"
-                status_emoji = "✅" if admin['is_active'] else "❌"
                 
                 list_text += f"""
-{role_emoji} **{admin['full_name']}** {status_emoji}
-🆔 معرف: `{admin['id']}` | 📱 تلجرام: `{admin['telegram_id']}`
-🔑 **الصلاحيات:**
+{role_emoji} **{admin['full_name']}**
+🆔 `{admin['telegram_id']}` | 🏷️ {admin['role']}
+
 """
-                
-                for perm_key, perm_info in AVAILABLE_PERMISSIONS.items():
-                    has_perm = admin['permissions'].get(perm_key, False)
-                    perm_emoji = "✅" if has_perm else "❌"
-                    list_text += f"    {perm_emoji} {perm_info['name_ar']}\n"
-                
-                list_text += "───────────────────\n"
             
             # أزرار التنقل والعمليات
             keyboard = []
@@ -589,19 +540,13 @@ class AdminManagement:
             
             # أزرار العمليات للمشرفين الحاليين
             if current_admins:
-                keyboard.append([InlineKeyboardButton('⚙️ اختر مشرف لتعديل صلاحياته', callback_data='perm_select_admin')])
-                
                 # أزرار سريعة للمشرفين
-                admin_buttons = []
-                for i, admin in enumerate(current_admins[:3]):  # أول 3 مشرفين فقط
-                    admin_buttons.append(
-                        InlineKeyboardButton(
-                            f"⚙️ {admin['full_name'][:10]}",
-                            callback_data=f"perm_quick_edit_{admin['id']}"
-                        )
-                    )
-                if admin_buttons:
-                    keyboard.append(admin_buttons)
+                for admin in current_admins:
+                    role_emoji = "👑" if admin['role'] == 'super_admin' else "🛡️"
+                    keyboard.append([InlineKeyboardButton(
+                        f"{role_emoji} {admin['full_name'][:20]}",
+                        callback_data=f"perm_quick_edit_{admin['id']}"
+                    )])
             
             keyboard.append([InlineKeyboardButton('🔙 العودة لإدارة الصلاحيات', callback_data='admin_permissions')])
             
@@ -638,13 +583,12 @@ class AdminManagement:
             admin_permissions = get_admin_permissions(admin_id)
             
             edit_text = f"""
-⚙️ **تعديل صلاحيات المشرف** ⚙️
+🔐 **تعديل صلاحيات المشرف** 🔐
 
 👤 **المشرف:** {target_admin['full_name']}
-🆔 **المعرف:** `{admin_id}`
 🛡️ **الرتبة:** {target_admin['role']}
 
-🔑 **الصلاحيات الحالية:**
+🔑 **الصلاحيات:**
 
 """
             
@@ -655,36 +599,19 @@ class AdminManagement:
                 has_perm = admin_permissions.get(perm_key, False)
                 status_emoji = "✅" if has_perm else "❌"
                 action = "revoke" if has_perm else "grant"
-                action_emoji = "❌ إلغاء" if has_perm else "✅ منح"
                 
-                edit_text += f"{status_emoji} **{perm_info['name_ar']}**\n"
-                edit_text += f"    📝 {perm_info['description']}\n\n"
+                edit_text += f"{status_emoji} {perm_info['name_ar']}\n"
                 
                 # زر التبديل
+                toggle_text = f"❌ {perm_info['name_ar']}" if has_perm else f"✅ {perm_info['name_ar']}"
                 keyboard.append([
                     InlineKeyboardButton(
-                        f"{action_emoji} {perm_info['name_ar']}",
+                        toggle_text,
                         callback_data=f"perm_{action}_{admin_id}_{perm_key}"
                     )
                 ])
             
-            edit_text += f"💡 **إرشادات:**\n"
-            edit_text += f"• ✅ = الصلاحية مفعلة\n"
-            edit_text += f"• ❌ = الصلاحية معطلة\n"
-            edit_text += f"• اضغط على الزر لتبديل الحالة\n"
-            
-            # أزرار إضافية
-            keyboard.append([
-                InlineKeyboardButton('✅ منح جميع الصلاحيات', callback_data=f'perm_grant_all_{admin_id}'),
-                InlineKeyboardButton('❌ سحب جميع الصلاحيات', callback_data=f'perm_revoke_all_{admin_id}')
-            ])
-            
-            keyboard.append([
-                InlineKeyboardButton('📋 عرض تقرير مفصل', callback_data=f'perm_report_{admin_id}'),
-                InlineKeyboardButton('🔄 تحديث الصفحة', callback_data=f'perm_quick_edit_{admin_id}')
-            ])
-            
-            keyboard.append([InlineKeyboardButton('🔙 العودة لقائمة المشرفين', callback_data='perm_list_all_admins')])
+            keyboard.append([InlineKeyboardButton('🔙 العودة', callback_data='perm_list_all_admins')])
             
             await query.edit_message_text(
                 edit_text,
@@ -804,7 +731,6 @@ class AdminManagement:
             keyboard = [
                 [InlineKeyboardButton('🔢 البحث بمعرف التلجرام', callback_data='add_admin_enter_id')],
                 [InlineKeyboardButton('📱 البحث برقم الهاتف', callback_data='add_admin_enter_phone')],
-                [InlineKeyboardButton('👥 اختيار من المستخدمين المسجلين', callback_data='add_admin_select_user')],
                 [InlineKeyboardButton('🔙 العودة للوحة الإدارة', callback_data='admin_dashboard')]
             ]
             
@@ -900,113 +826,7 @@ class AdminManagement:
             logger.error(f"Error in enter admin phone handler: {e}")
             await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إدخال رقم الهاتف.")
 
-    @staticmethod
-    async def add_admin_select_user_handler(update: Update, context: CallbackContext):
-        """👥 اختيار مشرف من المستخدمين المسجلين"""
-        try:
-            query = update.callback_query
-            await query.answer()
-            
-            # الحصول على المستخدمين المؤهلين ليصبحوا مشرفين
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                SELECT id, telegram_id, full_name, role, total_purchases, is_active, created_at
-                FROM users 
-                WHERE role = 'customer' AND is_active = 1
-                ORDER BY total_purchases DESC, created_at ASC
-                LIMIT 20
-            ''')
-            
-            eligible_users = cursor.fetchall()
-            conn.close()
-            
-            if not eligible_users:
-                await query.edit_message_text(
-                    f"""
-❌ **لا توجد مستخدمين مؤهلين**
 
-لا يوجد مستخدمين عملاء مفعلين يمكن ترقيتهم لمشرفين.
-
-💡 **الشروط المطلوبة:**
-• حساب عميل مفعل
-• لا يكون مشرف مسبقاً
-• حساب نشط في النظام
-""",
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton('📝 إدخال معرف يدوياً', callback_data='add_admin_enter_id')],
-                        [InlineKeyboardButton('🔙 العودة', callback_data='admin_add_new')]
-                    ]),
-                    parse_mode='Markdown'
-                )
-                return
-            
-            # تقسيم المستخدمين إلى صفحات
-            page = context.user_data.get('add_admin_users_page', 0)
-            items_per_page = 8
-            start_idx = page * items_per_page
-            end_idx = start_idx + items_per_page
-            
-            current_users = eligible_users[start_idx:end_idx]
-            total_pages = (len(eligible_users) - 1) // items_per_page + 1
-            
-            select_text = f"""
-👥 **اختيار مستخدم للترقية** 👥
-
-📄 **الصفحة:** {page + 1} من {total_pages}
-👤 **المستخدمين المؤهلين:** {len(eligible_users)}
-
-"""
-            
-            keyboard = []
-            
-            for user_data in current_users:
-                user_id, telegram_id, full_name, role, purchases, is_active, created = user_data
-                
-                # تحضير معلومات المستخدم
-                purchases_text = f"{purchases} شراء" if purchases > 0 else "جديد"
-                created_date = created[:10] if created else "غير محدد"
-                
-                select_text += f"""
-👤 **{full_name}**
-🆔 المعرف: `{telegram_id}`
-📊 المشتريات: {purchases_text}
-📅 التسجيل: {created_date}
-───────────────────
-"""
-                
-                keyboard.append([
-                    InlineKeyboardButton(
-                        f"✅ اختيار {full_name[:15]}",
-                        callback_data=f"select_user_for_admin_{telegram_id}"
-                    )
-                ])
-            
-            # أزرار التنقل
-            nav_buttons = []
-            if page > 0:
-                nav_buttons.append(InlineKeyboardButton('⬅️ السابق', callback_data=f'add_admin_users_page_{page-1}'))
-            if page < total_pages - 1:
-                nav_buttons.append(InlineKeyboardButton('➡️ التالي', callback_data=f'add_admin_users_page_{page+1}'))
-            
-            if nav_buttons:
-                keyboard.append(nav_buttons)
-            
-            keyboard.extend([
-                [InlineKeyboardButton('📝 إدخال معرف يدوياً', callback_data='add_admin_enter_id')],
-                [InlineKeyboardButton('🔙 العودة', callback_data='admin_add_new')]
-            ])
-            
-            await query.edit_message_text(
-                select_text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
-            
-        except Exception as e:
-            logger.error(f"Error in select user for admin: {e}")
-            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في اختيار المستخدم.")
 
     @staticmethod
     async def process_admin_user_search(search_value: str, search_type: str, update: Update, context: CallbackContext):
@@ -1133,25 +953,16 @@ class AdminManagement:
 🔸 المعرف: `{target_user['telegram_id']}`
 🔸 الهاتف: {target_user.get('phone', 'غير محدد')}
 🔸 الدور الحالي: **{target_user['role']}**
-🔸 الرصيد: **{target_user['balance']:.2f}** ريال
-🔸 تاريخ التسجيل: {target_user.get('created_at', 'غير محدد')[:10]}
 
 🛡️ **اختر نوع الترقية:**
 
-**1️⃣ مشرف عادي:**
-• إدارة العملاء ✅
-• إرسال رسائل ✅  
-• إضافة عروض ✅
-• النظام المحاسبي ❌
-• تفعيل مزودين ❌
+**1️⃣ مشرف عادي**
+• صلاحيات محدودة
 
-**2️⃣ مشرف أعلى:**
-• جميع الصلاحيات ✅
-• إدارة المشرفين ✅
-• النظام المحاسبي ✅
-• تفعيل مزودين ✅
+**2️⃣ مشرف أعلى**  
+• جميع الصلاحيات
 
-⚠️ **تحذير:** هذه العملية لا يمكن التراجع عنها بسهولة
+💡 **هل أنت متأكد من ترقية هذا المستخدم؟**
 """
             
             # حفظ معرف المستخدم المستهدف
@@ -1159,11 +970,9 @@ class AdminManagement:
             context.user_data['target_admin_db_id'] = target_user['id']
             
             keyboard = [
-                [InlineKeyboardButton('🛡️ ترقية لمشرف عادي', callback_data='promote_to_admin')],
-                [InlineKeyboardButton('👑 ترقية لمشرف أعلى', callback_data='promote_to_super_admin')],
-                [InlineKeyboardButton('📋 عرض تفاصيل إضافية', callback_data=f'view_user_details_{target_user["telegram_id"]}')],
-                [InlineKeyboardButton('❌ إلغاء العملية', callback_data='add_admin_cancel')],
-                [InlineKeyboardButton('🔙 العودة', callback_data='admin_add_new')]
+                [InlineKeyboardButton('🛡️ مشرف عادي', callback_data='promote_to_admin')],
+                [InlineKeyboardButton('👑 مشرف أعلى', callback_data='promote_to_super_admin')],
+                [InlineKeyboardButton('❌ إلغاء', callback_data='add_admin_cancel')]
             ]
             
             if hasattr(update, 'callback_query') and update.callback_query:
@@ -1257,37 +1066,20 @@ class AdminManagement:
             role_name = "مشرف أعلى" if new_role == 'super_admin' else "مشرف عادي"
             
             success_text = f"""
-🎉 **تم ترقية المستخدم بنجاح!** 🎉
+✅ **تم إضافة المشرف بنجاح!**
 
 👤 **المشرف الجديد:**
 🔸 الاسم: **{target_user['full_name']}**
 🔸 المعرف: `{target_telegram_id}`
-🔸 الدور الجديد: **{role_name}**
+🔸 الدور: **{role_name}**
 
-✅ **ما تم:**
-• تحديث دور المستخدم في النظام
-• تهيئة الصلاحيات الافتراضية
-• تسجيل العملية في سجل الإدارة
-• إرسال إشعار للمشرف الجديد
-
-📊 **الصلاحيات المفعلة:**
+⏰ تاريخ الإضافة: {datetime.now().strftime('%Y-%m-%d %H:%M')}
 """
             
-            # عرض الصلاحيات
-            permissions = get_admin_permissions(target_db_id)
-            for perm_key, perm_info in AVAILABLE_PERMISSIONS.items():
-                has_perm = permissions.get(perm_key, False)
-                status = "✅" if has_perm else "❌"
-                success_text += f"{status} {perm_info['name_ar']}\n"
-            
-            success_text += f"\n⏰ **تاريخ الترقية:** {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-            
             keyboard = [
-                [InlineKeyboardButton('⚙️ تعديل صلاحياته', callback_data=f'perm_quick_edit_{target_db_id}')],
-                [InlineKeyboardButton('👤 عرض ملفه الشخصي', callback_data=f'admin_profile_{target_db_id}')],
                 [InlineKeyboardButton('➕ إضافة مشرف آخر', callback_data='admin_add_new')],
-                [InlineKeyboardButton('📋 عرض جميع المشرفين', callback_data='admin_manage_admins')],
-                [InlineKeyboardButton('🔙 العودة للوحة الإدارة', callback_data='admin_dashboard')]
+                [InlineKeyboardButton('👤 قائمة المشرفين', callback_data='admin_manage_admins')],
+                [InlineKeyboardButton('🔙 العودة', callback_data='admin_dashboard')]
             ]
             
             await query.edit_message_text(

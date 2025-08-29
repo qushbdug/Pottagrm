@@ -366,15 +366,7 @@ async def button_click_handler(update: Update, context):
             return await AdminManagement.add_admin_enter_id_handler(update, context)
         elif callback_data == 'add_admin_enter_phone':
             return await AdminManagement.add_admin_enter_phone_handler(update, context)
-        elif callback_data == 'add_admin_select_user':
-            return await AdminManagement.add_admin_select_user_handler(update, context)
-        elif callback_data.startswith('add_admin_users_page_'):
-            page = int(callback_data.split('_')[4])
-            context.user_data['add_admin_users_page'] = page
-            return await AdminManagement.add_admin_select_user_handler(update, context)
-        elif callback_data.startswith('select_user_for_admin_'):
-            telegram_id = int(callback_data.split('_')[4])
-            return await AdminManagement.process_admin_user_search(str(telegram_id), 'telegram_id', update, context)
+
         elif callback_data == 'promote_to_admin':
             return await AdminManagement.execute_admin_promotion(update, context, 'admin')
         elif callback_data == 'promote_to_super_admin':
