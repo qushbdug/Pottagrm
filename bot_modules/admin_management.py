@@ -73,7 +73,7 @@ class AdminManagement:
             
             # آخر النشاطات
             cursor.execute("""
-                SELECT u.full_name, a.action, a.created_at, u.role
+                SELECT u.full_name, a.activity_type, a.description, a.created_at, u.role
                 FROM activity_logs a
                 JOIN users u ON a.user_id = u.id
                 WHERE u.role IN ('admin', 'super_admin')
@@ -105,8 +105,9 @@ class AdminManagement:
             
             if recent_activities:
                 for activity in recent_activities[:3]:
-                    role_emoji = "👑" if activity[3] == 'super_admin' else "🛡️"
-                    dashboard_text += f"• {role_emoji} **{activity[0]}**: {activity[1]} - {activity[2][:16]}\n"
+                    role_emoji = "👑" if activity[4] == 'super_admin' else "🛡️"  # role is now index 4
+                    activity_text = activity[2] if activity[2] else activity[1]  # use description if available, otherwise activity_type
+                    dashboard_text += f"• {role_emoji} **{activity[0]}**: {activity_text[:50]} - {activity[3][:16]}\n"  # created_at is now index 3
             else:
                 dashboard_text += "• لا توجد نشاطات حديثة\n"
             

@@ -33,7 +33,7 @@ async def admin_panel_handler(update: Update, context: CallbackContext):
             
     except Exception as e:
         logger.error(f"Error in admin panel handler: {e}")
-        await update.message.reply_text(perm_error("مشرف أو مشرف أعلى", user.get('role', 'غير محدد') if user else "غير مسجل"))
+        await update.message.reply_text(perm_error("مشرف أو مشرف أعلى", user['role'] if user else "غير مسجل"))
 
 async def show_super_admin_panel(update: Update, context: CallbackContext, user):
     """Show super admin control panel"""
@@ -2678,7 +2678,7 @@ async def admin_add_offers_handler(update: Update, context: CallbackContext):
         
         user = get_user(query.from_user.id)
         if not user or user['role'] not in ['admin', 'super_admin']:
-            await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user.get('role', 'غير محدد') if user else "غير مسجل"))
+            await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user['role'] if user else "غير مسجل"))
             return
         
         # فحص صلاحية إضافة العروض
@@ -2752,7 +2752,7 @@ async def accounting_system_handler(update: Update, context: CallbackContext):
         
         user = get_user(query.from_user.id)
         if not user or user['role'] not in ['admin', 'super_admin']:
-            await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user.get('role', 'غير محدد') if user else "غير مسجل"))
+            await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user['role'] if user else "غير مسجل"))
             return
         
         # فحص صلاحية الوصول للنظام المحاسبي

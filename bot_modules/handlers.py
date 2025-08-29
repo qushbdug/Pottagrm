@@ -1382,7 +1382,7 @@ async def account_settings_handler(update: Update, context: CallbackContext):
 
 👤 الاسم: {user['full_name']}
 📱 الهاتف: {user.get('phone','غير محدد')}
-👑 الدور: {user.get('role','customer')}
+👑 الدور: {user['role']}
 """
         kb = [[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]
         if update.message:

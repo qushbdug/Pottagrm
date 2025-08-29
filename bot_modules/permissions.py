@@ -57,7 +57,7 @@ def has_permission(admin_id: int, permission: str) -> bool:
         # التحقق من أن المستخدم مشرف أولاً (استخدام معرف تلجرام)
         user = get_user(admin_id)
         if not user or user['role'] not in ['admin', 'super_admin']:
-            logger.warning(f"Permission check failed: User telegram_id {admin_id} is not an admin, role: {user.get('role', 'None') if user else 'User not found'}")
+            logger.warning(f"Permission check failed: User telegram_id {admin_id} is not an admin, role: {user['role'] if user else 'User not found'}")
             return False
         
         # المشرف الأعلى يملك جميع الصلاحيات
