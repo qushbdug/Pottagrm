@@ -122,11 +122,7 @@ class AdminManagement:
                 [InlineKeyboardButton('➕ إضافة مشرف جديد', callback_data='admin_add_new'),
                  InlineKeyboardButton('🔐 إدارة الصلاحيات', callback_data='admin_permissions')],
                 [InlineKeyboardButton('📊 تقارير المشرفين', callback_data='admin_reports'),
-                 InlineKeyboardButton('📈 إحصائيات مفصلة', callback_data='admin_analytics')],
-                [InlineKeyboardButton('⚠️ تحذيرات المشرفين', callback_data='admin_warnings'),
-                 InlineKeyboardButton('🔒 أمان النظام', callback_data='admin_security')],
-                [InlineKeyboardButton('📋 سجل النشاطات', callback_data='admin_activity_log'),
-                 InlineKeyboardButton('⚙️ إعدادات الإدارة', callback_data='admin_settings')],
+                 InlineKeyboardButton('📋 سجل النشاطات', callback_data='admin_activity_log')],
                 [InlineKeyboardButton('🔙 العودة للوحة الرئيسية', callback_data='super_admin_panel')]
             ]
             
@@ -344,12 +340,8 @@ class AdminManagement:
                 profile_text += "• لا توجد نشاطات مسجلة\n"
             
             keyboard = [
-                [InlineKeyboardButton('✏️ تعديل المعلومات', callback_data=f'admin_edit_{admin_id}'),
-                 InlineKeyboardButton('🔐 إدارة الصلاحيات', callback_data=f'admin_perms_{admin_id}')],
-                [InlineKeyboardButton('📊 تقرير مفصل', callback_data=f'admin_report_{admin_id}'),
+                [InlineKeyboardButton('🔐 إدارة الصلاحيات', callback_data=f'perm_quick_edit_{admin_id}'),
                  InlineKeyboardButton('📋 سجل النشاطات', callback_data=f'admin_activities_{admin_id}')],
-                [InlineKeyboardButton('💬 إرسال رسالة', callback_data=f'admin_message_{admin_id}'),
-                 InlineKeyboardButton('⚠️ إدارة التحذيرات', callback_data=f'admin_warnings_{admin_id}')],
                 [InlineKeyboardButton('🔄 تحديث البيانات', callback_data=f'admin_profile_{admin_id}'),
                  InlineKeyboardButton('🗑️ حذف المشرف', callback_data=f'admin_delete_{admin_id}')],
                 [InlineKeyboardButton('🔙 العودة للقائمة', callback_data='admin_manage_admins')]
@@ -466,99 +458,7 @@ class AdminManagement:
             logger.error(f"Error in admin analytics: {e}")
             await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تحليلات المشرفين.")
 
-    @staticmethod
-    async def admin_security_center(update: Update, context: CallbackContext):
-        """مركز أمان المشرفين"""
-        try:
-            query = update.callback_query
-            await query.answer()
-            
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            # فحص أنشطة مشبوهة
-            cursor.execute("""
-                SELECT 
-                    u.full_name,
-                    COUNT(a.id) as activities,
-                    GROUP_CONCAT(DISTINCT a.action) as actions
-                FROM users u
-                JOIN activity_logs a ON u.id = a.user_id
-                WHERE u.role IN ('admin', 'super_admin')
-                AND a.created_at >= datetime('now', '-1 hours')
-                GROUP BY u.id
-                HAVING activities > 50  -- أكثر من 50 نشاط في الساعة
-            """)
-            suspicious_activities = cursor.fetchall()
-            
-            # فحص محاولات الوصول الفاشلة
-            cursor.execute("""
-                SELECT COUNT(*) FROM activity_logs 
-                WHERE action LIKE '%failed%' OR action LIKE '%error%'
-                AND created_at >= datetime('now', '-24 hours')
-            """)
-            failed_attempts = cursor.fetchone()[0]
-            
-            # آخر تغييرات الصلاحيات
-            cursor.execute("""
-                SELECT u.full_name, a.action, a.created_at, a.description
-                FROM activity_logs a
-                JOIN users u ON a.user_id = u.id
-                WHERE a.action LIKE '%permission%' OR a.action LIKE '%role%'
-                ORDER BY a.created_at DESC
-                LIMIT 5
-            """)
-            permission_changes = cursor.fetchall()
-            
-            conn.close()
-            
-            security_text = f"""
-🔒 **مركز أمان المشرفين** 🔒
 
-⚠️ **التحذيرات الأمنية:**
-"""
-            
-            if suspicious_activities:
-                security_text += f"🚨 **أنشطة مشبوهة مكتشفة:** {len(suspicious_activities)} مشرف\n"
-                for admin, count, actions in suspicious_activities:
-                    security_text += f"• **{admin}**: {count} نشاط في الساعة الماضية\n"
-            else:
-                security_text += "✅ لا توجد أنشطة مشبوهة\n"
-            
-            security_text += f"""
-
-📊 **إحصائيات الأمان:**
-❌ محاولات فاشلة (24 ساعة): **{failed_attempts}** محاولة
-🔐 مستوى الأمان: **{'مرتفع' if failed_attempts < 10 else 'متوسط' if failed_attempts < 50 else 'منخفض'}**
-
-🔄 **آخر تغييرات الصلاحيات:**
-"""
-            
-            if permission_changes:
-                for admin, action, date, desc in permission_changes:
-                    security_text += f"• **{admin}**: {action} - {date[:16]}\n"
-            else:
-                security_text += "• لا توجد تغييرات حديثة\n"
-            
-            keyboard = [
-                [InlineKeyboardButton('🔍 فحص التهديدات', callback_data='admin_security_scan'),
-                 InlineKeyboardButton('📋 سجل الأمان', callback_data='admin_security_log')],
-                [InlineKeyboardButton('🔐 إعدادات الأمان', callback_data='admin_security_settings'),
-                 InlineKeyboardButton('🚨 إنذارات الأمان', callback_data='admin_security_alerts')],
-                [InlineKeyboardButton('👤 مراجعة المشرفين', callback_data='admin_security_review'),
-                 InlineKeyboardButton('🔄 تدقيق الصلاحيات', callback_data='admin_permissions_audit')],
-                [InlineKeyboardButton('🔙 العودة', callback_data='admin_dashboard')]
-            ]
-            
-            await query.edit_message_text(
-                security_text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
-            
-        except Exception as e:
-            logger.error(f"Error in admin security center: {e}")
-            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في مركز الأمان.")
 
     @staticmethod
     async def admin_permissions_handler(update: Update, context: CallbackContext):
@@ -884,8 +784,8 @@ class AdminManagement:
 
 👤 **خطوات إضافة المشرف:**
 
-1️⃣ **إدخال معرف تلجرام**
-   أرسل معرف تلجرام للمستخدم المراد ترقيته
+1️⃣ **البحث عن المستخدم**
+   ابحث عن المستخدم بمعرف التلجرام أو رقم الهاتف
 
 2️⃣ **اختيار نوع المشرف**
    • مشرف عادي (صلاحيات محدودة)
@@ -896,16 +796,15 @@ class AdminManagement:
 
 ⚡ **ملاحظات مهمة:**
 • يجب أن يكون المستخدم مسجل في البوت
-• لا يمكن إضافة مشرف أعلى إضافي إلا بموافقة خاصة
 • سيتم تسجيل العملية في سجل الإدارة
 
-💡 **ابدأ بإدخال معرف تلجرام:**
+💡 **اختر طريقة البحث:**
 """
             
             keyboard = [
-                [InlineKeyboardButton('📝 إدخال معرف تلجرام', callback_data='add_admin_enter_id')],
+                [InlineKeyboardButton('🔢 البحث بمعرف التلجرام', callback_data='add_admin_enter_id')],
+                [InlineKeyboardButton('📱 البحث برقم الهاتف', callback_data='add_admin_enter_phone')],
                 [InlineKeyboardButton('👥 اختيار من المستخدمين المسجلين', callback_data='add_admin_select_user')],
-                [InlineKeyboardButton('📊 عرض حدود النظام', callback_data='add_admin_show_limits')],
                 [InlineKeyboardButton('🔙 العودة للوحة الإدارة', callback_data='admin_dashboard')]
             ]
             
@@ -959,6 +858,47 @@ class AdminManagement:
         except Exception as e:
             logger.error(f"Error in enter admin ID handler: {e}")
             await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إدخال معرف المشرف.")
+
+    @staticmethod
+    async def add_admin_enter_phone_handler(update: Update, context: CallbackContext):
+        """معالج إدخال رقم الهاتف للمشرف الجديد"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            # تعيين حالة انتظار رقم الهاتف
+            context.user_data['awaiting_admin_phone'] = True
+            context.user_data['admin_add_step'] = 'enter_phone'
+            
+            enter_phone_text = f"""
+📱 **إدخال رقم الهاتف** 📱
+
+📞 **أرسل رقم الهاتف للمستخدم:**
+
+مثال: `967777123456` أو `777123456`
+
+⚠️ **تعليمات مهمة:**
+• أرسل الرقم بدون فراغات أو رموز
+• يمكن إدخال الرقم مع أو بدون مفتاح الدولة
+• يجب أن يكون المستخدم مسجل في البوت
+
+❌ **للإلغاء اكتب:** `إلغاء`
+"""
+            
+            keyboard = [
+                [InlineKeyboardButton('❌ إلغاء العملية', callback_data='add_admin_cancel')],
+                [InlineKeyboardButton('🔙 العودة', callback_data='admin_add_new')]
+            ]
+            
+            await query.edit_message_text(
+                enter_phone_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in enter admin phone handler: {e}")
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إدخال رقم الهاتف.")
 
     @staticmethod
     async def add_admin_select_user_handler(update: Update, context: CallbackContext):
@@ -1069,17 +1009,43 @@ class AdminManagement:
             await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في اختيار المستخدم.")
 
     @staticmethod
-    async def process_admin_telegram_id(telegram_id: int, update: Update, context: CallbackContext):
-        """معالجة معرف تلجرام للمشرف الجديد"""
+    async def process_admin_user_search(search_value: str, search_type: str, update: Update, context: CallbackContext):
+        """معالجة البحث عن المستخدم للترقية (بالمعرف أو الهاتف)"""
         try:
             # البحث عن المستخدم
-            target_user = get_user(telegram_id)
+            target_user = None
+            
+            if search_type == 'telegram_id':
+                try:
+                    telegram_id = int(search_value)
+                    target_user = get_user(telegram_id)
+                except ValueError:
+                    pass
+            elif search_type == 'phone':
+                # البحث برقم الهاتف
+                phone_clean = search_value.strip().replace(' ', '').replace('-', '').replace('+', '')
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                
+                cursor.execute('''
+                    SELECT * FROM users 
+                    WHERE phone = ? OR phone = ? OR phone LIKE ? OR phone LIKE ?
+                    LIMIT 1
+                ''', (phone_clean, f"+{phone_clean}", f"%{phone_clean}", f"%{phone_clean[-9:]}"))
+                
+                user_row = cursor.fetchone()
+                conn.close()
+                
+                if user_row:
+                    # تحويل Row إلى dict
+                    target_user = dict(user_row)
             
             if not target_user:
+                search_label = "المعرف" if search_type == 'telegram_id' else "رقم الهاتف"
                 error_text = f"""
-❌ **مستخدم غير موجود** ❌
+❌ **لم يتم العثور على هذا المستخدم** ❌
 
-المعرف `{telegram_id}` غير مسجل في النظام.
+{search_label} `{search_value}` غير مسجل في النظام.
 
 💡 **يجب على المستخدم:**
 • التسجيل في البوت أولاً باستخدام /start
@@ -1341,6 +1307,149 @@ class AdminManagement:
         except Exception as e:
             logger.error(f"Error executing admin promotion: {e}")
             await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في ترقية المستخدم.")
+
+    @staticmethod
+    async def delete_admin_handler(update: Update, context: CallbackContext, admin_id: int):
+        """🗑️ حذف مشرف"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            current_user = get_user(query.from_user.id)
+            if not current_user or current_user['role'] != 'super_admin':
+                await query.edit_message_text(f"{EMOJIS['error']} هذه العملية محصورة على المشرف الأعلى فقط.")
+                return
+            
+            # الحصول على معلومات المشرف المراد حذفه
+            target_admin = get_user(admin_id)
+            if not target_admin or target_admin['role'] not in ['admin', 'super_admin']:
+                await query.edit_message_text(f"{EMOJIS['error']} المشرف المستهدف غير موجود.")
+                return
+            
+            # منع حذف المشرف الأعلى لنفسه
+            if target_admin['telegram_id'] == current_user['telegram_id']:
+                await query.edit_message_text(f"{EMOJIS['error']} لا يمكنك حذف حسابك الخاص.")
+                return
+            
+            delete_text = f"""
+⚠️ **تأكيد حذف المشرف** ⚠️
+
+👤 **بيانات المشرف:**
+🔸 الاسم: **{target_admin['full_name']}**
+🔸 المعرف: `{target_admin['telegram_id']}`
+🔸 الهاتف: {target_admin.get('phone', 'غير محدد')}
+🔸 الدور: **{target_admin['role']}**
+
+❌ **ما سيحدث عند الحذف:**
+• تحويل الدور إلى "عميل"
+• إزالة جميع الصلاحيات الإدارية
+• إيقاف الوصول للوحات الإدارة
+• تسجيل العملية في سجل الإدارة
+
+⚠️ **تحذير:** هذه العملية لا يمكن التراجع عنها!
+
+💡 **هل أنت متأكد من حذف هذا المشرف؟**
+"""
+            
+            keyboard = [
+                [InlineKeyboardButton('✅ نعم، احذف المشرف', callback_data=f'confirm_delete_admin_{admin_id}')],
+                [InlineKeyboardButton('❌ لا، إلغاء العملية', callback_data=f'admin_profile_{admin_id}')],
+                [InlineKeyboardButton('🔙 العودة لملف المشرف', callback_data=f'admin_profile_{admin_id}')]
+            ]
+            
+            await query.edit_message_text(
+                delete_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in delete admin handler: {e}")
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في معالجة حذف المشرف.")
+
+    @staticmethod
+    async def confirm_delete_admin_handler(update: Update, context: CallbackContext, admin_id: int):
+        """✅ تأكيد حذف المشرف"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            current_user = get_user(query.from_user.id)
+            target_admin = get_user(admin_id)
+            
+            if not target_admin:
+                await query.edit_message_text(f"{EMOJIS['error']} المشرف المستهدف لم يعد موجوداً.")
+                return
+            
+            # تنفيذ عملية الحذف
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # حفظ البيانات القديمة للسجل
+            old_data = {
+                'role': target_admin['role'],
+                'permissions': get_admin_permissions(admin_id)
+            }
+            
+            # تحديث الدور إلى عميل
+            cursor.execute('''
+                UPDATE users 
+                SET role = 'customer', updated_at = CURRENT_TIMESTAMP 
+                WHERE id = ?
+            ''', (admin_id,))
+            
+            # حذف جميع الصلاحيات
+            cursor.execute('''
+                DELETE FROM admin_permissions 
+                WHERE admin_id = ?
+            ''', (admin_id,))
+            
+            conn.commit()
+            
+            # تسجيل العملية
+            AdminManagement.log_admin_action(
+                action_type='delete',
+                target_admin_id=admin_id,
+                performed_by=current_user['id'],
+                old_data=old_data,
+                new_data={'role': 'customer', 'permissions': {}},
+                action_details=f"Admin {target_admin['full_name']} demoted to customer"
+            )
+            
+            conn.close()
+            
+            success_text = f"""
+✅ **تم حذف المشرف بنجاح** ✅
+
+👤 **المستخدم السابق:**
+🔸 الاسم: **{target_admin['full_name']}**
+🔸 المعرف: `{target_admin['telegram_id']}`
+
+✅ **ما تم:**
+• تحويل الدور من "{target_admin['role']}" إلى "عميل"
+• إزالة جميع الصلاحيات الإدارية
+• تسجيل العملية في سجل الإدارة
+• إرسال إشعار للمستخدم
+
+⏰ **تاريخ الحذف:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+"""
+            
+            keyboard = [
+                [InlineKeyboardButton('📋 عرض قائمة المشرفين', callback_data='admin_manage_admins')],
+                [InlineKeyboardButton('➕ إضافة مشرف جديد', callback_data='admin_add_new')],
+                [InlineKeyboardButton('📋 عرض سجل النشاطات', callback_data='admin_activity_log')],
+                [InlineKeyboardButton('🔙 العودة للوحة الإدارة', callback_data='admin_dashboard')]
+            ]
+            
+            await query.edit_message_text(
+                success_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Error confirming admin deletion: {e}")
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تأكيد حذف المشرف.")
 
 # إضافة الدوال للاستيراد
 __all__ = ['AdminManagement']

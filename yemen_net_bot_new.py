@@ -364,6 +364,8 @@ async def button_click_handler(update: Update, context):
             return await AdminManagement.add_new_admin_handler(update, context)
         elif callback_data == 'add_admin_enter_id':
             return await AdminManagement.add_admin_enter_id_handler(update, context)
+        elif callback_data == 'add_admin_enter_phone':
+            return await AdminManagement.add_admin_enter_phone_handler(update, context)
         elif callback_data == 'add_admin_select_user':
             return await AdminManagement.add_admin_select_user_handler(update, context)
         elif callback_data.startswith('add_admin_users_page_'):
@@ -372,7 +374,7 @@ async def button_click_handler(update: Update, context):
             return await AdminManagement.add_admin_select_user_handler(update, context)
         elif callback_data.startswith('select_user_for_admin_'):
             telegram_id = int(callback_data.split('_')[4])
-            return await AdminManagement.process_admin_telegram_id(telegram_id, update, context)
+            return await AdminManagement.process_admin_user_search(str(telegram_id), 'telegram_id', update, context)
         elif callback_data == 'promote_to_admin':
             return await AdminManagement.execute_admin_promotion(update, context, 'admin')
         elif callback_data == 'promote_to_super_admin':
@@ -380,6 +382,7 @@ async def button_click_handler(update: Update, context):
         elif callback_data == 'add_admin_cancel':
             # تنظيف بيانات السياق
             context.user_data.pop('awaiting_admin_telegram_id', None)
+            context.user_data.pop('awaiting_admin_phone', None)
             context.user_data.pop('target_admin_telegram_id', None)
             context.user_data.pop('target_admin_db_id', None)
             context.user_data.pop('admin_add_step', None)
@@ -390,12 +393,12 @@ async def button_click_handler(update: Update, context):
             return await AdminManagementExtended.search_admin_handler(update, context)
         elif callback_data == 'search_admin_by_id':
             return await AdminManagementExtended.search_admin_by_id_handler(update, context)
-        elif callback_data == 'search_admin_by_name':
-            return await AdminManagementExtended.search_admin_by_name_handler(update, context)
+        elif callback_data == 'search_admin_by_phone':
+            return await AdminManagementExtended.search_admin_by_phone_handler(update, context)
         elif callback_data == 'search_admin_cancel':
             # تنظيف بيانات البحث
             context.user_data.pop('awaiting_admin_search_id', None)
-            context.user_data.pop('awaiting_admin_search_name', None)
+            context.user_data.pop('awaiting_admin_search_phone', None)
             context.user_data.pop('search_type', None)
             return await AdminManagementExtended.search_admin_handler(update, context)
         
@@ -417,6 +420,17 @@ async def button_click_handler(update: Update, context):
         # Admin Reports
         elif callback_data == 'admin_reports':
             return await AdminManagementExtended.admin_reports_handler(update, context)
+        
+        # Admin Profile and Management Actions
+        elif callback_data.startswith('admin_profile_'):
+            admin_id = int(callback_data.split('_')[2])
+            return await AdminManagement.show_admin_profile(update, context, admin_id)
+        elif callback_data.startswith('admin_delete_'):
+            admin_id = int(callback_data.split('_')[2])
+            return await AdminManagement.delete_admin_handler(update, context, admin_id)
+        elif callback_data.startswith('confirm_delete_admin_'):
+            admin_id = int(callback_data.split('_')[3])
+            return await AdminManagement.confirm_delete_admin_handler(update, context, admin_id)
         
         # Transfer confirmation handlers
         elif callback_data == 'confirm_transfer_yes':
@@ -2176,12 +2190,43 @@ async def handle_text_message(update: Update, context: CallbackContext):
             try:
                 telegram_id = int(message_text)
                 context.user_data.pop('awaiting_admin_telegram_id', None)
-                await AdminManagement.process_admin_telegram_id(telegram_id, update, context)
+                await AdminManagement.process_admin_user_search(str(telegram_id), 'telegram_id', update, context)
                 return
             except ValueError:
                 await update.message.reply_text(
                     "❌ يرجى إدخال معرف تلجرام صحيح (أرقام فقط).\n\n"
                     "مثال: `123456789`\n\n"
+                    "أو اكتب `إلغاء` للإلغاء.",
+                    parse_mode='Markdown'
+                )
+                return
+        
+        # معالجة إدخال رقم الهاتف لإضافة مشرف جديد
+        if context.user_data.get('awaiting_admin_phone'):
+            if message_text.lower() in ['إلغاء', 'cancel', 'الغاء']:
+                # إلغاء العملية
+                context.user_data.pop('awaiting_admin_phone', None)
+                context.user_data.pop('admin_add_step', None)
+                
+                cancel_text = "❌ تم إلغاء عملية إضافة المشرف."
+                keyboard = [[InlineKeyboardButton('🔙 العودة للوحة الإدارة', callback_data='admin_dashboard')]]
+                
+                await update.message.reply_text(
+                    cancel_text,
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+                return
+            
+            # معالجة رقم الهاتف
+            phone_clean = message_text.strip().replace(' ', '').replace('-', '').replace('+', '')
+            if phone_clean.isdigit() and len(phone_clean) >= 9:
+                context.user_data.pop('awaiting_admin_phone', None)
+                await AdminManagement.process_admin_user_search(phone_clean, 'phone', update, context)
+                return
+            else:
+                await update.message.reply_text(
+                    "❌ يرجى إدخال رقم هاتف صحيح.\n\n"
+                    "مثال: `967777123456` أو `777123456`\n\n"
                     "أو اكتب `إلغاء` للإلغاء.",
                     parse_mode='Markdown'
                 )
@@ -2207,10 +2252,10 @@ async def handle_text_message(update: Update, context: CallbackContext):
             await AdminManagementExtended.perform_admin_search(message_text, search_type, update, context)
             return
         
-        # معالجة البحث عن مشرف بالاسم
-        if context.user_data.get('awaiting_admin_search_name'):
+        # معالجة البحث عن مشرف برقم الهاتف  
+        if context.user_data.get('awaiting_admin_search_phone'):
             if message_text.lower() in ['إلغاء', 'cancel', 'الغاء']:
-                context.user_data.pop('awaiting_admin_search_name', None)
+                context.user_data.pop('awaiting_admin_search_phone', None)
                 context.user_data.pop('search_type', None)
                 
                 cancel_text = "❌ تم إلغاء عملية البحث."
@@ -2222,8 +2267,8 @@ async def handle_text_message(update: Update, context: CallbackContext):
                 )
                 return
             
-            context.user_data.pop('awaiting_admin_search_name', None)
-            search_type = context.user_data.pop('search_type', 'by_name')
+            context.user_data.pop('awaiting_admin_search_phone', None)
+            search_type = context.user_data.pop('search_type', 'by_phone')
             await AdminManagementExtended.perform_admin_search(message_text, search_type, update, context)
             return
             

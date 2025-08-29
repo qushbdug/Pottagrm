@@ -47,25 +47,18 @@ class AdminManagementExtended:
 
 🎯 **طرق البحث المتاحة:**
 
-**1️⃣ البحث بالمعرف**
-أدخل معرف تلجرام للمشرف
+**1️⃣ البحث بمعرف التلجرام**
+أدخل معرف تلجرام للمشرف (مثال: 123456789)
 
-**2️⃣ البحث بالاسم**  
-أدخل اسم أو جزء من اسم المشرف
-
-**3️⃣ البحث المتقدم**
-البحث حسب الدور، النشاط، الصلاحيات
-
-**4️⃣ عرض جميع المشرفين**
-استعراض قائمة كاملة بجميع المشرفين
+**2️⃣ البحث برقم الهاتف**  
+أدخل رقم الهاتف للمشرف (مثال: 967777123456)
 
 💡 **اختر طريقة البحث:**
 """
             
             keyboard = [
-                [InlineKeyboardButton('🔢 البحث بالمعرف', callback_data='search_admin_by_id')],
-                [InlineKeyboardButton('📝 البحث بالاسم', callback_data='search_admin_by_name')],
-                [InlineKeyboardButton('🔍 البحث المتقدم', callback_data='search_admin_advanced')],
+                [InlineKeyboardButton('🔢 البحث بمعرف التلجرام', callback_data='search_admin_by_id')],
+                [InlineKeyboardButton('📱 البحث برقم الهاتف', callback_data='search_admin_by_phone')],
                 [InlineKeyboardButton('📋 عرض جميع المشرفين', callback_data='admin_manage_admins')],
                 [InlineKeyboardButton('🔙 العودة للوحة الإدارة', callback_data='admin_dashboard')]
             ]
@@ -122,27 +115,27 @@ class AdminManagementExtended:
             await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في البحث بالمعرف.")
 
     @staticmethod
-    async def search_admin_by_name_handler(update: Update, context: CallbackContext):
-        """البحث بالاسم"""
+    async def search_admin_by_phone_handler(update: Update, context: CallbackContext):
+        """البحث برقم الهاتف"""
         try:
             query = update.callback_query
             await query.answer()
             
-            # تعيين حالة انتظار اسم البحث
-            context.user_data['awaiting_admin_search_name'] = True
-            context.user_data['search_type'] = 'by_name'
+            # تعيين حالة انتظار رقم الهاتف
+            context.user_data['awaiting_admin_search_phone'] = True
+            context.user_data['search_type'] = 'by_phone'
             
-            search_name_text = f"""
-📝 **البحث بالاسم** 📝
+            search_phone_text = f"""
+📱 **البحث برقم الهاتف** 📱
 
-👤 **أرسل اسم أو جزء من اسم المشرف:**
+📞 **أرسل رقم الهاتف للمشرف:**
 
-مثال: `أحمد` أو `محمد علي`
+مثال: `967777123456` أو `777123456`
 
 💡 **إرشادات:**
-• يمكن البحث بجزء من الاسم
-• البحث غير حساس لحالة الأحرف
-• سيتم عرض جميع النتائج المتطابقة
+• أدخل الرقم بدون فراغات أو رموز
+• يمكن إدخال الرقم مع أو بدون مفتاح الدولة
+• سيتم البحث في المشرفين المسجلين فقط
 
 ❌ **للإلغاء اكتب:** `إلغاء`
 """
@@ -153,14 +146,14 @@ class AdminManagementExtended:
             ]
             
             await query.edit_message_text(
-                search_name_text,
+                search_phone_text,
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode='Markdown'
             )
             
         except Exception as e:
-            logger.error(f"Error in search admin by name: {e}")
-            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في البحث بالاسم.")
+            logger.error(f"Error in search admin by phone: {e}")
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في البحث برقم الهاتف.")
 
     @staticmethod
     async def perform_admin_search(search_term: str, search_type: str, update: Update, context: CallbackContext):
@@ -181,14 +174,20 @@ class AdminManagementExtended:
                 except ValueError:
                     results = []
             
-            elif search_type == 'by_name':
-                # البحث بالاسم
-                search_pattern = f"%{search_term.strip()}%"
+            elif search_type == 'by_phone':
+                # البحث برقم الهاتف
+                phone_clean = search_term.strip().replace(' ', '').replace('-', '').replace('+', '')
+                # البحث بعدة صيغ للرقم
                 cursor.execute('''
                     SELECT * FROM users 
-                    WHERE full_name LIKE ? AND role IN ('admin', 'super_admin')
+                    WHERE role IN ('admin', 'super_admin') AND (
+                        phone = ? OR 
+                        phone = ? OR 
+                        phone LIKE ? OR 
+                        phone LIKE ?
+                    )
                     ORDER BY full_name
-                ''', (search_pattern,))
+                ''', (phone_clean, f"+{phone_clean}", f"%{phone_clean}", f"%{phone_clean[-9:]}"))
                 results = cursor.fetchall()
             
             conn.close()
