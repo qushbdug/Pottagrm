@@ -2607,6 +2607,16 @@ ADMIN_CALLBACKS.update({
     'balance_sheet': lambda u, c: balance_sheet_handler(u, c),
     'general_ledger': lambda u, c: general_ledger_handler(u, c),
     
+    # Accounting reports handlers
+    'accounting_transactions': lambda u, c: accounting_transactions_handler(u, c),
+    'accounting_profits': lambda u, c: accounting_profits_handler(u, c),
+    'accounting_suppliers': lambda u, c: accounting_suppliers_handler(u, c),
+    'accounting_customers': lambda u, c: accounting_customers_handler(u, c),
+    'accounting_analytics': lambda u, c: accounting_analytics_handler(u, c),
+    'accounting_export': lambda u, c: accounting_export_handler(u, c),
+    'accounting_custom': lambda u, c: accounting_custom_reports_handler(u, c),
+    'accounting_search': lambda u, c: accounting_search_handler(u, c),
+    
     # Coupon management
     'super_create_coupons': lambda u, c: create_coupons_handler(u, c),
     'super_coupons_stats': lambda u, c: coupons_stats_handler(u, c),
@@ -2819,6 +2829,921 @@ async def accounting_system_handler(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in accounting system handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في النظام المحاسبي.")
+
+# ===== معالجات التقارير المحاسبية =====
+
+async def accounting_transactions_handler(update: Update, context: CallbackContext):
+    """معالج تقارير المعاملات"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] not in ['admin', 'super_admin']:
+            await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user['role'] if user else "غير مسجل"))
+            return
+
+        # جلب إحصائيات المعاملات
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # معاملات اليوم
+        cursor.execute("""
+            SELECT COUNT(*), SUM(amount) 
+            FROM transactions 
+            WHERE DATE(created_at) = DATE('now')
+        """)
+        today_stats = cursor.fetchone()
+        today_count = today_stats[0] if today_stats[0] else 0
+        today_amount = today_stats[1] if today_stats[1] else 0.0
+        
+        # معاملات الأسبوع
+        cursor.execute("""
+            SELECT COUNT(*), SUM(amount) 
+            FROM transactions 
+            WHERE DATE(created_at) >= DATE('now', '-7 days')
+        """)
+        week_stats = cursor.fetchone()
+        week_count = week_stats[0] if week_stats[0] else 0
+        week_amount = week_stats[1] if week_stats[1] else 0.0
+        
+        # معاملات الشهر
+        cursor.execute("""
+            SELECT COUNT(*), SUM(amount) 
+            FROM transactions 
+            WHERE DATE(created_at) >= DATE('now', '-30 days')
+        """)
+        month_stats = cursor.fetchone()
+        month_count = month_stats[0] if month_stats[0] else 0
+        month_amount = month_stats[1] if month_stats[1] else 0.0
+        
+        # أحدث المعاملات
+        cursor.execute("""
+            SELECT t.transaction_type, t.amount, t.created_at, u.full_name
+            FROM transactions t
+            LEFT JOIN users u ON t.user_id = u.id
+            ORDER BY t.created_at DESC
+            LIMIT 5
+        """)
+        recent_transactions = cursor.fetchall()
+        
+        conn.close()
+        
+        transactions_text = f"""
+💸 **تقارير المعاملات** 💸
+
+📊 **إحصائيات سريعة:**
+
+📅 **اليوم:**
+• العدد: {today_count:,} معاملة
+• المبلغ: {today_amount:,.2f} ريال
+
+📅 **آخر 7 أيام:**
+• العدد: {week_count:,} معاملة  
+• المبلغ: {week_amount:,.2f} ريال
+
+📅 **آخر 30 يوم:**
+• العدد: {month_count:,} معاملة
+• المبلغ: {month_amount:,.2f} ريال
+
+🔄 **أحدث المعاملات:**
+"""
+        
+        if recent_transactions:
+            for i, transaction in enumerate(recent_transactions, 1):
+                trans_type, amount, created_at, user_name = transaction
+                date_str = created_at[:16] if created_at else "غير محدد"
+                user_display = user_name if user_name else "غير محدد"
+                
+                # تحديد نوع المعاملة
+                type_emoji = "💳" if trans_type == "purchase" else "💰" if trans_type == "transfer" else "🎁" if trans_type == "coupon" else "💸"
+                type_name = {
+                    "purchase": "شراء",
+                    "transfer": "تحويل", 
+                    "coupon": "كوبون",
+                    "deposit": "إيداع",
+                    "withdrawal": "سحب"
+                }.get(trans_type, trans_type)
+                
+                transactions_text += f"""
+{i}. {type_emoji} **{type_name}** - {amount:,.2f} ريال
+   👤 {user_display} | 📅 {date_str}
+"""
+        else:
+            transactions_text += "\n• لا توجد معاملات حديثة"
+        
+        keyboard = [
+            [InlineKeyboardButton('📊 تقرير مفصل', callback_data='transactions_detailed'),
+             InlineKeyboardButton('📈 معاملات الشراء', callback_data='transactions_purchases')],
+            [InlineKeyboardButton('💰 معاملات التحويل', callback_data='transactions_transfers'),
+             InlineKeyboardButton('🎁 معاملات الكوبونات', callback_data='transactions_coupons')],
+            [InlineKeyboardButton('📄 تصدير المعاملات', callback_data='export_transactions'),
+             InlineKeyboardButton('🔍 بحث بالفترة', callback_data='transactions_search')],
+            [InlineKeyboardButton('🔙 العودة للنظام المحاسبي', callback_data='accounting_system')]
+        ]
+        
+        await query.edit_message_text(
+            transactions_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in accounting transactions handler: {e}")
+        await query.edit_message_text(
+            f"❌ **خطأ في تقارير المعاملات**\n\n"
+            f"🔍 **السبب:** فشل في استرداد بيانات المعاملات من قاعدة البيانات\n"
+            f"💡 **الحل:** تحقق من اتصال قاعدة البيانات وحاول مرة أخرى\n"
+            f"🔧 **كود الخطأ:** `TRANSACTIONS_REPORT_ERROR`\n"
+            f"⏰ **الوقت:** {datetime.now().strftime('%H:%M:%S')}\n\n"
+            f"📋 تم تسجيل الخطأ في السجل للمراجعة.",
+            parse_mode='Markdown'
+        )
+
+async def accounting_profits_handler(update: Update, context: CallbackContext):
+    """معالج تقارير الأرباح"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] not in ['admin', 'super_admin']:
+            await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user['role'] if user else "غير مسجل"))
+            return
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # أرباح اليوم من المبيعات
+        cursor.execute("""
+            SELECT COUNT(*), SUM(amount * 0.1) as commission
+            FROM transactions 
+            WHERE transaction_type = 'purchase' 
+            AND DATE(created_at) = DATE('now')
+        """)
+        today_profits = cursor.fetchone()
+        today_sales_count = today_profits[0] if today_profits[0] else 0
+        today_commission = today_profits[1] if today_profits[1] else 0.0
+        
+        # أرباح الأسبوع
+        cursor.execute("""
+            SELECT COUNT(*), SUM(amount * 0.1) as commission
+            FROM transactions 
+            WHERE transaction_type = 'purchase' 
+            AND DATE(created_at) >= DATE('now', '-7 days')
+        """)
+        week_profits = cursor.fetchone()
+        week_sales_count = week_profits[0] if week_profits[0] else 0
+        week_commission = week_profits[1] if week_profits[1] else 0.0
+        
+        # أرباح الشهر
+        cursor.execute("""
+            SELECT COUNT(*), SUM(amount * 0.1) as commission
+            FROM transactions 
+            WHERE transaction_type = 'purchase' 
+            AND DATE(created_at) >= DATE('now', '-30 days')
+        """)
+        month_profits = cursor.fetchone()
+        month_sales_count = month_profits[0] if month_profits[0] else 0
+        month_commission = month_profits[1] if month_profits[1] else 0.0
+        
+        # أرباح المزودين اليوم
+        cursor.execute("""
+            SELECT u.full_name, COUNT(*) as sales, SUM(t.amount) as revenue
+            FROM transactions t
+            JOIN network_cards nc ON t.description LIKE '%' || nc.network_id || '%'
+            JOIN networks n ON nc.network_id = n.id  
+            JOIN users u ON n.supplier_id = u.id
+            WHERE t.transaction_type = 'purchase'
+            AND DATE(t.created_at) = DATE('now')
+            GROUP BY u.id, u.full_name
+            ORDER BY revenue DESC
+            LIMIT 5
+        """)
+        top_suppliers_today = cursor.fetchall()
+        
+        conn.close()
+        
+        profits_text = f"""
+📈 **تقارير الأرباح** 📈
+
+💰 **أرباح المنصة (عمولة 10%):**
+
+📅 **اليوم:**
+• المبيعات: {today_sales_count:,} عملية
+• العمولة: {today_commission:,.2f} ريال
+
+📅 **آخر 7 أيام:**
+• المبيعات: {week_sales_count:,} عملية
+• العمولة: {week_commission:,.2f} ريال
+
+📅 **آخر 30 يوم:**
+• المبيعات: {month_sales_count:,} عملية
+• العمولة: {month_commission:,.2f} ريال
+
+🏆 **أفضل المزودين اليوم:**
+"""
+        
+        if top_suppliers_today:
+            for i, supplier in enumerate(top_suppliers_today, 1):
+                name, sales, revenue = supplier
+                profits_text += f"""
+{i}. 👤 **{name}**
+   💳 المبيعات: {sales} | 💰 الإيرادات: {revenue:,.2f} ريال
+"""
+        else:
+            profits_text += "\n• لا توجد مبيعات اليوم"
+        
+        # حساب معدل النمو
+        growth_rate = 0.0
+        if week_commission > 0:
+            # مقارنة آخر 7 أيام مع الـ 7 أيام السابقة لها
+            cursor = get_db_connection().cursor()
+            cursor.execute("""
+                SELECT SUM(amount * 0.1) as commission
+                FROM transactions 
+                WHERE transaction_type = 'purchase' 
+                AND DATE(created_at) BETWEEN DATE('now', '-14 days') AND DATE('now', '-7 days')
+            """)
+            prev_week = cursor.fetchone()
+            prev_week_commission = prev_week[0] if prev_week[0] else 0.0
+            
+            if prev_week_commission > 0:
+                growth_rate = ((week_commission - prev_week_commission) / prev_week_commission) * 100
+        
+        profits_text += f"""
+
+📊 **تحليل الأداء:**
+• معدل النمو الأسبوعي: {growth_rate:+.1f}%
+• متوسط الربح اليومي: {week_commission/7:,.2f} ريال
+• متوسط قيمة المعاملة: {(week_commission/week_sales_count*10) if week_sales_count > 0 else 0:,.2f} ريال
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📊 تقرير مفصل', callback_data='profits_detailed'),
+             InlineKeyboardButton('📈 تحليل الاتجاهات', callback_data='profits_trends')],
+            [InlineKeyboardButton('🏪 أرباح المزودين', callback_data='profits_suppliers'),
+             InlineKeyboardButton('📋 مقارنة الفترات', callback_data='profits_comparison')],
+            [InlineKeyboardButton('📄 تصدير التقرير', callback_data='export_profits'),
+             InlineKeyboardButton('📅 اختيار فترة مخصصة', callback_data='profits_custom_period')],
+            [InlineKeyboardButton('🔙 العودة للنظام المحاسبي', callback_data='accounting_system')]
+        ]
+        
+        await query.edit_message_text(
+            profits_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in accounting profits handler: {e}")
+        await query.edit_message_text(
+            f"❌ **خطأ في تقارير الأرباح**\n\n"
+            f"🔍 **السبب:** فشل في حساب الأرباح وتحليل البيانات المالية\n"
+            f"💡 **الحل:** تحقق من سلامة بيانات المعاملات وحاول مرة أخرى\n"
+            f"🔧 **كود الخطأ:** `PROFITS_REPORT_ERROR`\n"
+            f"⏰ **الوقت:** {datetime.now().strftime('%H:%M:%S')}\n\n"
+            f"📋 تم تسجيل الخطأ في السجل للمراجعة.",
+            parse_mode='Markdown'
+        )
+
+async def accounting_suppliers_handler(update: Update, context: CallbackContext):
+    """معالج تقارير المزودين"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] not in ['admin', 'super_admin']:
+            await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user['role'] if user else "غير مسجل"))
+            return
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # إحصائيات المزودين العامة
+        cursor.execute("""
+            SELECT COUNT(*) as total_suppliers
+            FROM users 
+            WHERE role = 'supplier' AND is_active = 1
+        """)
+        total_suppliers = cursor.fetchone()[0] or 0
+        
+        # أفضل المزودين حسب المبيعات
+        cursor.execute("""
+            SELECT u.full_name, u.phone, COUNT(t.id) as sales_count, 
+                   SUM(t.amount) as revenue, n.name as network_name
+            FROM users u
+            LEFT JOIN networks n ON u.id = n.supplier_id
+            LEFT JOIN network_cards nc ON n.id = nc.network_id
+            LEFT JOIN transactions t ON t.description LIKE '%' || n.id || '%' 
+                                    AND t.transaction_type = 'purchase'
+                                    AND DATE(t.created_at) >= DATE('now', '-30 days')
+            WHERE u.role = 'supplier' AND u.is_active = 1
+            GROUP BY u.id, u.full_name, u.phone, n.name
+            ORDER BY revenue DESC
+            LIMIT 10
+        """)
+        top_suppliers = cursor.fetchall()
+        
+        # المزودين الأكثر نشاطاً اليوم
+        cursor.execute("""
+            SELECT u.full_name, COUNT(t.id) as today_sales, SUM(t.amount) as today_revenue
+            FROM users u
+            LEFT JOIN networks n ON u.id = n.supplier_id
+            LEFT JOIN transactions t ON t.description LIKE '%' || n.id || '%' 
+                                    AND t.transaction_type = 'purchase'
+                                    AND DATE(t.created_at) = DATE('now')
+            WHERE u.role = 'supplier' AND u.is_active = 1
+            GROUP BY u.id, u.full_name
+            HAVING today_sales > 0
+            ORDER BY today_revenue DESC
+            LIMIT 5
+        """)
+        active_suppliers_today = cursor.fetchall()
+        
+        # إحصائيات الشبكات
+        cursor.execute("""
+            SELECT COUNT(*) as total_networks,
+                   COUNT(CASE WHEN is_active = 1 THEN 1 END) as active_networks
+            FROM networks
+        """)
+        networks_stats = cursor.fetchone()
+        total_networks = networks_stats[0] if networks_stats[0] else 0
+        active_networks = networks_stats[1] if networks_stats[1] else 0
+        
+        conn.close()
+        
+        suppliers_text = f"""
+🏪 **تقارير المزودين** 🏪
+
+📊 **نظرة عامة:**
+• إجمالي المزودين: {total_suppliers:,} مزود
+• إجمالي الشبكات: {total_networks:,} شبكة
+• الشبكات النشطة: {active_networks:,} شبكة
+
+🔥 **الأكثر نشاطاً اليوم:**
+"""
+        
+        if active_suppliers_today:
+            for i, supplier in enumerate(active_suppliers_today, 1):
+                name, sales, revenue = supplier
+                suppliers_text += f"""
+{i}. 👤 **{name}**
+   💳 {sales} مبيعة | 💰 {revenue:,.2f} ريال
+"""
+        else:
+            suppliers_text += "\n• لا توجد مبيعات اليوم"
+        
+        suppliers_text += f"""
+
+🏆 **أفضل 10 مزودين (آخر 30 يوم):**
+"""
+        
+        if top_suppliers:
+            for i, supplier in enumerate(top_suppliers, 1):
+                name, phone, sales, revenue, network = supplier
+                sales_display = sales if sales else 0
+                revenue_display = revenue if revenue else 0.0
+                network_display = network if network else "لا توجد شبكة"
+                
+                suppliers_text += f"""
+{i}. 👤 **{name}**
+   📱 {phone} | 🌐 {network_display}
+   💳 {sales_display} مبيعة | 💰 {revenue_display:,.2f} ريال
+"""
+        else:
+            suppliers_text += "\n• لا توجد بيانات مبيعات"
+        
+        keyboard = [
+            [InlineKeyboardButton('📊 تقرير مفصل', callback_data='suppliers_detailed'),
+             InlineKeyboardButton('📈 أداء المزودين', callback_data='suppliers_performance')],
+            [InlineKeyboardButton('💰 عمولات المزودين', callback_data='suppliers_commissions'),
+             InlineKeyboardButton('🌐 إحصائيات الشبكات', callback_data='suppliers_networks')],
+            [InlineKeyboardButton('📄 تصدير التقرير', callback_data='export_suppliers'),
+             InlineKeyboardButton('🔍 بحث عن مزود', callback_data='suppliers_search')],
+            [InlineKeyboardButton('🔙 العودة للنظام المحاسبي', callback_data='accounting_system')]
+        ]
+        
+        await query.edit_message_text(
+            suppliers_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in accounting suppliers handler: {e}")
+        await query.edit_message_text(
+            f"❌ **خطأ في تقارير المزودين**\n\n"
+            f"🔍 **السبب:** فشل في استرداد بيانات المزودين والشبكات\n"
+            f"💡 **الحل:** تحقق من سلامة البيانات وحاول مرة أخرى\n"
+            f"🔧 **كود الخطأ:** `SUPPLIERS_REPORT_ERROR`\n"
+            f"⏰ **الوقت:** {datetime.now().strftime('%H:%M:%S')}\n\n"
+            f"📋 تم تسجيل الخطأ في السجل للمراجعة.",
+            parse_mode='Markdown'
+        )
+
+async def accounting_customers_handler(update: Update, context: CallbackContext):
+    """معالج تقارير العملاء"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] not in ['admin', 'super_admin']:
+            await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user['role'] if user else "غير مسجل"))
+            return
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # إحصائيات العملاء العامة
+        cursor.execute("""
+            SELECT COUNT(*) as total_customers,
+                   COUNT(CASE WHEN is_active = 1 THEN 1 END) as active_customers
+            FROM users 
+            WHERE role = 'customer'
+        """)
+        customers_stats = cursor.fetchone()
+        total_customers = customers_stats[0] if customers_stats[0] else 0
+        active_customers = customers_stats[1] if customers_stats[1] else 0
+        
+        # أكثر العملاء شراءً
+        cursor.execute("""
+            SELECT u.full_name, u.phone, COUNT(t.id) as purchases, 
+                   SUM(t.amount) as total_spent, u.balance, u.created_at
+            FROM users u
+            LEFT JOIN transactions t ON u.id = t.user_id 
+                                    AND t.transaction_type = 'purchase'
+                                    AND DATE(t.created_at) >= DATE('now', '-30 days')
+            WHERE u.role = 'customer' AND u.is_active = 1
+            GROUP BY u.id, u.full_name, u.phone, u.balance, u.created_at
+            ORDER BY total_spent DESC
+            LIMIT 10
+        """)
+        top_customers = cursor.fetchall()
+        
+        # العملاء النشطين اليوم
+        cursor.execute("""
+            SELECT u.full_name, COUNT(t.id) as today_purchases, SUM(t.amount) as today_spent
+            FROM users u
+            JOIN transactions t ON u.id = t.user_id 
+            WHERE t.transaction_type = 'purchase'
+            AND DATE(t.created_at) = DATE('now')
+            AND u.role = 'customer'
+            GROUP BY u.id, u.full_name
+            ORDER BY today_spent DESC
+            LIMIT 5
+        """)
+        active_customers_today = cursor.fetchall()
+        
+        # العملاء الجدد هذا الأسبوع
+        cursor.execute("""
+            SELECT COUNT(*) as new_customers
+            FROM users 
+            WHERE role = 'customer' 
+            AND DATE(created_at) >= DATE('now', '-7 days')
+        """)
+        new_customers_week = cursor.fetchone()[0] or 0
+        
+        conn.close()
+        
+        customers_text = f"""
+👥 **تقارير العملاء** 👥
+
+📊 **نظرة عامة:**
+• إجمالي العملاء: {total_customers:,} عميل
+• العملاء النشطين: {active_customers:,} عميل
+• عملاء جدد هذا الأسبوع: {new_customers_week:,} عميل
+
+🔥 **الأكثر نشاطاً اليوم:**
+"""
+        
+        if active_customers_today:
+            for i, customer in enumerate(active_customers_today, 1):
+                name, purchases, spent = customer
+                customers_text += f"""
+{i}. 👤 **{name}**
+   🛒 {purchases} مشترى | 💰 {spent:,.2f} ريال
+"""
+        else:
+            customers_text += "\n• لا توجد مشتريات اليوم"
+        
+        customers_text += f"""
+
+🏆 **أكثر 10 عملاء شراءً (آخر 30 يوم):**
+"""
+        
+        if top_customers:
+            for i, customer in enumerate(top_customers, 1):
+                name, phone, purchases, spent, balance, created_at = customer
+                purchases_display = purchases if purchases else 0
+                spent_display = spent if spent else 0.0
+                balance_display = balance if balance else 0.0
+                join_date = created_at[:10] if created_at else "غير محدد"
+                
+                customers_text += f"""
+{i}. 👤 **{name}**
+   📱 {phone} | 💰 رصيد: {balance_display:,.2f} ريال
+   🛒 {purchases_display} مشترى | 💸 أنفق: {spent_display:,.2f} ريال
+   📅 انضم: {join_date}
+"""
+        else:
+            customers_text += "\n• لا توجد بيانات مشتريات"
+        
+        keyboard = [
+            [InlineKeyboardButton('📊 تقرير مفصل', callback_data='customers_detailed'),
+             InlineKeyboardButton('📈 نشاط العملاء', callback_data='customers_activity')],
+            [InlineKeyboardButton('🛒 سلوك الشراء', callback_data='customers_behavior'),
+             InlineKeyboardButton('💰 تحليل الإنفاق', callback_data='customers_spending')],
+            [InlineKeyboardButton('📄 تصدير التقرير', callback_data='export_customers'),
+             InlineKeyboardButton('🔍 بحث عن عميل', callback_data='customers_search')],
+            [InlineKeyboardButton('🔙 العودة للنظام المحاسبي', callback_data='accounting_system')]
+        ]
+        
+        await query.edit_message_text(
+            customers_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in accounting customers handler: {e}")
+        await query.edit_message_text(
+            f"❌ **خطأ في تقارير العملاء**\n\n"
+            f"🔍 **السبب:** فشل في استرداد بيانات العملاء وأنشطتهم\n"
+            f"💡 **الحل:** تحقق من سلامة البيانات وحاول مرة أخرى\n"
+            f"🔧 **كود الخطأ:** `CUSTOMERS_REPORT_ERROR`\n"
+            f"⏰ **الوقت:** {datetime.now().strftime('%H:%M:%S')}\n\n"
+            f"📋 تم تسجيل الخطأ في السجل للمراجعة.",
+            parse_mode='Markdown'
+        )
+
+async def accounting_analytics_handler(update: Update, context: CallbackContext):
+    """معالج التحليلات المتقدمة"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] not in ['admin', 'super_admin']:
+            await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user['role'] if user else "غير مسجل"))
+            return
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # تحليل الاتجاهات الشهرية
+        cursor.execute("""
+            SELECT 
+                strftime('%Y-%m', created_at) as month,
+                COUNT(*) as transactions,
+                SUM(amount) as revenue
+            FROM transactions 
+            WHERE transaction_type = 'purchase'
+            AND DATE(created_at) >= DATE('now', '-6 months')
+            GROUP BY strftime('%Y-%m', created_at)
+            ORDER BY month DESC
+            LIMIT 6
+        """)
+        monthly_trends = cursor.fetchall()
+        
+        # أوقات الذروة
+        cursor.execute("""
+            SELECT 
+                strftime('%H', created_at) as hour,
+                COUNT(*) as transactions
+            FROM transactions 
+            WHERE transaction_type = 'purchase'
+            AND DATE(created_at) >= DATE('now', '-7 days')
+            GROUP BY strftime('%H', created_at)
+            ORDER BY transactions DESC
+            LIMIT 5
+        """)
+        peak_hours = cursor.fetchall()
+        
+        # أكثر أنواع الكروت مبيعاً
+        cursor.execute("""
+            SELECT 
+                nc.card_value,
+                COUNT(*) as sales_count,
+                SUM(t.amount) as total_revenue
+            FROM transactions t
+            JOIN network_cards nc ON t.description LIKE '%' || nc.network_id || '%'
+            WHERE t.transaction_type = 'purchase'
+            AND DATE(t.created_at) >= DATE('now', '-30 days')
+            GROUP BY nc.card_value
+            ORDER BY sales_count DESC
+            LIMIT 5
+        """)
+        popular_cards = cursor.fetchall()
+        
+        conn.close()
+        
+        analytics_text = f"""
+📊 **التحليلات المتقدمة** 📊
+
+📈 **اتجاهات المبيعات (آخر 6 أشهر):**
+"""
+        
+        if monthly_trends:
+            for month, transactions, revenue in monthly_trends:
+                month_name = {
+                    '01': 'يناير', '02': 'فبراير', '03': 'مارس',
+                    '04': 'أبريل', '05': 'مايو', '06': 'يونيو',
+                    '07': 'يوليو', '08': 'أغسطس', '09': 'سبتمبر',
+                    '10': 'أكتوبر', '11': 'نوفمبر', '12': 'ديسمبر'
+                }.get(month.split('-')[1], month.split('-')[1])
+                
+                analytics_text += f"""
+📅 **{month_name} {month.split('-')[0]}**
+   💳 {transactions:,} معاملة | 💰 {revenue:,.2f} ريال
+"""
+        else:
+            analytics_text += "\n• لا توجد بيانات كافية"
+        
+        analytics_text += f"""
+
+⏰ **أوقات الذروة (آخر 7 أيام):**
+"""
+        
+        if peak_hours:
+            for hour, transactions in peak_hours:
+                hour_12 = int(hour)
+                period = "ص" if hour_12 < 12 else "م"
+                if hour_12 == 0:
+                    hour_12 = 12
+                elif hour_12 > 12:
+                    hour_12 -= 12
+                    
+                analytics_text += f"""
+🕐 **{hour_12}:00 {period}** - {transactions:,} معاملة
+"""
+        else:
+            analytics_text += "\n• لا توجد بيانات كافية"
+        
+        analytics_text += f"""
+
+🎯 **أكثر الكروت مبيعاً (آخر 30 يوم):**
+"""
+        
+        if popular_cards:
+            for i, (card_value, sales, revenue) in enumerate(popular_cards, 1):
+                analytics_text += f"""
+{i}. 💳 **{card_value}** - {sales:,} مبيعة
+   💰 إجمالي الإيرادات: {revenue:,.2f} ريال
+"""
+        else:
+            analytics_text += "\n• لا توجد بيانات مبيعات"
+        
+        keyboard = [
+            [InlineKeyboardButton('📈 تحليل الاتجاهات', callback_data='analytics_trends'),
+             InlineKeyboardButton('⏰ تحليل الأوقات', callback_data='analytics_timing')],
+            [InlineKeyboardButton('🎯 تحليل المنتجات', callback_data='analytics_products'),
+             InlineKeyboardButton('🌍 تحليل جغرافي', callback_data='analytics_geographical')],
+            [InlineKeyboardButton('📊 مؤشرات الأداء', callback_data='analytics_kpi'),
+             InlineKeyboardButton('🔮 التنبؤات', callback_data='analytics_forecasting')],
+            [InlineKeyboardButton('🔙 العودة للنظام المحاسبي', callback_data='accounting_system')]
+        ]
+        
+        await query.edit_message_text(
+            analytics_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in accounting analytics handler: {e}")
+        await query.edit_message_text(
+            f"❌ **خطأ في التحليلات المتقدمة**\n\n"
+            f"🔍 **السبب:** فشل في تحليل البيانات وإنشاء الإحصائيات\n"
+            f"💡 **الحل:** تحقق من توفر البيانات الكافية وحاول مرة أخرى\n"
+            f"🔧 **كود الخطأ:** `ANALYTICS_ERROR`\n"
+            f"⏰ **الوقت:** {datetime.now().strftime('%H:%M:%S')}\n\n"
+            f"📋 تم تسجيل الخطأ في السجل للمراجعة.",
+            parse_mode='Markdown'
+        )
+
+async def accounting_export_handler(update: Update, context: CallbackContext):
+    """معالج تصدير البيانات"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] not in ['admin', 'super_admin']:
+            await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user['role'] if user else "غير مسجل"))
+            return
+
+        export_text = f"""
+💾 **تصدير البيانات** 💾
+
+📊 **خيارات التصدير المتاحة:**
+
+📈 **التقارير المالية:**
+• تقرير شامل للمعاملات
+• تقرير الأرباح والخسائر
+• تقرير الميزانية العامة
+
+🏪 **بيانات المزودين:**
+• قائمة المزودين وأداؤهم
+• تفاصيل الشبكات والمبيعات
+• تقرير العمولات والأرباح
+
+👥 **بيانات العملاء:**
+• قائمة العملاء النشطين
+• تاريخ المشتريات والإنفاق
+• تحليل سلوك العملاء
+
+🎯 **التقارير المخصصة:**
+• اختيار فترة زمنية محددة
+• تصدير بيانات محددة
+• تقارير مفصلة حسب الطلب
+
+📁 **صيغ التصدير:**
+• Excel (.xlsx) - للتحليل المتقدم
+• CSV (.csv) - للبيانات الخام
+• PDF (.pdf) - للتقارير النهائية
+• JSON (.json) - للتكامل مع أنظمة أخرى
+
+⚡ **اختر نوع التصدير:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📊 تصدير المعاملات', callback_data='export_transactions_file'),
+             InlineKeyboardButton('📈 تصدير الأرباح', callback_data='export_profits_file')],
+            [InlineKeyboardButton('🏪 تصدير المزودين', callback_data='export_suppliers_file'),
+             InlineKeyboardButton('👥 تصدير العملاء', callback_data='export_customers_file')],
+            [InlineKeyboardButton('📊 تصدير شامل', callback_data='export_comprehensive'),
+             InlineKeyboardButton('🎯 تصدير مخصص', callback_data='export_custom')],
+            [InlineKeyboardButton('📅 اختيار فترة', callback_data='export_date_range'),
+             InlineKeyboardButton('⚙️ خيارات متقدمة', callback_data='export_advanced')],
+            [InlineKeyboardButton('🔙 العودة للنظام المحاسبي', callback_data='accounting_system')]
+        ]
+        
+        await query.edit_message_text(
+            export_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in accounting export handler: {e}")
+        await query.edit_message_text(
+            f"❌ **خطأ في تصدير البيانات**\n\n"
+            f"🔍 **السبب:** فشل في تحضير خيارات التصدير\n"
+            f"💡 **الحل:** تحقق من صلاحيات الوصول وحاول مرة أخرى\n"
+            f"🔧 **كود الخطأ:** `EXPORT_INIT_ERROR`\n"
+            f"⏰ **الوقت:** {datetime.now().strftime('%H:%M:%S')}\n\n"
+            f"📋 تم تسجيل الخطأ في السجل للمراجعة.",
+            parse_mode='Markdown'
+        )
+
+async def accounting_custom_reports_handler(update: Update, context: CallbackContext):
+    """معالج التقارير المخصصة"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] not in ['admin', 'super_admin']:
+            await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user['role'] if user else "غير مسجل"))
+            return
+
+        custom_text = f"""
+📄 **تقارير مخصصة** 📄
+
+🎯 **إنشاء تقارير حسب الطلب:**
+
+📅 **تقارير زمنية:**
+• تقرير فترة محددة (من - إلى)
+• تقرير يومي مفصل
+• تقرير أسبوعي شامل
+• تقرير شهري متقدم
+
+🔍 **تقارير فلترة:**
+• تقرير مزود محدد
+• تقرير عميل محدد
+• تقرير نوع معاملة محددة
+• تقرير مبلغ محدد
+
+📊 **تقارير تحليلية:**
+• مقارنة بين فترتين
+• تحليل نمو المبيعات
+• تحليل أداء المزودين
+• تحليل سلوك العملاء
+
+🎛️ **خيارات متقدمة:**
+• دمج عدة تقارير
+• تصدير بصيغ متعددة
+• جدولة التقارير
+• إرسال تلقائي للإيميل
+
+💡 **اختر نوع التقرير المخصص:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📅 تقرير فترة محددة', callback_data='custom_date_range'),
+             InlineKeyboardButton('🏪 تقرير مزود محدد', callback_data='custom_supplier')],
+            [InlineKeyboardButton('👤 تقرير عميل محدد', callback_data='custom_customer'),
+             InlineKeyboardButton('💳 تقرير نوع معاملة', callback_data='custom_transaction_type')],
+            [InlineKeyboardButton('📊 مقارنة فترتين', callback_data='custom_comparison'),
+             InlineKeyboardButton('📈 تحليل النمو', callback_data='custom_growth_analysis')],
+            [InlineKeyboardButton('🔄 تقرير دوري', callback_data='custom_recurring'),
+             InlineKeyboardButton('⚙️ خيارات متقدمة', callback_data='custom_advanced')],
+            [InlineKeyboardButton('🔙 العودة للنظام المحاسبي', callback_data='accounting_system')]
+        ]
+        
+        await query.edit_message_text(
+            custom_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in accounting custom reports handler: {e}")
+        await query.edit_message_text(
+            f"❌ **خطأ في التقارير المخصصة**\n\n"
+            f"🔍 **السبب:** فشل في تحضير خيارات التقارير المخصصة\n"
+            f"💡 **الحل:** تحقق من صلاحيات الوصول وحاول مرة أخرى\n"
+            f"🔧 **كود الخطأ:** `CUSTOM_REPORTS_ERROR`\n"
+            f"⏰ **الوقت:** {datetime.now().strftime('%H:%M:%S')}\n\n"
+            f"📋 تم تسجيل الخطأ في السجل للمراجعة.",
+            parse_mode='Markdown'
+        )
+
+async def accounting_search_handler(update: Update, context: CallbackContext):
+    """معالج البحث في السجلات"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] not in ['admin', 'super_admin']:
+            await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user['role'] if user else "غير مسجل"))
+            return
+
+        search_text = f"""
+🔍 **البحث في السجلات** 🔍
+
+🎯 **أنواع البحث المتاحة:**
+
+👤 **البحث بالمستخدم:**
+• البحث بالاسم
+• البحث برقم الهاتف
+• البحث بمعرف التلجرام
+• البحث برقم المستخدم
+
+💰 **البحث بالمعاملة:**
+• البحث برقم المعاملة
+• البحث بنوع المعاملة
+• البحث بالمبلغ
+• البحث بالتاريخ
+
+📊 **البحث المتقدم:**
+• البحث متعدد المعايير
+• البحث بالفترة الزمنية
+• البحث بالحالة
+• البحث بالوصف
+
+🌐 **البحث بالشبكة:**
+• البحث باسم الشبكة
+• البحث بالمزود
+• البحث بنوع الكرت
+• البحث بحالة الشبكة
+
+⚡ **اختر نوع البحث:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('👤 بحث بالمستخدم', callback_data='search_by_user'),
+             InlineKeyboardButton('💰 بحث بالمعاملة', callback_data='search_by_transaction')],
+            [InlineKeyboardButton('📅 بحث بالتاريخ', callback_data='search_by_date'),
+             InlineKeyboardButton('🌐 بحث بالشبكة', callback_data='search_by_network')],
+            [InlineKeyboardButton('💳 بحث بالمبلغ', callback_data='search_by_amount'),
+             InlineKeyboardButton('🔧 بحث متقدم', callback_data='search_advanced')],
+            [InlineKeyboardButton('📊 عرض الإحصائيات', callback_data='search_statistics'),
+             InlineKeyboardButton('📄 تصدير النتائج', callback_data='search_export')],
+            [InlineKeyboardButton('🔙 العودة للنظام المحاسبي', callback_data='accounting_system')]
+        ]
+        
+        await query.edit_message_text(
+            search_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in accounting search handler: {e}")
+        await query.edit_message_text(
+            f"❌ **خطأ في البحث في السجلات**\n\n"
+            f"🔍 **السبب:** فشل في تحضير خيارات البحث\n"
+            f"💡 **الحل:** تحقق من صلاحيات الوصول وحاول مرة أخرى\n"
+            f"🔧 **كود الخطأ:** `SEARCH_INIT_ERROR`\n"
+            f"⏰ **الوقت:** {datetime.now().strftime('%H:%M:%S')}\n\n"
+            f"📋 تم تسجيل الخطأ في السجل للمراجعة.",
+            parse_mode='Markdown'
+        )
 
 async def create_coupons_handler(update: Update, context: CallbackContext):
     """معالج إنشاء الكوبونات للمشرف الأعلى"""
