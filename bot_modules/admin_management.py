@@ -13,6 +13,15 @@ from telegram.ext import CallbackContext
 from bot_modules.config import EMOJIS, USER_ROLES, PERMISSIONS
 from bot_modules.database import get_db_connection
 from bot_modules.utils import get_user, update_user_activity
+from bot_modules.permissions import (
+    AVAILABLE_PERMISSIONS, 
+    has_permission, 
+    grant_permission, 
+    revoke_permission,
+    get_admin_permissions,
+    get_all_admins_with_permissions,
+    check_permission_or_deny
+)
 
 logger = logging.getLogger(__name__)
 
@@ -546,6 +555,281 @@ class AdminManagement:
         except Exception as e:
             logger.error(f"Error in admin security center: {e}")
             await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في مركز الأمان.")
+
+    @staticmethod
+    async def admin_permissions_handler(update: Update, context: CallbackContext):
+        """🔐 نظام إدارة الصلاحيات المتقدم"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            user = get_user(query.from_user.id)
+            if not user or user['role'] != 'super_admin':
+                await query.edit_message_text(f"{EMOJIS['error']} هذه الميزة مقتصرة على المشرف الأعلى فقط.")
+                return
+            
+            # الحصول على جميع المشرفين مع صلاحياتهم
+            admins_with_permissions = get_all_admins_with_permissions()
+            
+            permissions_text = f"""
+🔐 **نظام إدارة الصلاحيات المتقدم** 🔐
+
+👑 **الصلاحيات الأساسية:**
+"""
+            
+            # عرض الصلاحيات المتاحة
+            for perm_key, perm_info in AVAILABLE_PERMISSIONS.items():
+                permissions_text += f"• **{perm_info['name_ar']}** (`{perm_key}`)\n"
+            
+            permissions_text += f"\n👥 **المشرفين المسجلين:** {len(admins_with_permissions)} مشرف\n"
+            
+            # إحصائيات الصلاحيات
+            perm_stats = {}
+            for perm_key in AVAILABLE_PERMISSIONS.keys():
+                count = sum(1 for admin in admins_with_permissions if admin['permissions'].get(perm_key, False))
+                perm_stats[perm_key] = count
+            
+            permissions_text += f"\n📊 **إحصائيات الصلاحيات:**\n"
+            for perm_key, perm_info in AVAILABLE_PERMISSIONS.items():
+                count = perm_stats.get(perm_key, 0)
+                permissions_text += f"• {perm_info['name_ar']}: **{count}** مشرف\n"
+            
+            permissions_text += f"\n⚡ **اختر عملية:**"
+            
+            keyboard = [
+                [InlineKeyboardButton('📋 عرض جميع المشرفين', callback_data='perm_list_all_admins'),
+                 InlineKeyboardButton('🔍 البحث عن مشرف', callback_data='perm_search_admin')],
+                [InlineKeyboardButton('⚙️ تعديل صلاحيات مشرف', callback_data='perm_edit_admin'),
+                 InlineKeyboardButton('👥 مقارنة الصلاحيات', callback_data='perm_compare_admins')],
+                [InlineKeyboardButton('📊 تقرير الصلاحيات المفصل', callback_data='perm_detailed_report'),
+                 InlineKeyboardButton('🔄 مراجعة شاملة', callback_data='perm_full_audit')],
+                [InlineKeyboardButton('➕ منح صلاحية جماعية', callback_data='perm_bulk_grant'),
+                 InlineKeyboardButton('➖ سحب صلاحية جماعية', callback_data='perm_bulk_revoke')],
+                [InlineKeyboardButton('🔙 العودة للوحة الإدارة', callback_data='admin_dashboard')]
+            ]
+            
+            await query.edit_message_text(
+                permissions_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in admin permissions handler: {e}")
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في نظام إدارة الصلاحيات.")
+
+    @staticmethod
+    async def list_all_admins_permissions(update: Update, context: CallbackContext):
+        """📋 عرض جميع المشرفين مع صلاحياتهم"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            admins_list = get_all_admins_with_permissions()
+            
+            if not admins_list:
+                await query.edit_message_text(
+                    f"{EMOJIS['error']} لا توجد مشرفين مسجلين في النظام.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton('🔙 العودة', callback_data='admin_permissions')]
+                    ])
+                )
+                return
+            
+            # تقسيم القائمة إلى صفحات (5 مشرفين لكل صفحة)
+            page = context.user_data.get('admin_perms_page', 0)
+            items_per_page = 5
+            start_idx = page * items_per_page
+            end_idx = start_idx + items_per_page
+            
+            current_admins = admins_list[start_idx:end_idx]
+            total_pages = (len(admins_list) - 1) // items_per_page + 1
+            
+            list_text = f"""
+📋 **قائمة المشرفين والصلاحيات** 📋
+
+📄 **الصفحة:** {page + 1} من {total_pages}
+👥 **إجمالي المشرفين:** {len(admins_list)}
+
+"""
+            
+            for admin in current_admins:
+                role_emoji = "👑" if admin['role'] == 'super_admin' else "🛡️"
+                status_emoji = "✅" if admin['is_active'] else "❌"
+                
+                list_text += f"""
+{role_emoji} **{admin['full_name']}** {status_emoji}
+🆔 معرف: `{admin['id']}` | 📱 تلجرام: `{admin['telegram_id']}`
+🔑 **الصلاحيات:**
+"""
+                
+                for perm_key, perm_info in AVAILABLE_PERMISSIONS.items():
+                    has_perm = admin['permissions'].get(perm_key, False)
+                    perm_emoji = "✅" if has_perm else "❌"
+                    list_text += f"    {perm_emoji} {perm_info['name_ar']}\n"
+                
+                list_text += "───────────────────\n"
+            
+            # أزرار التنقل والعمليات
+            keyboard = []
+            
+            # أزرار التنقل
+            nav_buttons = []
+            if page > 0:
+                nav_buttons.append(InlineKeyboardButton('⬅️ السابق', callback_data=f'perm_page_{page-1}'))
+            if page < total_pages - 1:
+                nav_buttons.append(InlineKeyboardButton('➡️ التالي', callback_data=f'perm_page_{page+1}'))
+            
+            if nav_buttons:
+                keyboard.append(nav_buttons)
+            
+            # أزرار العمليات للمشرفين الحاليين
+            if current_admins:
+                keyboard.append([InlineKeyboardButton('⚙️ اختر مشرف لتعديل صلاحياته', callback_data='perm_select_admin')])
+                
+                # أزرار سريعة للمشرفين
+                admin_buttons = []
+                for i, admin in enumerate(current_admins[:3]):  # أول 3 مشرفين فقط
+                    admin_buttons.append(
+                        InlineKeyboardButton(
+                            f"⚙️ {admin['full_name'][:10]}",
+                            callback_data=f"perm_quick_edit_{admin['id']}"
+                        )
+                    )
+                if admin_buttons:
+                    keyboard.append(admin_buttons)
+            
+            keyboard.append([InlineKeyboardButton('🔙 العودة لإدارة الصلاحيات', callback_data='admin_permissions')])
+            
+            await query.edit_message_text(
+                list_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Error listing admins permissions: {e}")
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض قائمة المشرفين.")
+
+    @staticmethod
+    async def edit_admin_permissions(update: Update, context: CallbackContext, admin_id: int):
+        """⚙️ تعديل صلاحيات مشرف محدد"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            # التحقق من المشرف الأعلى
+            user = get_user(query.from_user.id)
+            if not user or user['role'] != 'super_admin':
+                await query.edit_message_text(f"{EMOJIS['error']} هذه الميزة مقتصرة على المشرف الأعلى.")
+                return
+            
+            # الحصول على معلومات المشرف المستهدف
+            target_admin = get_user(admin_id)
+            if not target_admin or target_admin['role'] not in ['admin', 'super_admin']:
+                await query.edit_message_text(f"{EMOJIS['error']} المشرف المستهدف غير موجود.")
+                return
+            
+            # الحصول على صلاحيات المشرف الحالية
+            admin_permissions = get_admin_permissions(admin_id)
+            
+            edit_text = f"""
+⚙️ **تعديل صلاحيات المشرف** ⚙️
+
+👤 **المشرف:** {target_admin['full_name']}
+🆔 **المعرف:** `{admin_id}`
+🛡️ **الرتبة:** {target_admin['role']}
+
+🔑 **الصلاحيات الحالية:**
+
+"""
+            
+            # عرض الصلاحيات مع إمكانية التبديل
+            keyboard = []
+            
+            for perm_key, perm_info in AVAILABLE_PERMISSIONS.items():
+                has_perm = admin_permissions.get(perm_key, False)
+                status_emoji = "✅" if has_perm else "❌"
+                action = "revoke" if has_perm else "grant"
+                action_emoji = "❌ إلغاء" if has_perm else "✅ منح"
+                
+                edit_text += f"{status_emoji} **{perm_info['name_ar']}**\n"
+                edit_text += f"    📝 {perm_info['description']}\n\n"
+                
+                # زر التبديل
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"{action_emoji} {perm_info['name_ar']}",
+                        callback_data=f"perm_{action}_{admin_id}_{perm_key}"
+                    )
+                ])
+            
+            edit_text += f"💡 **إرشادات:**\n"
+            edit_text += f"• ✅ = الصلاحية مفعلة\n"
+            edit_text += f"• ❌ = الصلاحية معطلة\n"
+            edit_text += f"• اضغط على الزر لتبديل الحالة\n"
+            
+            # أزرار إضافية
+            keyboard.append([
+                InlineKeyboardButton('✅ منح جميع الصلاحيات', callback_data=f'perm_grant_all_{admin_id}'),
+                InlineKeyboardButton('❌ سحب جميع الصلاحيات', callback_data=f'perm_revoke_all_{admin_id}')
+            ])
+            
+            keyboard.append([
+                InlineKeyboardButton('📋 عرض تقرير مفصل', callback_data=f'perm_report_{admin_id}'),
+                InlineKeyboardButton('🔄 تحديث الصفحة', callback_data=f'perm_quick_edit_{admin_id}')
+            ])
+            
+            keyboard.append([InlineKeyboardButton('🔙 العودة لقائمة المشرفين', callback_data='perm_list_all_admins')])
+            
+            await query.edit_message_text(
+                edit_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Error editing admin permissions: {e}")
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تعديل صلاحيات المشرف.")
+
+    @staticmethod
+    async def toggle_permission(update: Update, context: CallbackContext, action: str, admin_id: int, permission: str):
+        """🔄 تبديل صلاحية محددة للمشرف"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            user = get_user(query.from_user.id)
+            if not user or user['role'] != 'super_admin':
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+                return
+            
+            target_admin = get_user(admin_id)
+            if not target_admin:
+                await query.edit_message_text(f"{EMOJIS['error']} المشرف المستهدف غير موجود.")
+                return
+            
+            # تنفيذ العملية
+            success = False
+            if action == "grant":
+                success = grant_permission(admin_id, permission, user['id'])
+                action_text = "منح"
+            elif action == "revoke":
+                success = revoke_permission(admin_id, permission, user['id'])
+                action_text = "سحب"
+            
+            if success:
+                perm_name = AVAILABLE_PERMISSIONS.get(permission, {}).get('name_ar', permission)
+                await query.answer(f"✅ تم {action_text} صلاحية '{perm_name}' بنجاح!", show_alert=True)
+                
+                # إعادة عرض صفحة التعديل
+                await AdminManagement.edit_admin_permissions(update, context, admin_id)
+            else:
+                await query.answer(f"❌ فشل في {action_text} الصلاحية!", show_alert=True)
+            
+        except Exception as e:
+            logger.error(f"Error toggling permission: {e}")
+            await query.answer("❌ حدث خطأ في تبديل الصلاحية!", show_alert=True)
 
 # إضافة الدوال للاستيراد
 __all__ = ['AdminManagement']

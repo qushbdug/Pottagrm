@@ -60,6 +60,9 @@ try:
     from customer_management import CustomerManagement
     from admin_management import AdminManagement
     from enhanced_error_messages import ErrorMessages, db_error, perm_error, net_error, unexpected_error, menu_error, wallet_error, search_error, coupon_error
+    
+    # Import permissions system
+    from permissions import has_permission, check_permission_or_deny, AVAILABLE_PERMISSIONS
 except ImportError as e:
     print(f"Error importing modules: {e}")
     print("Make sure all module files are in the bot_modules directory")
@@ -335,6 +338,25 @@ async def button_click_handler(update: Update, context):
         elif callback_data.startswith('admin_profile_'):
             admin_id = int(callback_data.split('_')[2])
             return await AdminManagement.show_admin_profile(update, context, admin_id)
+        
+        # Advanced Permissions Management System
+        elif callback_data == 'admin_permissions':
+            return await AdminManagement.admin_permissions_handler(update, context)
+        elif callback_data == 'perm_list_all_admins':
+            return await AdminManagement.list_all_admins_permissions(update, context)
+        elif callback_data.startswith('perm_page_'):
+            page = int(callback_data.split('_')[2])
+            context.user_data['admin_perms_page'] = page
+            return await AdminManagement.list_all_admins_permissions(update, context)
+        elif callback_data.startswith('perm_quick_edit_'):
+            admin_id = int(callback_data.split('_')[3])
+            return await AdminManagement.edit_admin_permissions(update, context, admin_id)
+        elif callback_data.startswith('perm_grant_') or callback_data.startswith('perm_revoke_'):
+            parts = callback_data.split('_')
+            action = parts[1]  # grant or revoke
+            admin_id = int(parts[2])
+            permission = parts[3]
+            return await AdminManagement.toggle_permission(update, context, action, admin_id, permission)
         
         # Transfer confirmation handlers
         elif callback_data == 'confirm_transfer_yes':

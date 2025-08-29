@@ -2668,12 +2668,157 @@ ADMIN_CALLBACKS.update({
 
 # إضافة الدوال المفقودة كـ placeholders
 async def admin_add_offers_handler(update: Update, context: CallbackContext):
-    """إضافة العروض - معالج مؤقت"""
-    await placeholder_handler(update, context, "إضافة العروض")
+    """إضافة العروض - مع فحص الصلاحيات"""
+    try:
+        # Import permissions system
+        from bot_modules.permissions import has_permission, check_permission_or_deny
+        
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] not in ['admin', 'super_admin']:
+            await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user.get('role', 'غير محدد') if user else "غير مسجل"))
+            return
+        
+        # فحص صلاحية إضافة العروض
+        if not has_permission(user['id'], 'add_offers'):
+            error_msg = check_permission_or_deny(user['id'], 'add_offers', 'إضافة العروض')
+            await query.edit_message_text(error_msg, parse_mode='Markdown')
+            return
+        
+        # إذا كان لديه الصلاحية، عرض واجهة إضافة العروض
+        offers_text = f"""
+🎁 **إضافة العروض والخصومات** 🎁
+
+👤 **المشرف:** {user['full_name']}
+✅ **الصلاحية:** مؤكدة - إضافة عروض
+
+📋 **أنواع العروض المتاحة:**
+
+🔥 **عروض الخصم:**
+• خصم نسبة مئوية على الشراء
+• خصم مبلغ ثابت من السعر
+• عروض شراء واحصل على أخرى
+
+💳 **عروض الكروت:**
+• عروض خاصة على فئات معينة
+• حزم كروت بأسعار مخفضة
+• عروض موسمية محدودة الوقت
+
+⏰ **عروض زمنية:**
+• عروض الساعة السعيدة
+• عروض نهاية الأسبوع
+• عروض المناسبات الخاصة
+
+🎯 **عروض مستهدفة:**
+• عروض للعملاء الجدد
+• عروض للعملاء المميزين
+• عروض حسب تاريخ التسجيل
+
+💡 **اختر نوع العرض:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🔥 عرض خصم نسبة مئوية', callback_data='offer_percentage_discount'),
+             InlineKeyboardButton('💰 عرض خصم مبلغ ثابت', callback_data='offer_fixed_discount')],
+            [InlineKeyboardButton('💳 عرض على فئة كروت', callback_data='offer_card_category'),
+             InlineKeyboardButton('📦 حزمة كروت مخفضة', callback_data='offer_card_bundle')],
+            [InlineKeyboardButton('⏰ عرض زمني محدود', callback_data='offer_time_limited'),
+             InlineKeyboardButton('🎯 عرض مستهدف', callback_data='offer_targeted')],
+            [InlineKeyboardButton('📊 إدارة العروض الحالية', callback_data='manage_existing_offers'),
+             InlineKeyboardButton('📈 تقارير العروض', callback_data='offers_reports')],
+            [InlineKeyboardButton('🔙 العودة للوحة الإدارة', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(
+            offers_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in admin add offers handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إضافة العروض.")
 
 async def accounting_system_handler(update: Update, context: CallbackContext):
-    """النظام المحاسبي - معالج مؤقت"""
-    await placeholder_handler(update, context, "النظام المحاسبي")
+    """النظام المحاسبي - مع فحص الصلاحيات"""
+    try:
+        # Import permissions system
+        from bot_modules.permissions import has_permission, check_permission_or_deny
+        
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] not in ['admin', 'super_admin']:
+            await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user.get('role', 'غير محدد') if user else "غير مسجل"))
+            return
+        
+        # فحص صلاحية الوصول للنظام المحاسبي
+        if not has_permission(user['id'], 'accounting_access'):
+            error_msg = check_permission_or_deny(user['id'], 'accounting_access', 'الوصول للنظام المحاسبي')
+            await query.edit_message_text(error_msg, parse_mode='Markdown')
+            return
+        
+        # إذا كان لديه الصلاحية، عرض النظام المحاسبي
+        accounting_text = f"""
+📊 **النظام المحاسبي المتقدم** 📊
+
+👤 **المشرف:** {user['full_name']}
+✅ **الصلاحية:** مؤكدة - الوصول للنظام المحاسبي
+
+💰 **التقارير المالية:**
+
+📈 **تقارير الأرباح:**
+• تقرير الأرباح اليومية
+• تقرير الأرباح الشهرية
+• تقرير مقارنة الأرباح
+
+💸 **تقارير المعاملات:**
+• تقرير جميع المعاملات
+• تقرير معاملات التحويل
+• تقرير معاملات الشراء
+
+🏪 **تقارير المزودين:**
+• أرباح المزودين
+• أداء المزودين
+• عمولات المزودين
+
+👥 **تقارير العملاء:**
+• أكثر العملاء شراءً
+• نشاط العملاء
+• تحليل سلوك العملاء
+
+📊 **التحليلات المتقدمة:**
+• تحليل المبيعات
+• تحليل الاتجاهات
+• تحليل الربحية
+
+💡 **اختر التقرير:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📈 تقارير الأرباح', callback_data='accounting_profits'),
+             InlineKeyboardButton('💸 تقارير المعاملات', callback_data='accounting_transactions')],
+            [InlineKeyboardButton('🏪 تقارير المزودين', callback_data='accounting_suppliers'),
+             InlineKeyboardButton('👥 تقارير العملاء', callback_data='accounting_customers')],
+            [InlineKeyboardButton('📊 التحليلات المتقدمة', callback_data='accounting_analytics'),
+             InlineKeyboardButton('📄 تقارير مخصصة', callback_data='accounting_custom')],
+            [InlineKeyboardButton('💾 تصدير البيانات', callback_data='accounting_export'),
+             InlineKeyboardButton('🔍 بحث في السجلات', callback_data='accounting_search')],
+            [InlineKeyboardButton('🔙 العودة للوحة الإدارة', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(
+            accounting_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in accounting system handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في النظام المحاسبي.")
 
 async def create_coupons_handler(update: Update, context: CallbackContext):
     """معالج إنشاء الكوبونات للمشرف الأعلى"""

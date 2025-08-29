@@ -669,6 +669,62 @@ def init_db():
                 FOREIGN KEY (created_by) REFERENCES users (id)
             )
         ''')
+
+        # Admin permissions table - Advanced permissions management system
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS admin_permissions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                admin_id INTEGER NOT NULL,
+                permission_name TEXT NOT NULL,
+                permission_value BOOLEAN DEFAULT 0,
+                granted_by INTEGER,
+                granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (admin_id) REFERENCES users(id),
+                FOREIGN KEY (granted_by) REFERENCES users(id),
+                UNIQUE(admin_id, permission_name)
+            )
+        ''')
+
+        # Initialize permissions for existing admins if not already set
+        try:
+            # The 5 core permissions as requested
+            default_permissions = [
+                'add_offers',          # إضافة عروض
+                'activate_providers',  # تفعيل مزودين
+                'accounting_access',   # الوصول للنظام المحاسبي
+                'send_message',        # إرسال رسالة في البوت
+                'manage_clients'       # إدارة العملاء
+            ]
+            
+            # Get all admins
+            cursor.execute("SELECT id, role FROM users WHERE role IN ('admin', 'super_admin')")
+            admins = cursor.fetchall()
+            
+            for admin in admins:
+                admin_id = admin['id']
+                admin_role = admin['role']
+                
+                for permission in default_permissions:
+                    # Super admin gets all permissions, regular admin gets limited permissions
+                    if admin_role == 'super_admin':
+                        permission_value = 1  # All permissions for super admin
+                    else:
+                        # Regular admin gets limited permissions
+                        if permission in ['add_offers', 'send_message', 'manage_clients']:
+                            permission_value = 1
+                        else:
+                            permission_value = 0
+                    
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO admin_permissions 
+                        (admin_id, permission_name, permission_value, granted_by) 
+                        VALUES (?, ?, ?, ?)
+                    ''', (admin_id, permission, permission_value, admin_id))
+                    
+        except Exception as e:
+            logger.warning(f"Error initializing admin permissions: {e}")
+            # Continue with database initialization even if this fails
         
         # Data insertion is handled separately to avoid conflicts
 
