@@ -47,25 +47,25 @@ def has_permission(admin_id: int, permission: str) -> bool:
     Check if admin has a specific permission
     
     Args:
-        admin_id (int): معرف المشرف
+        admin_id (int): معرف تلجرام للمشرف
         permission (str): اسم الصلاحية
     
     Returns:
         bool: True إذا كان يملك الصلاحية، False إذا لم يملكها
     """
     try:
-        # التحقق من أن المستخدم مشرف أولاً
+        # التحقق من أن المستخدم مشرف أولاً (استخدام معرف تلجرام)
         user = get_user(admin_id)
         if not user or user['role'] not in ['admin', 'super_admin']:
-            logger.warning(f"Permission check failed: User {admin_id} is not an admin")
+            logger.warning(f"Permission check failed: User telegram_id {admin_id} is not an admin, role: {user.get('role', 'None') if user else 'User not found'}")
             return False
         
         # المشرف الأعلى يملك جميع الصلاحيات
         if user['role'] == 'super_admin':
-            logger.info(f"Super admin {admin_id} granted permission '{permission}' automatically")
+            logger.info(f"Super admin telegram_id {admin_id} (db_id: {user['id']}) granted permission '{permission}' automatically")
             return True
         
-        # فحص الصلاحية من قاعدة البيانات
+        # فحص الصلاحية من قاعدة البيانات (استخدام معرف قاعدة البيانات الداخلي)
         conn = get_db_connection()
         cursor = conn.cursor()
         
@@ -73,7 +73,7 @@ def has_permission(admin_id: int, permission: str) -> bool:
             SELECT permission_value 
             FROM admin_permissions 
             WHERE admin_id = ? AND permission_name = ?
-        ''', (admin_id, permission))
+        ''', (user['id'], permission))
         
         result = cursor.fetchone()
         conn.close()
@@ -84,17 +84,21 @@ def has_permission(admin_id: int, permission: str) -> bool:
             return has_perm
         else:
             # إذا لم تجد الصلاحية، قم بإنشائها بقيمة افتراضية
-            logger.info(f"Permission '{permission}' not found for admin {admin_id}, creating with default value")
-            return create_default_permission(admin_id, permission)
+            logger.info(f"Permission '{permission}' not found for admin telegram_id {admin_id} (db_id: {user['id']}), creating with default value")
+            return create_default_permission(user['id'], permission)
             
     except Exception as e:
         logger.error(f"Error checking permission '{permission}' for admin {admin_id}: {e}")
         return False
 
-def create_default_permission(admin_id: int, permission: str) -> bool:
+def create_default_permission(admin_db_id: int, permission: str) -> bool:
     """
     إنشاء صلاحية افتراضية للمشرف
     Create default permission for admin
+    
+    Args:
+        admin_db_id (int): معرف قاعدة البيانات الداخلي للمشرف
+        permission (str): اسم الصلاحية
     """
     try:
         conn = get_db_connection()
@@ -115,16 +119,16 @@ def create_default_permission(admin_id: int, permission: str) -> bool:
             INSERT OR IGNORE INTO admin_permissions 
             (admin_id, permission_name, permission_value, granted_by) 
             VALUES (?, ?, ?, ?)
-        ''', (admin_id, permission, permission_value, admin_id))
+        ''', (admin_db_id, permission, permission_value, admin_db_id))
         
         conn.commit()
         conn.close()
         
-        logger.info(f"Created default permission '{permission}' = {permission_value} for admin {admin_id}")
+        logger.info(f"Created default permission '{permission}' = {permission_value} for admin db_id {admin_db_id}")
         return permission_value
         
     except Exception as e:
-        logger.error(f"Error creating default permission '{permission}' for admin {admin_id}: {e}")
+        logger.error(f"Error creating default permission '{permission}' for admin db_id {admin_db_id}: {e}")
         return False
 
 def grant_permission(admin_id: int, permission: str, granted_by: int) -> bool:

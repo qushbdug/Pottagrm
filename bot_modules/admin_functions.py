@@ -2682,8 +2682,8 @@ async def admin_add_offers_handler(update: Update, context: CallbackContext):
             return
         
         # فحص صلاحية إضافة العروض
-        if not has_permission(user['id'], 'add_offers'):
-            error_msg = check_permission_or_deny(user['id'], 'add_offers', 'إضافة العروض')
+        if not has_permission(query.from_user.id, 'add_offers'):
+            error_msg = check_permission_or_deny(query.from_user.id, 'add_offers', 'إضافة العروض')
             await query.edit_message_text(error_msg, parse_mode='Markdown')
             return
         
@@ -2756,8 +2756,8 @@ async def accounting_system_handler(update: Update, context: CallbackContext):
             return
         
         # فحص صلاحية الوصول للنظام المحاسبي
-        if not has_permission(user['id'], 'accounting_access'):
-            error_msg = check_permission_or_deny(user['id'], 'accounting_access', 'الوصول للنظام المحاسبي')
+        if not has_permission(query.from_user.id, 'accounting_access'):
+            error_msg = check_permission_or_deny(query.from_user.id, 'accounting_access', 'الوصول للنظام المحاسبي')
             await query.edit_message_text(error_msg, parse_mode='Markdown')
             return
         
