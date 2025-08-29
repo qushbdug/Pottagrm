@@ -725,6 +725,59 @@ def init_db():
         except Exception as e:
             logger.warning(f"Error initializing admin permissions: {e}")
             # Continue with database initialization even if this fails
+
+        # Admin management logs table - Track all admin-related operations
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS admin_management_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                action_type TEXT NOT NULL,  -- 'create', 'update', 'delete', 'permission_change', 'status_change'
+                target_admin_id INTEGER NOT NULL,
+                performed_by INTEGER NOT NULL,
+                old_data TEXT,  -- JSON of old data
+                new_data TEXT,  -- JSON of new data
+                action_details TEXT,
+                ip_address TEXT,
+                user_agent TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (target_admin_id) REFERENCES users(id),
+                FOREIGN KEY (performed_by) REFERENCES users(id)
+            )
+        ''')
+
+        # Admin system settings table - For system-wide admin settings
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS admin_system_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                setting_key TEXT UNIQUE NOT NULL,
+                setting_value TEXT NOT NULL,
+                setting_type TEXT DEFAULT 'string',  -- 'string', 'boolean', 'integer', 'json'
+                description TEXT,
+                updated_by INTEGER,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (updated_by) REFERENCES users(id)
+            )
+        ''')
+
+        # Initialize default admin system settings
+        try:
+            default_settings = [
+                ('permissions_system_enabled', 'true', 'boolean', 'تفعيل/تعطيل نظام الصلاحيات'),
+                ('max_admins_allowed', '50', 'integer', 'الحد الأقصى لعدد المشرفين المسموح'),
+                ('admin_session_timeout', '3600', 'integer', 'مهلة انتهاء جلسة المشرف بالثواني'),
+                ('require_2fa_for_admins', 'false', 'boolean', 'إجبار المشرفين على استخدام المصادقة الثنائية'),
+                ('auto_deactivate_inactive_admins', 'false', 'boolean', 'إلغاء تفعيل المشرفين غير النشطين تلقائياً'),
+                ('inactive_admin_threshold_days', '30', 'integer', 'عدد أيام عدم النشاط قبل الإلغاء التلقائي')
+            ]
+            
+            for setting_key, setting_value, setting_type, description in default_settings:
+                cursor.execute('''
+                    INSERT OR IGNORE INTO admin_system_settings 
+                    (setting_key, setting_value, setting_type, description) 
+                    VALUES (?, ?, ?, ?)
+                ''', (setting_key, setting_value, setting_type, description))
+                
+        except Exception as e:
+            logger.warning(f"Error initializing admin system settings: {e}")
         
         # Data insertion is handled separately to avoid conflicts
 

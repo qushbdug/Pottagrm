@@ -387,3 +387,45 @@ def require_permission(permission: str):
             return func(update, context, *args, **kwargs)
         return wrapper
     return decorator
+
+def initialize_admin_permissions(admin_db_id: int) -> bool:
+    """
+    تهيئة صلاحيات افتراضية للمشرف الجديد
+    Initialize default permissions for new admin
+    
+    Args:
+        admin_db_id (int): معرف قاعدة البيانات للمشرف
+        
+    Returns:
+        bool: True if successful
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # الصلاحيات الافتراضية للمشرف العادي
+        default_permissions = {
+            'add_offers': True,
+            'activate_providers': False,
+            'accounting_access': False,
+            'send_message': True,
+            'manage_clients': True
+        }
+        
+        # إضافة الصلاحيات الافتراضية
+        for permission, value in default_permissions.items():
+            cursor.execute('''
+                INSERT OR REPLACE INTO admin_permissions 
+                (admin_id, permission_name, permission_value, granted_by, granted_at, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ''', (admin_db_id, permission, value, admin_db_id))
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"Initialized permissions for admin DB ID: {admin_db_id}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error initializing admin permissions: {e}")
+        return False

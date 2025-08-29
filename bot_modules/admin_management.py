@@ -6,6 +6,8 @@ Enhanced Admin Management System
 
 import logging
 import sqlite3
+import json
+import re
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext
@@ -20,7 +22,8 @@ from bot_modules.permissions import (
     revoke_permission,
     get_admin_permissions,
     get_all_admins_with_permissions,
-    check_permission_or_deny
+    check_permission_or_deny,
+    initialize_admin_permissions
 )
 
 logger = logging.getLogger(__name__)
@@ -831,6 +834,513 @@ class AdminManagement:
         except Exception as e:
             logger.error(f"Error toggling permission: {e}")
             await query.answer("❌ حدث خطأ في تبديل الصلاحية!", show_alert=True)
+
+    # ========== Complete Admin Management Functions ==========
+
+    @staticmethod
+    def log_admin_action(action_type: str, target_admin_id: int, performed_by: int, 
+                        old_data: dict = None, new_data: dict = None, 
+                        action_details: str = None, ip_address: str = None):
+        """تسجيل عمليات إدارة المشرفين"""
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                INSERT INTO admin_management_logs 
+                (action_type, target_admin_id, performed_by, old_data, new_data, action_details, ip_address)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                action_type,
+                target_admin_id,
+                performed_by,
+                json.dumps(old_data, ensure_ascii=False) if old_data else None,
+                json.dumps(new_data, ensure_ascii=False) if new_data else None,
+                action_details,
+                ip_address
+            ))
+            
+            conn.commit()
+            conn.close()
+            logger.info(f"Admin action logged: {action_type} on admin {target_admin_id} by {performed_by}")
+            
+        except Exception as e:
+            logger.error(f"Error logging admin action: {e}")
+
+    @staticmethod
+    async def add_new_admin_handler(update: Update, context: CallbackContext):
+        """➕ إضافة مشرف جديد"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            user = get_user(query.from_user.id)
+            if not user or user['role'] != 'super_admin':
+                await query.edit_message_text(f"{EMOJIS['error']} هذه الميزة مقتصرة على المشرف الأعلى فقط.")
+                return
+            
+            add_admin_text = f"""
+➕ **إضافة مشرف جديد** ➕
+
+👤 **خطوات إضافة المشرف:**
+
+1️⃣ **إدخال معرف تلجرام**
+   أرسل معرف تلجرام للمستخدم المراد ترقيته
+
+2️⃣ **اختيار نوع المشرف**
+   • مشرف عادي (صلاحيات محدودة)
+   • مشرف أعلى (صلاحيات كاملة)
+
+3️⃣ **تعيين الصلاحيات الأولية**
+   سيتم تعيين صلاحيات افتراضية حسب النوع
+
+⚡ **ملاحظات مهمة:**
+• يجب أن يكون المستخدم مسجل في البوت
+• لا يمكن إضافة مشرف أعلى إضافي إلا بموافقة خاصة
+• سيتم تسجيل العملية في سجل الإدارة
+
+💡 **ابدأ بإدخال معرف تلجرام:**
+"""
+            
+            keyboard = [
+                [InlineKeyboardButton('📝 إدخال معرف تلجرام', callback_data='add_admin_enter_id')],
+                [InlineKeyboardButton('👥 اختيار من المستخدمين المسجلين', callback_data='add_admin_select_user')],
+                [InlineKeyboardButton('📊 عرض حدود النظام', callback_data='add_admin_show_limits')],
+                [InlineKeyboardButton('🔙 العودة للوحة الإدارة', callback_data='admin_dashboard')]
+            ]
+            
+            await query.edit_message_text(
+                add_admin_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in add new admin handler: {e}")
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إضافة مشرف جديد.")
+
+    @staticmethod
+    async def add_admin_enter_id_handler(update: Update, context: CallbackContext):
+        """معالج إدخال معرف تلجرام للمشرف الجديد"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            # تعيين حالة انتظار معرف تلجرام
+            context.user_data['awaiting_admin_telegram_id'] = True
+            context.user_data['admin_add_step'] = 'enter_id'
+            
+            enter_id_text = f"""
+📝 **إدخال معرف تلجرام** 📝
+
+🔢 **أرسل معرف تلجرام للمستخدم:**
+
+مثال: `123456789` أو `987654321`
+
+⚠️ **تعليمات مهمة:**
+• أرسل الرقم فقط بدون أي إضافات
+• تأكد من صحة المعرف
+• يجب أن يكون المستخدم مسجل في البوت
+
+❌ **للإلغاء اكتب:** `إلغاء`
+"""
+            
+            keyboard = [
+                [InlineKeyboardButton('❌ إلغاء العملية', callback_data='add_admin_cancel')],
+                [InlineKeyboardButton('🔙 العودة', callback_data='admin_add_new')]
+            ]
+            
+            await query.edit_message_text(
+                enter_id_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in enter admin ID handler: {e}")
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إدخال معرف المشرف.")
+
+    @staticmethod
+    async def add_admin_select_user_handler(update: Update, context: CallbackContext):
+        """👥 اختيار مشرف من المستخدمين المسجلين"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            # الحصول على المستخدمين المؤهلين ليصبحوا مشرفين
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT id, telegram_id, full_name, role, total_purchases, is_active, created_at
+                FROM users 
+                WHERE role = 'customer' AND is_active = 1
+                ORDER BY total_purchases DESC, created_at ASC
+                LIMIT 20
+            ''')
+            
+            eligible_users = cursor.fetchall()
+            conn.close()
+            
+            if not eligible_users:
+                await query.edit_message_text(
+                    f"""
+❌ **لا توجد مستخدمين مؤهلين**
+
+لا يوجد مستخدمين عملاء مفعلين يمكن ترقيتهم لمشرفين.
+
+💡 **الشروط المطلوبة:**
+• حساب عميل مفعل
+• لا يكون مشرف مسبقاً
+• حساب نشط في النظام
+""",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton('📝 إدخال معرف يدوياً', callback_data='add_admin_enter_id')],
+                        [InlineKeyboardButton('🔙 العودة', callback_data='admin_add_new')]
+                    ]),
+                    parse_mode='Markdown'
+                )
+                return
+            
+            # تقسيم المستخدمين إلى صفحات
+            page = context.user_data.get('add_admin_users_page', 0)
+            items_per_page = 8
+            start_idx = page * items_per_page
+            end_idx = start_idx + items_per_page
+            
+            current_users = eligible_users[start_idx:end_idx]
+            total_pages = (len(eligible_users) - 1) // items_per_page + 1
+            
+            select_text = f"""
+👥 **اختيار مستخدم للترقية** 👥
+
+📄 **الصفحة:** {page + 1} من {total_pages}
+👤 **المستخدمين المؤهلين:** {len(eligible_users)}
+
+"""
+            
+            keyboard = []
+            
+            for user_data in current_users:
+                user_id, telegram_id, full_name, role, purchases, is_active, created = user_data
+                
+                # تحضير معلومات المستخدم
+                purchases_text = f"{purchases} شراء" if purchases > 0 else "جديد"
+                created_date = created[:10] if created else "غير محدد"
+                
+                select_text += f"""
+👤 **{full_name}**
+🆔 المعرف: `{telegram_id}`
+📊 المشتريات: {purchases_text}
+📅 التسجيل: {created_date}
+───────────────────
+"""
+                
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"✅ اختيار {full_name[:15]}",
+                        callback_data=f"select_user_for_admin_{telegram_id}"
+                    )
+                ])
+            
+            # أزرار التنقل
+            nav_buttons = []
+            if page > 0:
+                nav_buttons.append(InlineKeyboardButton('⬅️ السابق', callback_data=f'add_admin_users_page_{page-1}'))
+            if page < total_pages - 1:
+                nav_buttons.append(InlineKeyboardButton('➡️ التالي', callback_data=f'add_admin_users_page_{page+1}'))
+            
+            if nav_buttons:
+                keyboard.append(nav_buttons)
+            
+            keyboard.extend([
+                [InlineKeyboardButton('📝 إدخال معرف يدوياً', callback_data='add_admin_enter_id')],
+                [InlineKeyboardButton('🔙 العودة', callback_data='admin_add_new')]
+            ])
+            
+            await query.edit_message_text(
+                select_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in select user for admin: {e}")
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في اختيار المستخدم.")
+
+    @staticmethod
+    async def process_admin_telegram_id(telegram_id: int, update: Update, context: CallbackContext):
+        """معالجة معرف تلجرام للمشرف الجديد"""
+        try:
+            # البحث عن المستخدم
+            target_user = get_user(telegram_id)
+            
+            if not target_user:
+                error_text = f"""
+❌ **مستخدم غير موجود** ❌
+
+المعرف `{telegram_id}` غير مسجل في النظام.
+
+💡 **يجب على المستخدم:**
+• التسجيل في البوت أولاً باستخدام /start
+• إكمال عملية التسجيل بالكامل
+
+🔄 **جرب مرة أخرى:**
+"""
+                
+                keyboard = [
+                    [InlineKeyboardButton('📝 إدخال معرف آخر', callback_data='add_admin_enter_id')],
+                    [InlineKeyboardButton('👥 اختيار من القائمة', callback_data='add_admin_select_user')],
+                    [InlineKeyboardButton('🔙 العودة', callback_data='admin_add_new')]
+                ]
+                
+                if hasattr(update, 'callback_query') and update.callback_query:
+                    await update.callback_query.edit_message_text(
+                        error_text,
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode='Markdown'
+                    )
+                else:
+                    await update.message.reply_text(
+                        error_text,
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode='Markdown'
+                    )
+                return
+            
+            # التحقق من أن المستخدم ليس مشرف بالفعل
+            if target_user['role'] in ['admin', 'super_admin']:
+                error_text = f"""
+⚠️ **المستخدم مشرف بالفعل** ⚠️
+
+👤 **المستخدم:** {target_user['full_name']}
+🛡️ **الدور الحالي:** {target_user['role']}
+
+💡 **خيارات متاحة:**
+• تعديل صلاحياته من إدارة الصلاحيات
+• البحث عن مستخدم آخر
+"""
+                
+                keyboard = [
+                    [InlineKeyboardButton('⚙️ تعديل صلاحياته', callback_data=f'perm_quick_edit_{target_user["id"]}')],
+                    [InlineKeyboardButton('📝 إدخال معرف آخر', callback_data='add_admin_enter_id')],
+                    [InlineKeyboardButton('🔙 العودة', callback_data='admin_add_new')]
+                ]
+                
+                if hasattr(update, 'callback_query') and update.callback_query:
+                    await update.callback_query.edit_message_text(
+                        error_text,
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode='Markdown'
+                    )
+                else:
+                    await update.message.reply_text(
+                        error_text,
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode='Markdown'
+                    )
+                return
+            
+            # عرض تأكيد الترقية
+            await AdminManagement.show_admin_promotion_confirmation(
+                target_user, update, context
+            )
+            
+        except Exception as e:
+            logger.error(f"Error processing admin telegram ID: {e}")
+            error_text = f"{EMOJIS['error']} حدث خطأ في معالجة معرف المشرف."
+            
+            if hasattr(update, 'callback_query') and update.callback_query:
+                await update.callback_query.edit_message_text(error_text)
+            else:
+                await update.message.reply_text(error_text)
+
+    @staticmethod
+    async def show_admin_promotion_confirmation(target_user, update: Update, context: CallbackContext):
+        """عرض تأكيد ترقية المستخدم لمشرف"""
+        try:
+            confirmation_text = f"""
+✅ **تأكيد ترقية المستخدم** ✅
+
+👤 **بيانات المستخدم:**
+🔸 الاسم: **{target_user['full_name']}**
+🔸 المعرف: `{target_user['telegram_id']}`
+🔸 الهاتف: {target_user.get('phone', 'غير محدد')}
+🔸 الدور الحالي: **{target_user['role']}**
+🔸 الرصيد: **{target_user['balance']:.2f}** ريال
+🔸 تاريخ التسجيل: {target_user.get('created_at', 'غير محدد')[:10]}
+
+🛡️ **اختر نوع الترقية:**
+
+**1️⃣ مشرف عادي:**
+• إدارة العملاء ✅
+• إرسال رسائل ✅  
+• إضافة عروض ✅
+• النظام المحاسبي ❌
+• تفعيل مزودين ❌
+
+**2️⃣ مشرف أعلى:**
+• جميع الصلاحيات ✅
+• إدارة المشرفين ✅
+• النظام المحاسبي ✅
+• تفعيل مزودين ✅
+
+⚠️ **تحذير:** هذه العملية لا يمكن التراجع عنها بسهولة
+"""
+            
+            # حفظ معرف المستخدم المستهدف
+            context.user_data['target_admin_telegram_id'] = target_user['telegram_id']
+            context.user_data['target_admin_db_id'] = target_user['id']
+            
+            keyboard = [
+                [InlineKeyboardButton('🛡️ ترقية لمشرف عادي', callback_data='promote_to_admin')],
+                [InlineKeyboardButton('👑 ترقية لمشرف أعلى', callback_data='promote_to_super_admin')],
+                [InlineKeyboardButton('📋 عرض تفاصيل إضافية', callback_data=f'view_user_details_{target_user["telegram_id"]}')],
+                [InlineKeyboardButton('❌ إلغاء العملية', callback_data='add_admin_cancel')],
+                [InlineKeyboardButton('🔙 العودة', callback_data='admin_add_new')]
+            ]
+            
+            if hasattr(update, 'callback_query') and update.callback_query:
+                await update.callback_query.edit_message_text(
+                    confirmation_text,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown'
+                )
+            else:
+                await update.message.reply_text(
+                    confirmation_text,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode='Markdown'
+                )
+                
+        except Exception as e:
+            logger.error(f"Error showing promotion confirmation: {e}")
+            error_text = f"{EMOJIS['error']} حدث خطأ في عرض تأكيد الترقية."
+            
+            if hasattr(update, 'callback_query') and update.callback_query:
+                await update.callback_query.edit_message_text(error_text)
+            else:
+                await update.message.reply_text(error_text)
+
+    @staticmethod
+    async def execute_admin_promotion(update: Update, context: CallbackContext, new_role: str):
+        """تنفيذ ترقية المستخدم لمشرف"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            current_user = get_user(query.from_user.id)
+            target_telegram_id = context.user_data.get('target_admin_telegram_id')
+            target_db_id = context.user_data.get('target_admin_db_id')
+            
+            if not target_telegram_id or not target_db_id:
+                await query.edit_message_text(f"{EMOJIS['error']} انتهت صلاحية العملية. يرجى البدء من جديد.")
+                return
+            
+            target_user = get_user(target_telegram_id)
+            if not target_user:
+                await query.edit_message_text(f"{EMOJIS['error']} المستخدم المستهدف لم يعد موجوداً.")
+                return
+            
+            # تحديث دور المستخدم في قاعدة البيانات
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # حفظ البيانات القديمة للسجل
+            old_data = {
+                'role': target_user['role'],
+                'permissions': get_admin_permissions(target_db_id) if target_user['role'] in ['admin', 'super_admin'] else {}
+            }
+            
+            # تحديث الدور
+            cursor.execute('''
+                UPDATE users 
+                SET role = ?, updated_at = CURRENT_TIMESTAMP 
+                WHERE id = ?
+            ''', (new_role, target_db_id))
+            
+            # تهيئة صلاحيات المشرف الجديد
+            initialize_admin_permissions(target_db_id)
+            
+            # إذا كان مشرف أعلى، منح جميع الصلاحيات
+            if new_role == 'super_admin':
+                for permission in AVAILABLE_PERMISSIONS.keys():
+                    grant_permission(target_telegram_id, permission, current_user['id'])
+            
+            conn.commit()
+            
+            # حفظ البيانات الجديدة
+            new_data = {
+                'role': new_role,
+                'permissions': get_admin_permissions(target_db_id)
+            }
+            
+            # تسجيل العملية
+            AdminManagement.log_admin_action(
+                action_type='create',
+                target_admin_id=target_db_id,
+                performed_by=current_user['id'],
+                old_data=old_data,
+                new_data=new_data,
+                action_details=f"User promoted from {old_data['role']} to {new_role}"
+            )
+            
+            conn.close()
+            
+            # رسالة النجاح
+            role_name = "مشرف أعلى" if new_role == 'super_admin' else "مشرف عادي"
+            
+            success_text = f"""
+🎉 **تم ترقية المستخدم بنجاح!** 🎉
+
+👤 **المشرف الجديد:**
+🔸 الاسم: **{target_user['full_name']}**
+🔸 المعرف: `{target_telegram_id}`
+🔸 الدور الجديد: **{role_name}**
+
+✅ **ما تم:**
+• تحديث دور المستخدم في النظام
+• تهيئة الصلاحيات الافتراضية
+• تسجيل العملية في سجل الإدارة
+• إرسال إشعار للمشرف الجديد
+
+📊 **الصلاحيات المفعلة:**
+"""
+            
+            # عرض الصلاحيات
+            permissions = get_admin_permissions(target_db_id)
+            for perm_key, perm_info in AVAILABLE_PERMISSIONS.items():
+                has_perm = permissions.get(perm_key, False)
+                status = "✅" if has_perm else "❌"
+                success_text += f"{status} {perm_info['name_ar']}\n"
+            
+            success_text += f"\n⏰ **تاريخ الترقية:** {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            
+            keyboard = [
+                [InlineKeyboardButton('⚙️ تعديل صلاحياته', callback_data=f'perm_quick_edit_{target_db_id}')],
+                [InlineKeyboardButton('👤 عرض ملفه الشخصي', callback_data=f'admin_profile_{target_db_id}')],
+                [InlineKeyboardButton('➕ إضافة مشرف آخر', callback_data='admin_add_new')],
+                [InlineKeyboardButton('📋 عرض جميع المشرفين', callback_data='admin_manage_admins')],
+                [InlineKeyboardButton('🔙 العودة للوحة الإدارة', callback_data='admin_dashboard')]
+            ]
+            
+            await query.edit_message_text(
+                success_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+            # تنظيف بيانات السياق
+            if 'target_admin_telegram_id' in context.user_data:
+                del context.user_data['target_admin_telegram_id']
+            if 'target_admin_db_id' in context.user_data:
+                del context.user_data['target_admin_db_id']
+            
+            # TODO: إرسال إشعار للمشرف الجديد
+            
+        except Exception as e:
+            logger.error(f"Error executing admin promotion: {e}")
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في ترقية المستخدم.")
 
 # إضافة الدوال للاستيراد
 __all__ = ['AdminManagement']

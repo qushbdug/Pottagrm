@@ -59,6 +59,7 @@ try:
     # Import management modules
     from customer_management import CustomerManagement
     from admin_management import AdminManagement
+    from admin_management_extended import AdminManagementExtended
     from enhanced_error_messages import ErrorMessages, db_error, perm_error, net_error, unexpected_error, menu_error, wallet_error, search_error, coupon_error
     
     # Import permissions system
@@ -357,6 +358,65 @@ async def button_click_handler(update: Update, context):
             admin_id = int(parts[2])
             permission = parts[3]
             return await AdminManagement.toggle_permission(update, context, action, admin_id, permission)
+        
+        # Complete Admin Management System Handlers
+        elif callback_data == 'admin_add_new':
+            return await AdminManagement.add_new_admin_handler(update, context)
+        elif callback_data == 'add_admin_enter_id':
+            return await AdminManagement.add_admin_enter_id_handler(update, context)
+        elif callback_data == 'add_admin_select_user':
+            return await AdminManagement.add_admin_select_user_handler(update, context)
+        elif callback_data.startswith('add_admin_users_page_'):
+            page = int(callback_data.split('_')[4])
+            context.user_data['add_admin_users_page'] = page
+            return await AdminManagement.add_admin_select_user_handler(update, context)
+        elif callback_data.startswith('select_user_for_admin_'):
+            telegram_id = int(callback_data.split('_')[4])
+            return await AdminManagement.process_admin_telegram_id(telegram_id, update, context)
+        elif callback_data == 'promote_to_admin':
+            return await AdminManagement.execute_admin_promotion(update, context, 'admin')
+        elif callback_data == 'promote_to_super_admin':
+            return await AdminManagement.execute_admin_promotion(update, context, 'super_admin')
+        elif callback_data == 'add_admin_cancel':
+            # تنظيف بيانات السياق
+            context.user_data.pop('awaiting_admin_telegram_id', None)
+            context.user_data.pop('target_admin_telegram_id', None)
+            context.user_data.pop('target_admin_db_id', None)
+            context.user_data.pop('admin_add_step', None)
+            return await AdminManagement.get_admin_dashboard(update, context)
+        
+        # Admin Search System
+        elif callback_data == 'admin_search_admin':
+            return await AdminManagementExtended.search_admin_handler(update, context)
+        elif callback_data == 'search_admin_by_id':
+            return await AdminManagementExtended.search_admin_by_id_handler(update, context)
+        elif callback_data == 'search_admin_by_name':
+            return await AdminManagementExtended.search_admin_by_name_handler(update, context)
+        elif callback_data == 'search_admin_cancel':
+            # تنظيف بيانات البحث
+            context.user_data.pop('awaiting_admin_search_id', None)
+            context.user_data.pop('awaiting_admin_search_name', None)
+            context.user_data.pop('search_type', None)
+            return await AdminManagementExtended.search_admin_handler(update, context)
+        
+        # Admin Activity Logs
+        elif callback_data == 'admin_activity_log':
+            return await AdminManagementExtended.admin_activity_log_handler(update, context)
+        
+        # Admin Settings
+        elif callback_data == 'admin_settings':
+            return await AdminManagementExtended.admin_settings_handler(update, context)
+        elif callback_data.startswith('toggle_setting_'):
+            parts = callback_data.split('_')
+            setting_key = parts[2]
+            new_value = parts[3]
+            return await AdminManagementExtended.toggle_admin_setting(setting_key, new_value, update, context)
+        elif callback_data == 'admin_settings_reload':
+            return await AdminManagementExtended.admin_settings_handler(update, context)
+        
+        # Admin Reports
+        elif callback_data == 'admin_reports':
+            return await AdminManagementExtended.admin_reports_handler(update, context)
         
         # Transfer confirmation handlers
         elif callback_data == 'confirm_transfer_yes':
@@ -2091,6 +2151,80 @@ async def handle_text_message(update: Update, context: CallbackContext):
     try:
         user = get_user(update.message.from_user.id)
         if not user:
+            return
+        
+        message_text = update.message.text.strip()
+        
+        # ===== Admin Management Text Handlers =====
+        
+        # معالجة إدخال معرف تلجرام لإضافة مشرف جديد
+        if context.user_data.get('awaiting_admin_telegram_id'):
+            if message_text.lower() in ['إلغاء', 'cancel', 'الغاء']:
+                # إلغاء العملية
+                context.user_data.pop('awaiting_admin_telegram_id', None)
+                context.user_data.pop('admin_add_step', None)
+                
+                cancel_text = "❌ تم إلغاء عملية إضافة المشرف."
+                keyboard = [[InlineKeyboardButton('🔙 العودة للوحة الإدارة', callback_data='admin_dashboard')]]
+                
+                await update.message.reply_text(
+                    cancel_text,
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+                return
+            
+            try:
+                telegram_id = int(message_text)
+                context.user_data.pop('awaiting_admin_telegram_id', None)
+                await AdminManagement.process_admin_telegram_id(telegram_id, update, context)
+                return
+            except ValueError:
+                await update.message.reply_text(
+                    "❌ يرجى إدخال معرف تلجرام صحيح (أرقام فقط).\n\n"
+                    "مثال: `123456789`\n\n"
+                    "أو اكتب `إلغاء` للإلغاء.",
+                    parse_mode='Markdown'
+                )
+                return
+        
+        # معالجة البحث عن مشرف بالمعرف
+        if context.user_data.get('awaiting_admin_search_id'):
+            if message_text.lower() in ['إلغاء', 'cancel', 'الغاء']:
+                context.user_data.pop('awaiting_admin_search_id', None)
+                context.user_data.pop('search_type', None)
+                
+                cancel_text = "❌ تم إلغاء عملية البحث."
+                keyboard = [[InlineKeyboardButton('🔙 العودة للبحث', callback_data='admin_search_admin')]]
+                
+                await update.message.reply_text(
+                    cancel_text,
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+                return
+            
+            context.user_data.pop('awaiting_admin_search_id', None)
+            search_type = context.user_data.pop('search_type', 'by_id')
+            await AdminManagementExtended.perform_admin_search(message_text, search_type, update, context)
+            return
+        
+        # معالجة البحث عن مشرف بالاسم
+        if context.user_data.get('awaiting_admin_search_name'):
+            if message_text.lower() in ['إلغاء', 'cancel', 'الغاء']:
+                context.user_data.pop('awaiting_admin_search_name', None)
+                context.user_data.pop('search_type', None)
+                
+                cancel_text = "❌ تم إلغاء عملية البحث."
+                keyboard = [[InlineKeyboardButton('🔙 العودة للبحث', callback_data='admin_search_admin')]]
+                
+                await update.message.reply_text(
+                    cancel_text,
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+                return
+            
+            context.user_data.pop('awaiting_admin_search_name', None)
+            search_type = context.user_data.pop('search_type', 'by_name')
+            await AdminManagementExtended.perform_admin_search(message_text, search_type, update, context)
             return
             
         # استيراد معالج النصوص من handlers.py للحالات العامة
