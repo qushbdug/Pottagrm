@@ -452,15 +452,40 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
         
         if recent_transactions:
             for tx in recent_transactions[:5]:
-                tx_type = "➕" if tx['transaction_type'] == 'credit' else "➖"
+                # تحديد اتجاه المعاملة
+                if tx['transaction_type'] == 'credit':
+                    direction_color = "🟢"
+                    direction_text = "مستلم"
+                    amount_prefix = "+"
+                else:
+                    direction_color = "🔴"
+                    direction_text = "مرسل"
+                    amount_prefix = "-"
+                
                 description = tx['description'] or 'معاملة'
                 try:
                     amount = float(tx['amount']) if tx['amount'] is not None else 0.0
                 except (ValueError, TypeError):
                     amount = 0.0
-                wallet_text += f"\n{tx_type} {amount:.2f} ريال - {description[:30]}..."
+                
+                # تحديد أيقونة نوع المعاملة من الوصف
+                type_icon = "💼"
+                if "تحويل" in description:
+                    type_icon = "🔄"
+                elif "شراء" in description:
+                    type_icon = "🛒"
+                elif "كوبون" in description:
+                    type_icon = "🎟️"
+                elif "عمولة" in description:
+                    type_icon = "🎯"
+                
+                wallet_text += f"""
+📅 {tx.get('created_at', 'غير محدد')[:16]}
+{direction_color} {direction_text} | {type_icon} {description[:15]} | 💰 {amount_prefix}{amount:,.0f} ريال
+
+"""
         else:
-            wallet_text += "\nلا توجد معاملات بعد"
+            wallet_text += "\n📭 لا توجد معاملات بعد"
         
         keyboard = [
             [InlineKeyboardButton('📊 تفاصيل المعاملات', callback_data='transaction_details'),

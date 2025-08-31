@@ -193,6 +193,9 @@ class AccountStatementGenerator:
             'transfer': 'تحويل',
             'coupon_redeem': 'شحن بكوبون',
             'commission': 'عمولة',
+            'card_purchase': 'شراء كرت',
+            'money_creation': 'إنشاء رصيد',
+            'transfer_fee': 'رسوم تحويل',
             'refund': 'استرداد'
         }
         
@@ -262,6 +265,9 @@ class AccountStatementGenerator:
                 'transfer': 'تحويل', 
                 'coupon_redeem': 'شحن بكوبون',
                 'commission': 'عمولة',
+                'card_purchase': 'شراء كرت',
+                'money_creation': 'إنشاء رصيد',
+                'transfer_fee': 'رسوم تحويل',
                 'refund': 'استرداد'
             }
             

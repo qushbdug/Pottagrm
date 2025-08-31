@@ -600,6 +600,12 @@ async def button_click_handler(update: Update, context):
             await download_pdf_90_handler(update, context)
         elif callback_data == 'download_pdf_all':
             await download_pdf_all_handler(update, context)
+        elif callback_data == 'fix_missing_entries':
+            from bot_modules.admin_functions import fix_missing_entries_handler
+            await fix_missing_entries_handler(update, context)
+        elif callback_data == 'trial_balance':
+            from bot_modules.admin_functions import trial_balance_handler
+            await trial_balance_handler(update, context)
         
         # Refresh balance
         elif callback_data == 'refresh_balance':
@@ -1268,29 +1274,47 @@ async def transaction_details_handler(update: Update, context):
             for transaction in transactions:
                 trans_id, from_user_id, to_user_id, amount, trans_type, description, created_at = transaction
                 
-                # تحديد نوع المعاملة
+                # تحديد اتجاه المعاملة والأيقونات
                 if from_user_id == user['id']:
-                    direction = "📤 مرسل"
-                    color = "🔴"
+                    # معاملة صادرة (سحب)
+                    direction_color = "🔴"
+                    direction_text = "مرسل"
+                    amount_prefix = "-"
                 else:
-                    direction = "📥 مستلم" 
-                    color = "🟢"
+                    # معاملة واردة (إيداع)
+                    direction_color = "🟢"
+                    direction_text = "مستلم"
+                    amount_prefix = "+"
                 
-                # نوع المعاملة
-                type_text = {
+                # أيقونات أنواع المعاملات
+                type_icons = {
+                    'transfer': '🔄',
+                    'card_purchase': '🛒',
+                    'coupon_redeem': '🎟️',
+                    'commission': '🎯',
+                    'money_creation': '💰',
+                    'transfer_fee': '💳'
+                }
+                
+                type_names = {
                     'transfer': 'تحويل رصيد',
                     'card_purchase': 'شراء كرت',
                     'coupon_redeem': 'شحن بكوبون',
-                    'commission': 'عمولة'
-                }.get(trans_type, 'معاملة')
+                    'commission': 'عمولة',
+                    'money_creation': 'إنشاء رصيد',
+                    'transfer_fee': 'رسوم تحويل'
+                }
+                
+                type_icon = type_icons.get(trans_type, '💼')
+                type_name = type_names.get(trans_type, 'معاملة')
+                
+                # تنسيق التاريخ
+                date_formatted = created_at[:16] if created_at else 'غير محدد'
                 
                 details_text += f"""
-{color} **{direction} - {type_text}**
-💰 المبلغ: **{amount:,.2f}** ريال
-📝 التفاصيل: {description or 'غير محدد'}
-📅 التاريخ: {created_at[:16] if created_at else 'غير محدد'}
-🆔 رقم المعاملة: #{trans_id}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📅 {date_formatted}
+{direction_color} {direction_text} | {type_icon} {type_name} | 💰 {amount_prefix}{amount:,.0f} ريال
+
 """
         else:
             details_text += "❌ لا توجد معاملات حتى الآن"
@@ -4885,28 +4909,50 @@ async def show_wallet_page(update: Update, context: CallbackContext, user: dict,
             for transaction in page_transactions:
                 trans_id, from_user_id, to_user_id, amount, trans_type, description, created_at = transaction
                 
-                # تحديد اتجاه المعاملة
+                # تحديد اتجاه المعاملة والأيقونات
                 if from_user_id == user['id']:
-                    direction = "📤 مرسل"
-                    color = "🔴"
+                    # معاملة صادرة (سحب)
+                    direction_color = "🔴"
+                    direction_icon = "📤"
+                    direction_text = "مرسل"
+                    amount_prefix = "-"
                 else:
-                    direction = "📥 مستلم"
-                    color = "🟢"
+                    # معاملة واردة (إيداع)
+                    direction_color = "🟢" 
+                    direction_icon = "📥"
+                    direction_text = "مستلم"
+                    amount_prefix = "+"
                 
-                # نوع المعاملة
+                # أيقونات أنواع المعاملات
+                type_icons = {
+                    'transfer': '🔄',
+                    'card_purchase': '🛒', 
+                    'coupon_redeem': '🎟️',
+                    'commission': '🎯',
+                    'money_creation': '💰',
+                    'transfer_fee': '💳'
+                }
+                
                 type_names = {
                     'transfer': 'تحويل رصيد',
                     'card_purchase': 'شراء كرت',
-                    'coupon_redeem': 'شحن بكوبون',
-                    'commission': 'عمولة'
+                    'coupon_redeem': 'شحن بكوبون', 
+                    'commission': 'عمولة',
+                    'money_creation': 'إنشاء رصيد',
+                    'transfer_fee': 'رسوم تحويل'
                 }
+                
+                type_icon = type_icons.get(trans_type, '💼')
                 type_name = type_names.get(trans_type, 'معاملة')
                 
+                # تنسيق التاريخ
+                date_formatted = created_at[:16] if created_at else 'غير محدد'
+                
+                # عرض المعاملة بالتنسيق الجديد
                 wallet_text += f"""
-{color} **{direction} - {type_name}**
-💰 {amount:,.2f} ريال
-📅 {created_at[:16] if created_at else 'غير محدد'}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📅 {date_formatted}
+{direction_color} {direction_text} | {type_icon} {type_name} | 💰 {amount_prefix}{amount:,.0f} ريال
+
 """
         else:
             if total_transactions == 0:
