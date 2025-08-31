@@ -61,6 +61,33 @@ try:
         record_coupon_accounting, record_commission_accounting, record_money_creation_accounting
     )
     
+    # Import transaction manager for safe operations
+    from transaction_manager import transaction_manager
+    
+    # Import backup manager for automatic backups
+    from backup_manager import backup_manager
+    
+    # Import balance verifier for account integrity
+    from balance_verifier import balance_verifier
+    
+    # Import pagination helper for better UX
+    from pagination_helper import pagination_helper, db_paginator, format_user_item, format_transaction_item, format_network_item
+    
+    # Import query optimizer for better performance
+    from query_optimizer import query_optimizer
+    
+    # Import cache manager for faster responses
+    from cache_manager import smart_cache, cached_db_ops
+    
+    # Import progress indicators for better UX
+    from progress_indicators import progress_manager, progress_indicator, show_processing_message
+    
+    # Import smart error handler for better error management
+    from smart_error_handler import smart_error_handler, handle_errors
+    
+    # Import interactive help system
+    from interactive_help import interactive_help
+    
     # Import export system
     from export_system import (
         export_options_handler, export_profits_handler, export_customers_handler,
@@ -662,9 +689,26 @@ async def button_click_handler(update: Update, context):
             # العودة للمحفظة المطورة مع الرصيد المحدث
             return await enhanced_wallet_handler(update, context)
         
-        # Help
-        elif callback_data == 'help':
-            await help_handler(update, context)
+        # Interactive Help System
+        elif callback_data == 'help' or callback_data == 'help_menu':
+            await interactive_help.show_help_menu(update, context)
+        elif callback_data.startswith('help_category_'):
+            category = callback_data.replace('help_category_', '')
+            await interactive_help.show_help_category(update, context, category)
+        elif callback_data == 'help_faq':
+            await interactive_help.show_faq(update, context)
+        elif callback_data.startswith('help_faq_'):
+            faq_key = callback_data.replace('help_faq_', '')
+            await interactive_help.show_faq_answer(update, context, faq_key)
+        elif callback_data == 'help_quick_tips':
+            await interactive_help.show_quick_tips(update, context)
+        elif callback_data == 'help_tutorials':
+            await interactive_help.show_tutorials(update, context)
+        elif callback_data.startswith('help_tutorial_'):
+            parts = callback_data.replace('help_tutorial_', '').split('_')
+            tutorial_key = parts[0]
+            step = int(parts[1]) if len(parts) > 1 else 0
+            await interactive_help.show_tutorial(update, context, tutorial_key, step)
         
 
         # Support callbacks
@@ -834,7 +878,8 @@ async def my_notifications_handler(update: Update, context):
         cursor = conn.cursor()
         
         cursor.execute('''
-            SELECT * FROM smart_notifications 
+            SELECT id, title, message, priority, is_read, created_at 
+            FROM smart_notifications 
             WHERE user_id = ? 
             ORDER BY created_at DESC 
             LIMIT 10
@@ -1540,7 +1585,12 @@ async def manage_networks_handler(update: Update, context):
         # Get user's networks
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT * FROM networks WHERE supplier_id = ? ORDER BY id DESC', (user['id'],))
+        cursor.execute('''
+            SELECT id, name, provider, city, location, is_active, is_approved, created_at 
+            FROM networks 
+            WHERE supplier_id = ? 
+            ORDER BY id DESC
+        ''', (user['id'],))
         networks = cursor.fetchall()
         conn.close()
         
@@ -1923,55 +1973,14 @@ async def supplier_settings_handler(update: Update, context):
         await query.edit_message_text(ErrorMessages.supplier_error("عرض الإعدادات"))
 
 async def help_handler(update: Update, context):
-    """Show help information"""
+    """Show interactive help system"""
     try:
-        query = update.callback_query if update.callback_query else None
+        await interactive_help.show_help_menu(update, context)
+        return
         
-        help_text = f"""
-❓ **المساعدة والدعم** ❓
-
-🤖 **بوت كروت الإنترنت اليمني المطور**
-📱 النسخة: 2.1.0 Enhanced
-
-🔥 **الميزات الجديدة:**
-• 💳 محفظة إلكترونية متطورة
-• 📊 تقارير شخصية تفصيلية  
-• ⭐ نظام تقييمات ومراجعات
-• 🔔 إشعارات ذكية مخصصة
-• 🎁 نظام عروض وخصومات
-• 🔒 أمان محسّن ومشفر
-
-📋 **الأوامر الأساسية:**
-/start - البداية والقائمة الرئيسية
-/wallet - المحفظة المطورة
-/menu - القائمة السريعة
-/admin - لوحة الإدارة (للمشرفين)
-/cancel - إلغاء العملية الحالية
-
-📞 **للدعم الفني:**
-تواصل مع الإدارة عبر البوت
-
-🔄 **آخر تحديث:** {datetime.now().strftime('%Y-%m-%d')}
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton(f'📖 دليل الاستخدام', callback_data='user_guide'),
-             InlineKeyboardButton(f'🛠️ الإبلاغ عن مشكلة', callback_data='report_issue')],
-            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
-        ]
-        
-        if query:
-            await query.edit_message_text(help_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        else:
-            await update.message.reply_text(help_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-            
     except Exception as e:
         logger.error(f"Error in help handler: {e}")
-        error_text = menu_error("صفحة المساعدة", "عرض المساعدة")
-        if update.callback_query:
-            await update.callback_query.edit_message_text(error_text)
-        else:
-            await update.message.reply_text(error_text)
+        await smart_error_handler.handle_error(e, update, context, "عرض المساعدة")
 
 async def handle_document(update: Update, context: CallbackContext):
     """Handle uploaded documents for simplified card upload - TXT only"""
@@ -4635,6 +4644,43 @@ def main():
         except Exception as e:
             raise BotConfigurationError(f"Database configuration error: {e}")
         
+        # Start backup system
+        logger.info("Starting backup system...")
+        try:
+            backup_manager.start_scheduler()
+            # Create initial backup
+            initial_backup = backup_manager.create_backup("startup")
+            if initial_backup:
+                logger.info(f"Initial backup created: {initial_backup}")
+            else:
+                logger.warning("Failed to create initial backup")
+        except Exception as e:
+            logger.error(f"Failed to start backup system: {e}")
+            # Don't fail bot startup for backup issues
+        
+        # Start balance verification system
+        logger.info("Starting balance verification system...")
+        try:
+            balance_verifier.start_scheduler()
+            # Run initial verification
+            initial_verification = balance_verifier.run_quick_verification()
+            if initial_verification.get('issues_found'):
+                logger.warning(f"Initial verification found {len(initial_verification['issues_found'])} issues")
+            else:
+                logger.info("Initial balance verification passed")
+        except Exception as e:
+            logger.error(f"Failed to start balance verification: {e}")
+            # Don't fail bot startup for verification issues
+        
+        # Optimize database
+        logger.info("Optimizing database...")
+        try:
+            query_optimizer.optimize_database()
+            logger.info("Database optimization completed")
+        except Exception as e:
+            logger.error(f"Database optimization failed: {e}")
+            # Don't fail bot startup for optimization issues
+        
         # Validate configuration
         if not BOT_TOKEN:
             raise BotConfigurationError("BOT_TOKEN is not configured")
@@ -4675,6 +4721,7 @@ def main():
                 CommandHandler('menu', lambda u, c: show_main_menu(u, c, get_user(u.effective_user.id)['role'] if get_user(u.effective_user.id) else 'customer')),
                 CommandHandler('wallet', COMMAND_HANDLERS['wallet']),
                 CommandHandler('admin', COMMAND_HANDLERS['admin']),
+                CommandHandler('help', help_handler),
             ],
             states=CONVERSATION_STATES,
             fallbacks=[
@@ -5347,13 +5394,12 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
         context.user_data['purchase_processing'] = True
         
         # الحصول على معلومات الشبكة
+        # استخدام النظام الآمن للمعاملات المالية
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # بدء معاملة قاعدة البيانات
-        cursor.execute('BEGIN TRANSACTION')
-        
         try:
+            # التحقق من الشبكة والبطاقة المتاحة
             cursor.execute('SELECT name, provider, supplier_id FROM networks WHERE id = ? AND is_active = 1', (network_id,))
             network = cursor.fetchone()
             
@@ -5363,9 +5409,9 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             network_name, provider, supplier_id = network
             card_price = float(price)
             
-            # التحقق من توفر الكرت (مع قفل للصف لتجنب التضارب)
+            # التحقق من توفر الكرت مع قفل للصف
             cursor.execute('''
-                SELECT id FROM network_cards 
+                SELECT id, card_code FROM network_cards 
                 WHERE network_id = ? AND card_value = ? AND is_sold = 0
                 LIMIT 1
             ''', (network_id, card_price))
@@ -5374,43 +5420,35 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             if not card_result:
                 raise Exception(f"لا توجد كروت متاحة بقيمة {card_price:,.0f} ريال")
             
-            card_id = card_result[0]
+            card_id, card_code = card_result
             
-            # التحقق من الرصيد مرة أخرى
-            cursor.execute('SELECT balance FROM users WHERE telegram_id = ?', (user['telegram_id'],))
-            current_balance = cursor.fetchone()[0]
-            
-            if current_balance < card_price:
-                raise Exception(f"رصيدك ({current_balance:,.2f} ريال) غير كافي")
-            
-            # تحديث حالة الكرت إلى مباع
-            cursor.execute('UPDATE network_cards SET is_sold = 1, sold_at = datetime("now") WHERE id = ?', (card_id,))
-            
-            # خصم المبلغ من رصيد المشتري
-            cursor.execute('UPDATE users SET balance = balance - ? WHERE telegram_id = ?', (card_price, user['telegram_id']))
-            
-            # إضافة المبلغ لرصيد المزود
-            cursor.execute('UPDATE users SET balance = balance + ? WHERE id = ?', (card_price, supplier_id))
-            
-            # إنشاء معاملة في السجل
+            # استخدام المعاملة الآمنة لتحديث الأرصدة
             import uuid
             transaction_id = str(uuid.uuid4())
             
+            # تحويل آمن من المشتري إلى المورد
+            transfer_result = transaction_manager.safe_transfer(
+                from_user_id=user['id'],
+                to_user_id=supplier_id,
+                amount=card_price,
+                description=f"شراء كرت {card_price:,.0f} ريال من شبكة {network_name}",
+                reference_id=transaction_id
+            )
+            
+            # تحديث حالة البطاقة بعد نجاح التحويل
+            cursor.execute('UPDATE network_cards SET is_sold = 1, sold_at = datetime("now") WHERE id = ?', (card_id,))
+            
+            # تسجيل المعاملة في جدول المعاملات
             cursor.execute('''
                 INSERT INTO transactions (id, from_user, to_user, amount, type, description, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, datetime("now"))
             ''', (transaction_id, user['id'], supplier_id, card_price, 'card_purchase', 
                   f"شراء كرت {card_price:,.0f} ريال من شبكة {network_name}"))
             
-            # الحصول على معلومات الكرت
-            cursor.execute('SELECT card_code FROM network_cards WHERE id = ?', (card_id,))
-            card_code = cursor.fetchone()[0]
-            
             # تسجيل القيد المحاسبي لشراء الكرت
             record_purchase_accounting(card_price, user['id'], transaction_id)
             
-            # تأكيد المعاملة
-            cursor.execute('COMMIT')
+            conn.commit()
             
             # عرض نتيجة الشراء الناجح
             success_text = f"""

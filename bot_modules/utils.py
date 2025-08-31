@@ -65,11 +65,27 @@ def decrypt_data(encrypted_data: str) -> str:
 
 # User management utilities
 def get_user(telegram_id: int):
-    """Get user by telegram ID"""
+    """Get user by telegram ID with caching support"""
     try:
+        # محاولة الحصول من التخزين المؤقت أولاً
+        try:
+            from bot_modules.cache_manager import cached_db_ops
+            cached_user = cached_db_ops.get_user_by_telegram_id(telegram_id)
+            if cached_user:
+                return cached_user
+        except ImportError:
+            # التخزين المؤقت غير متاح، استخدم قاعدة البيانات مباشرة
+            pass
+        
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT * FROM users WHERE telegram_id = ?', (telegram_id,))
+        cursor.execute('''
+            SELECT id, telegram_id, full_name, phone, role, balance, 
+                   is_active, total_purchases, total_spent, created_at, 
+                   last_activity, invite_code, wallet_number, referred_by
+            FROM users 
+            WHERE telegram_id = ?
+        ''', (telegram_id,))
         user = cursor.fetchone()
         conn.close()
         return user

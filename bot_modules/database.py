@@ -14,14 +14,18 @@ from bot_modules.config import *
 logger = logging.getLogger(__name__)
 
 def get_db_connection():
-    """Get database connection with error handling"""
+    """Get database connection with error handling and optimized settings"""
     try:
         conn = sqlite3.connect(DB_PATH, timeout=30.0)
+        # Enable foreign key constraints
         conn.execute('PRAGMA foreign_keys = ON')
+        # Optimize database settings
         conn.execute('PRAGMA journal_mode = WAL')
         conn.execute('PRAGMA synchronous = NORMAL')
-        conn.execute('PRAGMA cache_size = 1000')
+        conn.execute('PRAGMA cache_size = 2000')  # Increased cache
         conn.execute('PRAGMA temp_store = memory')
+        conn.execute('PRAGMA mmap_size = 268435456')  # 256MB memory mapping
+        conn.execute('PRAGMA page_size = 4096')  # Optimal page size
         conn.row_factory = sqlite3.Row
         return conn
     except Exception as e:
@@ -34,26 +38,27 @@ def init_db():
     cursor = conn.cursor()
 
     try:
-        # Users table with enhanced fields
+        # Users table with enhanced fields and constraints
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                telegram_id INTEGER UNIQUE NOT NULL,
-                full_name TEXT NOT NULL,
-                phone TEXT UNIQUE NOT NULL,
-                role TEXT NOT NULL DEFAULT 'customer',
-                balance REAL DEFAULT 0.0,
+                telegram_id INTEGER UNIQUE NOT NULL CHECK(telegram_id > 0),
+                full_name TEXT NOT NULL CHECK(length(full_name) >= 2),
+                phone TEXT UNIQUE NOT NULL CHECK(length(phone) >= 9),
+                role TEXT NOT NULL DEFAULT 'customer' CHECK(role IN ('customer', 'supplier', 'agent', 'admin', 'super_admin')),
+                balance REAL DEFAULT 0.0 CHECK(balance >= 0),
                 invite_code TEXT UNIQUE,
-                is_active BOOLEAN DEFAULT 0,
+                is_active BOOLEAN DEFAULT 0 CHECK(is_active IN (0, 1)),
                 bank_account TEXT,
-                total_referrals INTEGER DEFAULT 0,
-                total_purchases INTEGER DEFAULT 0,
-                total_spent REAL DEFAULT 0.0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                total_referrals INTEGER DEFAULT 0 CHECK(total_referrals >= 0),
+                total_purchases INTEGER DEFAULT 0 CHECK(total_purchases >= 0),
+                total_spent REAL DEFAULT 0.0 CHECK(total_spent >= 0),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
                 referred_by INTEGER,
                 wallet_number TEXT UNIQUE,
-                FOREIGN KEY(referred_by) REFERENCES users(id)
+                FOREIGN KEY(referred_by) REFERENCES users(id) ON DELETE SET NULL,
+                CONSTRAINT chk_balance_spent CHECK(total_spent >= 0 AND balance >= 0)
             )
         ''')
 
