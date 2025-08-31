@@ -3729,7 +3729,7 @@ async def personal_reports_handler(update: Update, context: CallbackContext):
 
 👤 **{user['full_name']}**
 💰 **الرصيد الحالي:** {user['balance']:,.2f} ريال
-💳 **رقم المحفظة:** {user['wallet_number']}
+💳 **رقم المحفظة:** {user.get('wallet_number', 'غير محدد')}
 
 📈 **إحصائيات شاملة:**
 
@@ -3949,7 +3949,7 @@ async def account_settings_handler(update: Update, context: CallbackContext):
 ⚙️ **إعدادات الحساب** ⚙️
 
 👤 **{user['full_name']}**
-💳 **رقم المحفظة:** {user['wallet_number']}
+💳 **رقم المحفظة:** {user.get('wallet_number', 'غير محدد')}
 📱 **رقم الهاتف:** {user['phone'] if user['phone'] else 'غير محدد'}
 🆔 **معرف تلغرام:** {user['telegram_id']}
 👑 **نوع الحساب:** {role_names.get(user['role'], 'عميل')}
@@ -4093,7 +4093,7 @@ async def update_profile_handler(update: Update, context: CallbackContext):
 👤 **البيانات الحالية:**
 📝 الاسم: **{user['full_name']}**
 📱 الهاتف: **{user['phone'] if user['phone'] else 'غير محدد'}**
-💳 رقم المحفظة: **{user['wallet_number']}**
+💳 رقم المحفظة: **{user.get('wallet_number', 'غير محدد')}**
 🆔 معرف تلغرام: **{user['telegram_id']}**
 
 ✏️ **يمكنك تحديث:**
@@ -4179,7 +4179,7 @@ async def view_full_profile_handler(update: Update, context: CallbackContext):
 👤 **المعلومات الأساسية:**
 📝 الاسم: **{user['full_name']}**
 📱 الهاتف: **{user['phone'] if user['phone'] else 'غير محدد'}**
-💳 رقم المحفظة: **{user['wallet_number']}**
+💳 رقم المحفظة: **{user.get('wallet_number', 'غير محدد')}**
 🆔 معرف تلغرام: **{user['telegram_id']}**
 🎭 الدور: **{USER_ROLES.get(user['role'], user['role'])}**
 🟢 الحالة: **{'نشط' if user['is_active'] else 'غير نشط'}**
@@ -4276,7 +4276,7 @@ async def contact_admin_handler(update: Update, context: CallbackContext):
 📞 **التواصل مع الإدارة** 📞
 
 👤 **{user['full_name']}**
-💳 رقم محفظتك: **{user['wallet_number']}**
+💳 رقم محفظتك: **{user.get('wallet_number', 'غير محدد')}**
 
 📱 **طرق التواصل المتاحة:**
 
@@ -4369,7 +4369,7 @@ async def account_status_handler(update: Update, context: CallbackContext):
 📊 **حالة الحساب** 📊
 
 👤 **{user['full_name']}**
-💳 **رقم المحفظة:** {user['wallet_number']}
+💳 **رقم المحفظة:** {user.get('wallet_number', 'غير محدد')}
 
 {activity_color} **مستوى النشاط:** {activity_level}
 
@@ -4429,7 +4429,7 @@ async def recharge_balance_handler(update: Update, context: CallbackContext):
 💰 **شحن الرصيد** 💰
 
 👤 مرحباً **{user['full_name']}**
-💳 رقم محفظتك: **{user['wallet_number']}**
+💳 رقم محفظتك: **{user.get('wallet_number', 'غير محدد')}**
 💰 رصيدك الحالي: **{user['balance']:,.2f}** ريال
 
 📝 **طرق الشحن المتاحة:**
@@ -4441,7 +4441,7 @@ async def recharge_balance_handler(update: Update, context: CallbackContext):
 
 🏪 **2. شحن عبر الوكلاء:**
    • اذهب لأقرب وكيل معتمد
-   • أعطه رقم محفظتك: **{user['wallet_number']}**
+   • أعطه رقم محفظتك: **{user.get('wallet_number', 'غير محدد')}**
    • سيقوم بشحن حسابك مباشرة
 
 📞 **3. التواصل مع الدعم:**
@@ -4995,7 +4995,7 @@ async def show_wallet_page(update: Update, context: CallbackContext, user: dict,
 
 👤 **{user['full_name']}**
 💰 **الرصيد:** {user['balance']:,.2f} ريال
-💳 **رقم المحفظة:** {user['wallet_number']}
+💳 **رقم المحفظة:** {user.get('wallet_number', 'غير محدد')}
 
 📊 **إحصائيات المحفظة:**
 📤 المرسل: **{sent_amount:,.2f}** ريال ({total_count} معاملة)

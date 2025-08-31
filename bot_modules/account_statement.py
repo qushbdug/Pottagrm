@@ -49,16 +49,28 @@ class AccountStatementGenerator:
         """عرض خيارات كشف الحساب"""
         try:
             query = update.callback_query
-            await query.answer()
+            if query:
+                await query.answer()
+                user_id = query.from_user.id
+            else:
+                user_id = update.effective_user.id
             
-            user = get_user(query.from_user.id)
+            user = get_user(user_id)
             if not user:
-                await query.edit_message_text(f"{EMOJIS['error']} لم يتم العثور على بيانات المستخدم.")
+                error_msg = f"{EMOJIS['error']} لم يتم العثور على بيانات المستخدم."
+                if query:
+                    await query.edit_message_text(error_msg)
+                else:
+                    await update.message.reply_text(error_msg)
                 return
             
             # التحقق من أن المستخدم عميل أو مزود
             if user['role'] not in ['customer', 'supplier']:
-                await query.edit_message_text(f"{EMOJIS['error']} هذه الميزة متاحة للعملاء والمزودين فقط.")
+                error_msg = f"{EMOJIS['error']} هذه الميزة متاحة للعملاء والمزودين فقط."
+                if query:
+                    await query.edit_message_text(error_msg)
+                else:
+                    await update.message.reply_text(error_msg)
                 return
             
             statement_text = f"""
@@ -98,15 +110,29 @@ class AccountStatementGenerator:
                 [InlineKeyboardButton('🏠 العودة للقائمة الرئيسية', callback_data='main_menu')]
             ]
             
-            await query.edit_message_text(
-                statement_text, 
-                reply_markup=InlineKeyboardMarkup(keyboard), 
-                parse_mode='Markdown'
-            )
+            if query:
+                await query.edit_message_text(
+                    statement_text, 
+                    reply_markup=InlineKeyboardMarkup(keyboard), 
+                    parse_mode='Markdown'
+                )
+            else:
+                await update.message.reply_text(
+                    statement_text, 
+                    reply_markup=InlineKeyboardMarkup(keyboard), 
+                    parse_mode='Markdown'
+                )
             
         except Exception as e:
             logger.error(f"Error showing statement options: {e}")
-            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض خيارات كشف الحساب.")
+            error_msg = f"{EMOJIS['error']} حدث خطأ في عرض خيارات كشف الحساب."
+            try:
+                if query:
+                    await query.edit_message_text(error_msg)
+                else:
+                    await update.message.reply_text(error_msg)
+            except:
+                pass  # تجنب أخطاء إضافية
 
     @staticmethod
     def get_user_transactions(user_id: int, days: Optional[int] = None):

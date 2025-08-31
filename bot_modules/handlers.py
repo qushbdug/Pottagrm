@@ -307,7 +307,7 @@ async def show_main_menu(update: Update, context: CallbackContext, role: str) ->
 👤 أهلاً وسهلاً **{user['full_name']}**
 🏷️ النوع: **{USER_ROLES.get(role, role)}**
 💰 رصيدك: **{user['balance']:,.2f}** ريال
-💳 رقم محفظتك: **{user['wallet_number']}**
+💳 رقم محفظتك: **{user.get('wallet_number', 'غير محدد')}**
 ⚡ الحالة: **{"✅ مفعل" if user['is_active'] else "⏳ في انتظار التفعيل"}**
 
 🎯 **اختر العملية المطلوبة:**
@@ -438,7 +438,7 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
 
 💰 **الرصيد والإحصائيات:**
 💵 الرصيد المتاح: **{available_balance:,.2f}** ريال
-🆔 رقم المحفظة: **{user['wallet_number']}**
+🆔 رقم المحفظة: **{user.get('wallet_number', 'غير محدد')}**
 📊 معدل الادخار: **{savings_rate:.1f}%**
 
 📈 **ملخص المعاملات:**
@@ -918,7 +918,7 @@ async def process_transfer_step1(update: Update, context: CallbackContext):
         # Save target user info and move to step 2
         context.user_data['target_user_id'] = target_user['id']
         context.user_data['target_user_name'] = target_user['full_name']
-        context.user_data['target_wallet'] = target_user['wallet_number'] if 'wallet_number' in target_user.keys() else 'غير محدد'
+        context.user_data['target_wallet'] = target_user.get('wallet_number', 'غير محدد')
         context.user_data.pop('awaiting_transfer_step1', None)
         context.user_data['awaiting_transfer_step2'] = True
         
@@ -926,7 +926,7 @@ async def process_transfer_step1(update: Update, context: CallbackContext):
 ✅ **تم العثور على المستخدم!**
 
 👤 **المستلم:** {target_user['full_name']}
-🆔 **رقم المحفظة:** {target_user['wallet_number'] if 'wallet_number' in target_user.keys() else 'غير محدد'}
+🆔 **رقم المحفظة:** {target_user.get('wallet_number', 'غير محدد')}
 📱 **رقم الهاتف:** {target_user['phone']}
 
 💰 **رصيدك الحالي:** {user['balance']:,.2f} ريال
@@ -1453,7 +1453,7 @@ async def help_handler(update: Update, context: CallbackContext):
 ❓ **المساعدة والدعم** ❓
 
 👤 مرحباً **{user['full_name']}**
-🆔 رقم محفظتك: **{user['wallet_number']}**
+🆔 رقم محفظتك: **{user.get('wallet_number', 'غير محدد')}**
 
 📋 **الأوامر الأساسية:**
 • `/start` - بدء أو إعادة تشغيل البوت
