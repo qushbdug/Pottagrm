@@ -389,5 +389,397 @@ class CustomerManagement:
             logger.error(f"Error in customer analytics: {e}")
             await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في التحليلات.")
 
+    @staticmethod
+    async def list_customers(update: Update, context: CallbackContext):
+        """عرض قائمة العملاء"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            user = get_user(query.from_user.id)
+            if not user or user['role'] not in ['admin', 'super_admin']:
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+                return
+            
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # الحصول على قائمة العملاء
+            cursor.execute('''
+                SELECT id, full_name, phone, balance, is_active, created_at,
+                       (SELECT COUNT(*) FROM transactions WHERE from_user = u.id OR to_user = u.id) as transaction_count
+                FROM users u
+                WHERE role = 'customer'
+                ORDER BY balance DESC, transaction_count DESC
+                LIMIT 20
+            ''')
+            
+            customers = cursor.fetchall()
+            conn.close()
+            
+            list_text = f"""
+📋 **قائمة العملاء** 📋
+
+👑 **المشرف:** {user['full_name']}
+
+👥 **أفضل 20 عميل:**
+
+"""
+            
+            if customers:
+                for i, customer in enumerate(customers, 1):
+                    status = "✅ نشط" if customer[4] else "⏸️ غير نشط"
+                    list_text += f"""
+{i}️⃣ **{customer[1]}**
+📱 {customer[2]} | 💰 {customer[3]:,.2f} ريال
+📊 {customer[6]} معاملة | {status}
+━━━━━━━━━━━━━━━━━━━
+"""
+            else:
+                list_text += "❌ لا توجد عملاء مسجلين"
+            
+            keyboard = [
+                [InlineKeyboardButton('🔍 البحث عن عميل', callback_data='customer_search'),
+                 InlineKeyboardButton('📊 إحصائيات العملاء', callback_data='customer_analytics')],
+                [InlineKeyboardButton('🔙 العودة لإدارة العملاء', callback_data='customer_dashboard')]
+            ]
+            
+            await query.edit_message_text(
+                list_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Error listing customers: {e}")
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض قائمة العملاء.")
+
+    @staticmethod
+    async def customer_reports(update: Update, context: CallbackContext):
+        """تقارير العملاء المفصلة"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            user = get_user(query.from_user.id)
+            if not user or user['role'] not in ['admin', 'super_admin']:
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+                return
+            
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # إحصائيات شاملة للعملاء
+            cursor.execute('''
+                SELECT 
+                    COUNT(*) as total_customers,
+                    COUNT(CASE WHEN is_active = 1 THEN 1 END) as active_customers,
+                    SUM(balance) as total_balance,
+                    AVG(balance) as avg_balance
+                FROM users 
+                WHERE role = 'customer'
+            ''')
+            
+            stats = cursor.fetchone()
+            
+            # أكثر العملاء نشاطاً
+            cursor.execute('''
+                SELECT u.full_name, COUNT(t.id) as transactions, SUM(t.amount) as total_amount
+                FROM users u
+                LEFT JOIN transactions t ON (u.id = t.from_user OR u.id = t.to_user)
+                WHERE u.role = 'customer'
+                GROUP BY u.id, u.full_name
+                ORDER BY transactions DESC, total_amount DESC
+                LIMIT 5
+            ''')
+            
+            top_active = cursor.fetchall()
+            conn.close()
+            
+            reports_text = f"""
+📊 **تقارير العملاء المفصلة** 📊
+
+👑 **المشرف:** {user['full_name']}
+
+📈 **إحصائيات عامة:**
+👥 إجمالي العملاء: **{stats[0]:,}**
+✅ العملاء النشطين: **{stats[1]:,}**
+💰 إجمالي الأرصدة: **{stats[2] or 0:,.2f}** ريال
+📊 متوسط الرصيد: **{stats[3] or 0:,.2f}** ريال
+
+🏆 **أكثر العملاء نشاطاً:**
+"""
+            
+            if top_active:
+                for i, customer in enumerate(top_active, 1):
+                    reports_text += f"{i}️⃣ **{customer[0]}**: {customer[1] or 0} معاملة ({customer[2] or 0:,.2f} ريال)\n"
+            else:
+                reports_text += "❌ لا توجد بيانات نشاط"
+            
+            keyboard = [
+                [InlineKeyboardButton('📋 قائمة العملاء', callback_data='customer_list'),
+                 InlineKeyboardButton('📈 إحصائيات متقدمة', callback_data='customer_analytics')],
+                [InlineKeyboardButton('💾 تصدير التقرير', callback_data='export_customers'),
+                 InlineKeyboardButton('🔙 العودة', callback_data='customer_dashboard')]
+            ]
+            
+            await query.edit_message_text(
+                reports_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in customer reports: {e}")
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تقارير العملاء.")
+
+    @staticmethod
+    async def balance_management(update: Update, context: CallbackContext):
+        """إدارة أرصدة العملاء"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            user = get_user(query.from_user.id)
+            if not user or user['role'] not in ['admin', 'super_admin']:
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+                return
+            
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # العملاء حسب الرصيد
+            cursor.execute('''
+                SELECT full_name, phone, balance, wallet_number
+                FROM users 
+                WHERE role = 'customer' AND balance != 0
+                ORDER BY balance DESC
+                LIMIT 15
+            ''')
+            
+            customers_balance = cursor.fetchall()
+            conn.close()
+            
+            balance_text = f"""
+💰 **إدارة أرصدة العملاء** 💰
+
+👑 **المشرف:** {user['full_name']}
+
+💵 **العملاء حسب الرصيد:**
+
+"""
+            
+            if customers_balance:
+                for i, customer in enumerate(customers_balance, 1):
+                    balance_color = "🟢" if customer[2] > 0 else "🔴" if customer[2] < 0 else "⚪"
+                    balance_text += f"""
+{i}️⃣ **{customer[0]}**
+📱 {customer[1]} | 💳 {customer[3]}
+{balance_color} **{customer[2]:,.2f}** ريال
+━━━━━━━━━━━━━━━━━━━
+"""
+            else:
+                balance_text += "❌ لا توجد أرصدة للعرض"
+            
+            keyboard = [
+                [InlineKeyboardButton('💸 تحويل رصيد لعميل', callback_data='admin_send_money'),
+                 InlineKeyboardButton('🔄 إعادة حساب الأرصدة', callback_data='fix_missing_entries')],
+                [InlineKeyboardButton('📊 تقرير الأرصدة', callback_data='customer_reports'),
+                 InlineKeyboardButton('🔙 العودة', callback_data='customer_dashboard')]
+            ]
+            
+            await query.edit_message_text(
+                balance_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in balance management: {e}")
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إدارة الأرصدة.")
+
+    @staticmethod
+    async def banned_customers(update: Update, context: CallbackContext):
+        """العملاء المحظورون"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            user = get_user(query.from_user.id)
+            if not user or user['role'] not in ['admin', 'super_admin']:
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+                return
+            
+            banned_text = f"""
+🚫 **إدارة العملاء المحظورين** 🚫
+
+👑 **المشرف:** {user['full_name']}
+
+⚠️ **حالياً:**
+لا يوجد نظام حظر مفعل في البوت
+
+🛡️ **الميزات المتاحة:**
+• جميع العملاء نشطين افتراضياً
+• يمكن إلغاء تفعيل العملاء يدوياً
+• نظام المراقبة والتتبع متاح
+
+💡 **للمساعدة في إدارة العملاء:**
+استخدم قائمة العملاء والبحث المتقدم
+"""
+            
+            keyboard = [
+                [InlineKeyboardButton('👥 قائمة العملاء', callback_data='customer_list'),
+                 InlineKeyboardButton('🔍 البحث عن عميل', callback_data='customer_search')],
+                [InlineKeyboardButton('🔙 العودة لإدارة العملاء', callback_data='customer_dashboard')]
+            ]
+            
+            await query.edit_message_text(
+                banned_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in banned customers: {e}")
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إدارة العملاء المحظورين.")
+
+    @staticmethod
+    async def customer_support(update: Update, context: CallbackContext):
+        """دعم العملاء"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            user = get_user(query.from_user.id)
+            if not user or user['role'] not in ['admin', 'super_admin']:
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+                return
+            
+            support_text = f"""
+📞 **دعم العملاء** 📞
+
+👑 **المشرف:** {user['full_name']}
+
+🎯 **أدوات الدعم المتاحة:**
+
+📋 **معلومات العملاء:**
+• البحث السريع عن عميل
+• عرض تفاصيل الحساب
+• سجل المعاملات
+
+💰 **المساعدة المالية:**
+• إدارة الأرصدة
+• حل مشاكل التحويلات
+• استرداد المبالغ
+
+📊 **التقارير والإحصائيات:**
+• تقارير نشاط العميل
+• إحصائيات الاستخدام
+• تحليل السلوك
+
+🛠️ **أدوات الإدارة:**
+• إعادة حساب الأرصدة
+• تصحيح البيانات
+• إدارة الصلاحيات
+"""
+            
+            keyboard = [
+                [InlineKeyboardButton('🔍 البحث عن عميل', callback_data='customer_search'),
+                 InlineKeyboardButton('💰 إدارة الأرصدة', callback_data='customer_balance_mgmt')],
+                [InlineKeyboardButton('📊 تقارير العملاء', callback_data='customer_reports'),
+                 InlineKeyboardButton('📋 قائمة العملاء', callback_data='customer_list')],
+                [InlineKeyboardButton('🔙 العودة لإدارة العملاء', callback_data='customer_dashboard')]
+            ]
+            
+            await query.edit_message_text(
+                support_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in customer support: {e}")
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في دعم العملاء.")
+
+    @staticmethod
+    async def customer_incentives(update: Update, context: CallbackContext):
+        """حوافز العملاء"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            user = get_user(query.from_user.id)
+            if not user or user['role'] not in ['admin', 'super_admin']:
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+                return
+            
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # أفضل العملاء للحوافز
+            cursor.execute('''
+                SELECT u.full_name, u.phone, u.balance,
+                       COUNT(t.id) as transactions,
+                       SUM(CASE WHEN t.type = 'card_purchase' THEN t.amount ELSE 0 END) as purchases
+                FROM users u
+                LEFT JOIN transactions t ON (u.id = t.from_user OR u.id = t.to_user)
+                WHERE u.role = 'customer' AND u.is_active = 1
+                GROUP BY u.id
+                HAVING transactions > 0
+                ORDER BY purchases DESC, transactions DESC
+                LIMIT 10
+            ''')
+            
+            top_customers = cursor.fetchall()
+            conn.close()
+            
+            incentives_text = f"""
+🎁 **حوافز العملاء** 🎁
+
+👑 **المشرف:** {user['full_name']}
+
+🏆 **العملاء المستحقون للحوافز:**
+
+"""
+            
+            if top_customers:
+                for i, customer in enumerate(top_customers, 1):
+                    incentive_level = "🥇 ذهبي" if customer[4] > 500 else "🥈 فضي" if customer[4] > 100 else "🥉 برونزي"
+                    incentives_text += f"""
+{i}️⃣ **{customer[0]}** {incentive_level}
+📱 {customer[1]} | 💰 {customer[2]:,.2f} ريال
+📊 {customer[3]} معاملة | 🛒 {customer[4]:,.2f} ريال مشتريات
+━━━━━━━━━━━━━━━━━━━
+"""
+            else:
+                incentives_text += "❌ لا توجد بيانات للحوافز"
+            
+            incentives_text += f"""
+
+🎯 **أنواع الحوافز المقترحة:**
+🥇 **ذهبي:** خصم 10% + كوبون 50 ريال
+🥈 **فضي:** خصم 5% + كوبون 25 ريال  
+🥉 **برونزي:** كوبون 10 ريال
+
+💡 **لتفعيل الحوافز:** استخدم نظام إنشاء الكوبونات
+"""
+            
+            keyboard = [
+                [InlineKeyboardButton('🎟️ إنشاء كوبونات', callback_data='super_create_coupons'),
+                 InlineKeyboardButton('💸 تحويل رصيد', callback_data='admin_send_money')],
+                [InlineKeyboardButton('📊 تقارير العملاء', callback_data='customer_reports'),
+                 InlineKeyboardButton('🔙 العودة', callback_data='customer_dashboard')]
+            ]
+            
+            await query.edit_message_text(
+                incentives_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in customer incentives: {e}")
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في حوافز العملاء.")
+
 # إضافة الدوال للاستيراد
 __all__ = ['CustomerManagement']

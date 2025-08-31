@@ -345,8 +345,20 @@ async def button_click_handler(update: Update, context):
             return await CustomerManagement.get_customer_dashboard(update, context)
         elif callback_data == 'customer_search':
             return await CustomerManagement.search_customers(update, context)
+        elif callback_data == 'customer_list':
+            return await CustomerManagement.list_customers(update, context)
+        elif callback_data == 'customer_reports':
+            return await CustomerManagement.customer_reports(update, context)
+        elif callback_data == 'customer_balance_mgmt':
+            return await CustomerManagement.balance_management(update, context)
+        elif callback_data == 'customer_banned':
+            return await CustomerManagement.banned_customers(update, context)
         elif callback_data == 'customer_analytics':
             return await CustomerManagement.get_customer_analytics(update, context)
+        elif callback_data == 'customer_support':
+            return await CustomerManagement.customer_support(update, context)
+        elif callback_data == 'customer_incentives':
+            return await CustomerManagement.customer_incentives(update, context)
         elif callback_data.startswith('customer_profile_'):
             customer_id = int(callback_data.split('_')[2])
             return await CustomerManagement.show_customer_profile(update, context, customer_id)
