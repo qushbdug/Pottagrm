@@ -2606,8 +2606,9 @@ ADMIN_CALLBACKS.update({
 
     'admin_add_offers': lambda u, c: admin_add_offers_handler(u, c),
     'accounting_system': lambda u, c: accounting_system_handler(u, c),
-    'download_statements': lambda u, c: download_statements_handler(u, c),
+    'fix_missing_entries': lambda u, c: fix_missing_entries_handler(u, c),
     'trial_balance': lambda u, c: trial_balance_handler(u, c),
+    'download_statements': lambda u, c: download_statements_handler(u, c),
     'income_statement': lambda u, c: income_statement_handler(u, c),
     'balance_sheet': lambda u, c: balance_sheet_handler(u, c),
     'general_ledger': lambda u, c: general_ledger_handler(u, c),
@@ -2892,6 +2893,8 @@ async def accounting_system_handler(update: Update, context: CallbackContext):
              InlineKeyboardButton('📄 تقارير مخصصة', callback_data='accounting_custom')],
             [InlineKeyboardButton('💾 تصدير البيانات', callback_data='accounting_export'),
              InlineKeyboardButton('🔍 بحث في السجلات', callback_data='accounting_search')],
+            [InlineKeyboardButton('🔧 إصلاح القيود المفقودة', callback_data='fix_missing_entries'),
+             InlineKeyboardButton('⚖️ ميزان المراجعة', callback_data='trial_balance')],
             [InlineKeyboardButton('🔙 العودة للوحة الإدارة', callback_data='super_admin_panel')]
         ]
         
@@ -2904,6 +2907,134 @@ async def accounting_system_handler(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in accounting system handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في النظام المحاسبي.")
+
+async def fix_missing_entries_handler(update: Update, context: CallbackContext):
+    """إصلاح القيود المحاسبية المفقودة"""
+    try:
+        query = update.callback_query
+        await query.answer("🔧 جاري إصلاح القيود المفقودة...")
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} هذه العملية مقتصرة على المشرف الأعلى.")
+            return
+        
+        # استيراد محرك المحاسبة
+        from accounting_engine import AccountingEngine
+        
+        # ملء القيود المفقودة
+        success_count, total_missing = AccountingEngine.backfill_missing_entries()
+        
+        # التحقق من توازن الميزان بعد الإصلاح
+        balance_check = AccountingEngine.verify_balance_integrity()
+        
+        fix_text = f"""
+🔧 **تقرير إصلاح القيود المحاسبية** 🔧
+
+✅ **تم الإصلاح بنجاح!**
+
+📊 **النتائج:**
+• المعاملات المفقودة: **{total_missing}**
+• تم إصلاحها: **{success_count}**
+• نسبة النجاح: **{(success_count/max(total_missing,1)*100):.1f}%**
+
+⚖️ **حالة الميزان بعد الإصلاح:**
+• إجمالي المدين: **{balance_check['total_debit']:,.2f}** ريال
+• إجمالي الدائن: **{balance_check['total_credit']:,.2f}** ريال
+• الفرق: **{balance_check['difference']:,.2f}** ريال
+• الحالة: **{'✅ متوازن' if balance_check['is_balanced'] else '❌ غير متوازن'}**
+
+💡 **ملاحظة:** جميع المعاملات الجديدة ستُسجل تلقائياً
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('⚖️ عرض ميزان المراجعة', callback_data='trial_balance'),
+             InlineKeyboardButton('📊 التقارير المحاسبية', callback_data='accounting_system')],
+            [InlineKeyboardButton('🔙 العودة للنظام المحاسبي', callback_data='accounting_system')]
+        ]
+        
+        await query.edit_message_text(fix_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error fixing missing entries: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إصلاح القيود المفقودة.")
+
+async def trial_balance_handler(update: Update, context: CallbackContext):
+    """عرض ميزان المراجعة"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} هذه العملية مقتصرة على المشرف الأعلى.")
+            return
+        
+        # استيراد محرك المحاسبة
+        from accounting_engine import AccountingEngine
+        
+        # الحصول على ميزان المراجعة
+        accounts = AccountingEngine.get_trial_balance()
+        balance_check = AccountingEngine.verify_balance_integrity()
+        
+        trial_balance_text = f"""
+⚖️ **ميزان المراجعة** ⚖️
+
+📅 **التاريخ:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+📊 **ملخص الحسابات:**
+"""
+        
+        # تجميع الحسابات حسب النوع
+        account_types = {}
+        for account in accounts:
+            acc_type = account['account_type']
+            if acc_type not in account_types:
+                account_types[acc_type] = []
+            account_types[acc_type].append(account)
+        
+        type_names = {
+            'asset': '🏦 الأصول',
+            'liability': '💳 الخصوم', 
+            'equity': '👑 حقوق الملكية',
+            'revenue': '💰 الإيرادات',
+            'expense': '💸 المصروفات'
+        }
+        
+        total_debits = 0
+        total_credits = 0
+        
+        for acc_type, type_accounts in account_types.items():
+            if type_accounts:  # فقط إذا كان هناك حسابات
+                trial_balance_text += f"\n{type_names.get(acc_type, acc_type)}:\n"
+                for account in type_accounts:
+                    if account['total_debit'] > 0 or account['total_credit'] > 0:
+                        trial_balance_text += f"• {account['account_code']} - {account['account_name'][:25]}\n"
+                        trial_balance_text += f"  مدين: {account['total_debit']:,.2f} | دائن: {account['total_credit']:,.2f}\n"
+                        total_debits += account['total_debit']
+                        total_credits += account['total_credit']
+        
+        trial_balance_text += f"""
+
+📊 **الإجماليات:**
+📈 إجمالي المدين: **{total_debits:,.2f}** ريال
+📉 إجمالي الدائن: **{total_credits:,.2f}** ريال
+⚖️ الفرق: **{abs(total_debits - total_credits):,.2f}** ريال
+
+🎯 **حالة الميزان:** {'✅ متوازن' if balance_check['is_balanced'] else '❌ غير متوازن'}
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🔧 إصلاح القيود', callback_data='fix_missing_entries'),
+             InlineKeyboardButton('📊 تقارير مفصلة', callback_data='accounting_transactions')],
+            [InlineKeyboardButton('🔙 العودة للنظام المحاسبي', callback_data='accounting_system')]
+        ]
+        
+        await query.edit_message_text(trial_balance_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in trial balance handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض ميزان المراجعة.")
 
 # ===== معالجات التقارير المحاسبية =====
 

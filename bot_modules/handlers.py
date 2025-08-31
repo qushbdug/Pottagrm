@@ -7,6 +7,7 @@ Contains all main bot handlers and command processors
 import logging
 import random
 import sqlite3
+import uuid
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext, ConversationHandler
 from bot_modules.config import *
@@ -3199,13 +3200,18 @@ async def process_coupon_redemption(update: Update, context: CallbackContext):
         ''', (user['id'], coupon['id']))
         
         # إنشاء معاملة في سجل المعاملات
+        transaction_id = str(uuid.uuid4())
         cursor.execute('''
-            INSERT INTO transactions (from_user, to_user, amount, type, description, created_at)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ''', (None, user['id'], coupon_amount, 'coupon_redeem', f"شحن بكوبون {coupon_code}"))
+            INSERT INTO transactions (id, from_user, to_user, amount, type, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ''', (transaction_id, None, user['id'], coupon_amount, 'coupon_redeem', f"شحن بكوبون {coupon_code}"))
         
         conn.commit()
         conn.close()
+        
+        # تسجيل القيد المحاسبي لشحن الكوبون
+        from accounting_engine import record_coupon_accounting
+        record_coupon_accounting(coupon_amount, user['id'], transaction_id)
         
         # رسالة النجاح
         success_text = f"""

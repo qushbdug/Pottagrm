@@ -55,6 +55,12 @@ try:
         download_pdf_all_handler
     )
     
+    # Import accounting engine
+    from accounting_engine import (
+        AccountingEngine, record_purchase_accounting, record_transfer_accounting,
+        record_coupon_accounting, record_commission_accounting, record_money_creation_accounting
+    )
+    
     # Import admin functions
     from admin_functions import (
         ADMIN_CALLBACKS, activate_single_supplier, admin_panel_handler,
@@ -4451,6 +4457,9 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
         sender_new_balance = recalc_and_set_user_balance(user['id'])
         receiver_new_balance = recalc_and_set_user_balance(target_user['id'])
         
+        # تسجيل القيد المحاسبي للتحويل
+        record_transfer_accounting(amount, user['id'], target_user['id'], transfer_id)
+        
         conn.commit()
         conn.close()
         
@@ -5287,6 +5296,9 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             # الحصول على معلومات الكرت
             cursor.execute('SELECT card_code FROM network_cards WHERE id = ?', (card_id,))
             card_code = cursor.fetchone()[0]
+            
+            # تسجيل القيد المحاسبي لشراء الكرت
+            record_purchase_accounting(card_price, user['id'], transaction_id)
             
             # تأكيد المعاملة
             cursor.execute('COMMIT')
