@@ -758,7 +758,7 @@ async def executive_reports_handler(update: Update, context: CallbackContext):
                 COUNT(t.id) as transaction_count,
                 SUM(t.amount) as total_amount
             FROM users u
-            LEFT JOIN transactions t ON u.id = t.user_id
+            LEFT JOIN transactions t ON (u.id = t.from_user OR u.id = t.to_user)
             WHERE u.balance > 0
             GROUP BY u.id, u.full_name, u.role, u.balance
             ORDER BY u.balance DESC, total_amount DESC
@@ -768,13 +768,18 @@ async def executive_reports_handler(update: Update, context: CallbackContext):
         
         conn.close()
         
-        # حساب المعدلات والنسب المهمة
-        growth_rate_daily = (growth_stats[0] / max(growth_stats[3] - growth_stats[0], 1) * 100)
-        growth_rate_weekly = (growth_stats[1] / max(growth_stats[3] - growth_stats[1], 1) * 100)
-        growth_rate_monthly = (growth_stats[2] / max(growth_stats[3] - growth_stats[2], 1) * 100)
-        
-        avg_transaction_value = (revenue_stats[4] / max(revenue_stats[5], 1)) if revenue_stats[5] > 0 else 0
-        sales_conversion = (sales_stats[3] / max(sales_stats[2], 1) * 100) if sales_stats[2] > 0 else 0
+        # حساب المعدلات والنسب المهمة (مع حماية ضد القسمة على صفر)
+        try:
+            growth_rate_daily = (growth_stats[0] / max(growth_stats[3] - growth_stats[0], 1) * 100) if growth_stats[3] > 0 else 0
+            growth_rate_weekly = (growth_stats[1] / max(growth_stats[3] - growth_stats[1], 1) * 100) if growth_stats[3] > 0 else 0
+            growth_rate_monthly = (growth_stats[2] / max(growth_stats[3] - growth_stats[2], 1) * 100) if growth_stats[3] > 0 else 0
+            
+            avg_transaction_value = (revenue_stats[4] / max(revenue_stats[5], 1)) if revenue_stats[5] > 0 else 0
+            sales_conversion = (sales_stats[3] / max(sales_stats[2], 1) * 100) if sales_stats[2] > 0 else 0
+        except (TypeError, ZeroDivisionError, IndexError) as calc_error:
+            logger.warning(f"Calculation error in executive reports: {calc_error}")
+            growth_rate_daily = growth_rate_weekly = growth_rate_monthly = 0
+            avg_transaction_value = sales_conversion = 0
         
         from datetime import datetime
         
@@ -820,11 +825,20 @@ async def executive_reports_handler(update: Update, context: CallbackContext):
             text += f"\n   💰 متوسط الرصيد: **{role_data[2] or 0:,.2f}** ريال"
 
         text += f"\n\n🏆 **أفضل المؤدين:**"
-        for i, performer in enumerate(top_performers[:3], 1):
-            role_emoji = "👤" if performer[1] == 'customer' else "🏪" if performer[1] == 'supplier' else "💼"
-            text += f"\n{i}️⃣ {role_emoji} {performer[0]}: **{performer[2]:,.2f}** ريال"
-            if performer[3] > 0:
-                text += f" ({performer[3]} معاملة)"
+        if top_performers:
+            for i, performer in enumerate(top_performers[:3], 1):
+                try:
+                    role_emoji = "👤" if performer[1] == 'customer' else "🏪" if performer[1] == 'supplier' else "💼"
+                    balance = performer[2] if performer[2] is not None else 0
+                    transaction_count = performer[3] if performer[3] is not None else 0
+                    text += f"\n{i}️⃣ {role_emoji} {performer[0]}: **{balance:,.2f}** ريال"
+                    if transaction_count > 0:
+                        text += f" ({transaction_count} معاملة)"
+                except (IndexError, TypeError) as performer_error:
+                    logger.warning(f"Error processing performer data: {performer_error}")
+                    text += f"\n{i}️⃣ 💼 بيانات غير مكتملة"
+        else:
+            text += "\nلا توجد بيانات أداء متاحة"
 
         text += f"""
 
