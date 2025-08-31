@@ -563,6 +563,8 @@ async def button_click_handler(update: Update, context):
             await transfer_history_handler(update, context)
         elif callback_data == 'update_profile':
             await update_profile_handler(update, context)
+        elif callback_data == 'view_full_profile':
+            await view_full_profile_handler(update, context)
         elif callback_data == 'change_password':
             await change_password_handler(update, context)
         elif callback_data == 'contact_admin':
@@ -4010,6 +4012,102 @@ async def update_profile_handler(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in update profile handler: {e}")
         await query.edit_message_text(ErrorMessages.settings_error("البيانات الشخصية"))
+
+async def view_full_profile_handler(update: Update, context: CallbackContext):
+    """معالج عرض البيانات الكاملة للمستخدم"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user:
+            await query.edit_message_text(f"{EMOJIS['error']} لم يتم العثور على بيانات المستخدم.")
+            return
+        
+        # الحصول على إحصائيات مفصلة للمستخدم
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # إحصائيات المعاملات
+        cursor.execute('SELECT COUNT(*) FROM transactions WHERE user_id = ?', (user['id'],))
+        total_transactions = cursor.fetchone()[0]
+        
+        cursor.execute('SELECT SUM(amount) FROM transactions WHERE user_id = ? AND type = "purchase"', (user['id'],))
+        result = cursor.fetchone()[0]
+        total_purchases = result if result is not None else 0
+        
+        cursor.execute('SELECT SUM(amount) FROM transactions WHERE user_id = ? AND type = "transfer"', (user['id'],))
+        result = cursor.fetchone()[0]
+        total_transfers = result if result is not None else 0
+        
+        # إحصائيات الإحالات
+        cursor.execute('SELECT COUNT(*) FROM referrals WHERE referrer_id = ?', (user['id'],))
+        total_referrals = cursor.fetchone()[0]
+        
+        # آخر نشاط
+        cursor.execute('''
+            SELECT action, details, created_at 
+            FROM activity_logs 
+            WHERE user_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT 5
+        ''', (user['id'],))
+        recent_activities = cursor.fetchall()
+        
+        conn.close()
+        
+        # تنسيق النشاطات الأخيرة
+        activities_text = ""
+        if recent_activities:
+            for activity in recent_activities:
+                activities_text += f"• {activity[0]}: {activity[1][:30]}... - {activity[2][:16]}\n"
+        else:
+            activities_text = "• لا توجد نشاطات مسجلة\n"
+        
+        profile_text = f"""
+📋 **البيانات الكاملة للمستخدم** 📋
+
+👤 **المعلومات الأساسية:**
+📝 الاسم: **{user['full_name']}**
+📱 الهاتف: **{user.get('phone', 'غير محدد')}**
+💳 رقم المحفظة: **{user['wallet_number']}**
+🆔 معرف تلغرام: **{user['telegram_id']}**
+🎭 الدور: **{USER_ROLES.get(user['role'], user['role'])}**
+🟢 الحالة: **{'نشط' if user['is_active'] else 'غير نشط'}**
+
+💰 **المعلومات المالية:**
+💵 الرصيد الحالي: **{user['balance']:,.2f}** ريال
+💸 إجمالي المشتريات: **{total_purchases:,.2f}** ريال
+🔄 إجمالي التحويلات: **{total_transfers:,.2f}** ريال
+📊 إجمالي المعاملات: **{total_transactions:,}**
+
+👥 **الإحالات:**
+🎯 عدد الإحالات: **{total_referrals:,}**
+
+📅 **التواريخ المهمة:**
+📅 تاريخ التسجيل: **{user['created_at'][:16]}**
+⏰ آخر نشاط: **{user['last_activity'][:16]}**
+
+⚡ **النشاطات الأخيرة:**
+{activities_text}
+
+───────────────────
+💡 استخدم الأزرار أدناه للمزيد من الخيارات
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📊 تقاريري المفصلة', callback_data='detailed_reports'),
+             InlineKeyboardButton('💳 محفظتي المطورة', callback_data='enhanced_wallet')],
+            [InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings'),
+             InlineKeyboardButton('🔄 تحديث البيانات', callback_data='update_profile')],
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(profile_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in view full profile handler: {e}")
+        await query.edit_message_text(ErrorMessages.settings_error("عرض البيانات الكاملة"))
 
 async def change_password_handler(update: Update, context: CallbackContext):
     """معالج تغيير كلمة المرور"""

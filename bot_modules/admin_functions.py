@@ -945,34 +945,36 @@ async def dashboard_handler(update, context):
         cursor = conn.cursor()
         
         # Users statistics
-        cursor.execute('SELECT COUNT(*) as total_users FROM users')
-        total_users = cursor.fetchone()['total_users']
+        cursor.execute('SELECT COUNT(*) FROM users')
+        total_users = cursor.fetchone()[0]
         
-        cursor.execute("SELECT COUNT(*) as active_users FROM users WHERE is_active = 1")
-        active_users = cursor.fetchone()['active_users']
+        cursor.execute("SELECT COUNT(*) FROM users WHERE is_active = 1")
+        active_users = cursor.fetchone()[0]
         
-        cursor.execute("SELECT COUNT(*) as new_users_today FROM users WHERE date(created_at) = date('now')")
-        new_users_today = cursor.fetchone()['new_users_today']
+        cursor.execute("SELECT COUNT(*) FROM users WHERE date(created_at) = date('now')")
+        new_users_today = cursor.fetchone()[0]
         
         # Financial statistics
-        cursor.execute('SELECT SUM(amount) as total_transactions FROM transactions')
-        total_transactions = cursor.fetchone()['total_transactions'] or 0
+        cursor.execute('SELECT SUM(amount) FROM transactions')
+        result = cursor.fetchone()[0]
+        total_transactions = result if result is not None else 0
         
-        cursor.execute('SELECT SUM(balance) as total_balances FROM users')
-        total_balances = cursor.fetchone()['total_balances'] or 0
+        cursor.execute('SELECT SUM(balance) FROM users')
+        result = cursor.fetchone()[0]
+        total_balances = result if result is not None else 0
         
-        cursor.execute("SELECT COUNT(*) as transactions_today FROM transactions WHERE date(created_at) = date('now')")
-        transactions_today = cursor.fetchone()['transactions_today']
+        cursor.execute("SELECT COUNT(*) FROM transactions WHERE date(created_at) = date('now')")
+        transactions_today = cursor.fetchone()[0]
         
         # Networks statistics
-        cursor.execute('SELECT COUNT(*) as total_networks FROM networks')
-        total_networks = cursor.fetchone()['total_networks']
+        cursor.execute('SELECT COUNT(*) FROM networks')
+        total_networks = cursor.fetchone()[0]
         
-        cursor.execute("SELECT COUNT(*) as active_networks FROM networks WHERE is_active = 1")
-        active_networks = cursor.fetchone()['active_networks']
+        cursor.execute("SELECT COUNT(*) FROM networks WHERE is_active = 1")
+        active_networks = cursor.fetchone()[0]
         
-        cursor.execute("SELECT COUNT(*) as pending_networks FROM networks WHERE is_approved = 0")
-        pending_networks = cursor.fetchone()['pending_networks']
+        cursor.execute("SELECT COUNT(*) FROM networks WHERE is_approved = 0")
+        pending_networks = cursor.fetchone()[0]
         
         conn.close()
         
@@ -1456,65 +1458,68 @@ async def dashboard_handler(update: Update, context: CallbackContext):
         cursor = conn.cursor()
         
         # Users statistics
-        cursor.execute('SELECT COUNT(*) as total_users FROM users')
-        total_users = cursor.fetchone()['total_users']
+        cursor.execute('SELECT COUNT(*) FROM users')
+        total_users = cursor.fetchone()[0]
         
-        cursor.execute('SELECT COUNT(*) as active_users FROM users WHERE is_active = 1')
-        active_users = cursor.fetchone()['active_users']
+        cursor.execute('SELECT COUNT(*) FROM users WHERE is_active = 1')
+        active_users = cursor.fetchone()[0]
         
-        cursor.execute('SELECT COUNT(*) as customers FROM users WHERE role = "customer"')
-        customers = cursor.fetchone()['customers']
+        cursor.execute('SELECT COUNT(*) FROM users WHERE role = "customer"')
+        customers = cursor.fetchone()[0]
         
-        cursor.execute('SELECT COUNT(*) as agents FROM users WHERE role = "agent"')
-        agents = cursor.fetchone()['agents']
+        cursor.execute('SELECT COUNT(*) FROM users WHERE role = "agent"')
+        agents = cursor.fetchone()[0]
         
-        cursor.execute('SELECT COUNT(*) as suppliers FROM users WHERE role = "supplier"')
-        suppliers = cursor.fetchone()['suppliers']
+        cursor.execute('SELECT COUNT(*) FROM users WHERE role = "supplier"')
+        suppliers = cursor.fetchone()[0]
         
         # Financial statistics
-        cursor.execute('SELECT SUM(balance) as total_balance FROM users')
-        total_balance = cursor.fetchone()['total_balance'] or 0
+        cursor.execute('SELECT SUM(balance) FROM users')
+        result = cursor.fetchone()[0]
+        total_balance = result if result is not None else 0
         
-        cursor.execute('SELECT COUNT(*) as total_transactions FROM transactions')
-        total_transactions = cursor.fetchone()['total_transactions']
+        cursor.execute('SELECT COUNT(*) FROM transactions')
+        total_transactions = cursor.fetchone()[0]
         
-        cursor.execute('SELECT SUM(amount) as total_volume FROM transactions WHERE type IN ("purchase", "transfer")')
-        total_volume = cursor.fetchone()['total_volume'] or 0
+        cursor.execute('SELECT SUM(amount) FROM transactions WHERE type IN ("purchase", "transfer")')
+        result = cursor.fetchone()[0]
+        total_volume = result if result is not None else 0
         
-        cursor.execute('SELECT SUM(amount) as total_commissions FROM transactions WHERE type = "commission"')
-        total_commissions = cursor.fetchone()['total_commissions'] or 0
+        cursor.execute('SELECT SUM(amount) FROM transactions WHERE type = "commission"')
+        result = cursor.fetchone()[0]
+        total_commissions = result if result is not None else 0
         
         # Networks and cards statistics
-        cursor.execute('SELECT COUNT(*) as total_networks FROM networks WHERE is_active = 1')
-        total_networks = cursor.fetchone()['total_networks']
+        cursor.execute('SELECT COUNT(*) FROM networks WHERE is_active = 1')
+        total_networks = cursor.fetchone()[0]
         
-        cursor.execute('SELECT COUNT(*) as total_cards FROM cards WHERE is_used = 0')
-        available_cards = cursor.fetchone()['total_cards']
+        cursor.execute('SELECT COUNT(*) FROM cards WHERE is_used = 0')
+        available_cards = cursor.fetchone()[0]
         
-        cursor.execute('SELECT COUNT(*) as sold_cards FROM cards WHERE is_used = 1')
-        sold_cards = cursor.fetchone()['sold_cards']
+        cursor.execute('SELECT COUNT(*) FROM cards WHERE is_used = 1')
+        sold_cards = cursor.fetchone()[0]
         
         # Recharge cards statistics
-        cursor.execute('SELECT COUNT(*) as available_recharge_cards FROM recharge_cards WHERE status = "available"')
-        available_recharge_cards = cursor.fetchone()['available_recharge_cards']
+        cursor.execute('SELECT COUNT(*) FROM recharge_cards WHERE status = "available"')
+        available_recharge_cards = cursor.fetchone()[0]
         
-        cursor.execute('SELECT COUNT(*) as sold_recharge_cards FROM recharge_cards WHERE status = "sold"')
-        sold_recharge_cards = cursor.fetchone()['sold_recharge_cards']
+        cursor.execute('SELECT COUNT(*) FROM recharge_cards WHERE status = "sold"')
+        sold_recharge_cards = cursor.fetchone()[0]
         
         # Recent activity
         cursor.execute('''
-            SELECT COUNT(*) as recent_transactions 
+            SELECT COUNT(*) 
             FROM transactions 
             WHERE created_at >= datetime('now', '-24 hours')
         ''')
-        recent_transactions = cursor.fetchone()['recent_transactions']
+        recent_transactions = cursor.fetchone()[0]
         
         cursor.execute('''
-            SELECT COUNT(*) as new_users_today 
+            SELECT COUNT(*) 
             FROM users 
             WHERE created_at >= datetime('now', '-24 hours')
         ''')
-        new_users_today = cursor.fetchone()['new_users_today']
+        new_users_today = cursor.fetchone()[0]
         
         conn.close()
         
