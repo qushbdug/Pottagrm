@@ -540,7 +540,7 @@ async def platform_management_handler(update: Update, context: CallbackContext):
             ('SELECT COUNT(*) as count FROM users WHERE role = "agent"', 'agents'),
             ('SELECT COUNT(*) as count FROM users WHERE role = "supplier"', 'suppliers'),
             ('SELECT COUNT(*) as count FROM networks WHERE is_active = 1', 'active_networks'),
-            ('SELECT COUNT(*) as count FROM cards WHERE is_used = 0', 'available_cards'),
+            ('SELECT COUNT(*) as count FROM network_cards WHERE is_sold = 0', 'available_cards'),
             ('SELECT SUM(amount) as total FROM transactions WHERE type = "purchase"', 'total_sales'),
         ]
         

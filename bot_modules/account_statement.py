@@ -78,7 +78,7 @@ class AccountStatementGenerator:
 
 👤 **{user['full_name']}**
 🎭 **{USER_ROLES.get(user['role'], user['role'])}**
-💳 **رقم المحفظة:** {user['wallet_number']}
+💳 **رقم المحفظة:** {user.get('wallet_number', 'غير محدد')}
 
 📋 **خيارات التنزيل المتاحة:**
 
@@ -205,7 +205,7 @@ class AccountStatementGenerator:
         ws['A3'] = "اسم العميل:"
         ws['B3'] = user['full_name']
         ws['A4'] = "رقم المحفظة:"
-        ws['B4'] = user['wallet_number']
+        ws['B4'] = user.get('wallet_number', 'غير محدد')
         ws['A5'] = "الرصيد الحالي:"
         ws['B5'] = f"{user['balance']:,.2f} ريال"
         
@@ -312,7 +312,7 @@ class AccountStatementGenerator:
         # معلومات المستخدم (نص بسيط بدون أيقونات)
         user_info = f"""
         <b>Customer Name:</b> {user['full_name']}<br/>
-        <b>Wallet Number:</b> {user['wallet_number']}<br/>
+        <b>Wallet Number:</b> {user.get('wallet_number', 'غير محدد')}<br/>
         <b>Current Balance:</b> {user['balance']:,.2f} YER<br/>
         <b>Period:</b> {"Last " + str(days) + " days" if days else "All transactions"}<br/>
         <b>Generated:</b> {datetime.now().strftime('%Y-%m-%d %H:%M')}<br/><br/>
@@ -416,7 +416,7 @@ class AccountStatementGenerator:
                 
                 # إنشاء ملف Excel
                 excel_buffer = AccountStatementGenerator.generate_excel_statement(user, transactions, days)
-                filename = f"كشف_حساب_{user['wallet_number']}_{filename_date}.xlsx"
+                filename = f"كشف_حساب_{user.get('wallet_number', 'غير محدد')}_{filename_date}.xlsx"
                 
                 # إرسال الملف
                 await context.bot.send_document(
@@ -433,7 +433,7 @@ class AccountStatementGenerator:
                 
                 # إنشاء ملف PDF
                 pdf_buffer = AccountStatementGenerator.generate_pdf_statement(user, transactions, days)
-                filename = f"كشف_حساب_{user['wallet_number']}_{filename_date}.pdf"
+                filename = f"كشف_حساب_{user.get('wallet_number', 'غير محدد')}_{filename_date}.pdf"
                 
                 # إرسال الملف
                 await context.bot.send_document(

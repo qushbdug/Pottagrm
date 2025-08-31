@@ -334,7 +334,7 @@ def format_user_info(user) -> str:
 {EMOJIS['phone']} {user['phone']}
 🏷️ {role_name}
 {EMOJIS['wallet']} {user['balance']:.2f} ريال
-{EMOJIS['id']} {user['wallet_number']}
+{EMOJIS['id']} {user.get('wallet_number', 'غير محدد')}
 📊 حالة الحساب: {status}
 """
 

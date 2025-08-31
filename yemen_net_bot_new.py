@@ -88,6 +88,9 @@ try:
     # Import interactive help system
     from interactive_help import interactive_help
     
+    # Import safe handlers for error-free operations
+    from safe_handlers import safe_get_user_from_update, safe_answer_query, safe_edit_message, safe_get_user_field, safe_format_balance
+    
     # Import export system
     from export_system import (
         export_options_handler, export_profits_handler, export_customers_handler,
@@ -3687,8 +3690,21 @@ async def transfer_to_friend_handler(update: Update, context: CallbackContext):
 async def personal_reports_handler(update: Update, context: CallbackContext):
     """معالج التقارير الشخصية"""
     try:
+        from bot_modules.safe_handlers import safe_get_user_from_update, safe_answer_query, safe_edit_message, safe_get_user_field
+        
         query = update.callback_query
-        user = get_user(query.from_user.id)
+        if query:
+            await safe_answer_query(query)
+        
+        user_id = await safe_get_user_from_update(update)
+        if not user_id:
+            await safe_edit_message(update, "❌ خطأ في تحديد المستخدم")
+            return
+            
+        user = get_user(user_id)
+        if not user:
+            await safe_edit_message(update, "❌ لم يتم العثور على بيانات المستخدم")
+            return
         
         # الحصول على إحصائيات المستخدم
         conn = get_db_connection()
@@ -3724,12 +3740,16 @@ async def personal_reports_handler(update: Update, context: CallbackContext):
         
         conn.close()
         
+        user_info = safe_get_user_field(user, 'full_name', 'غير محدد')
+        user_balance = safe_get_user_field(user, 'balance', 0)
+        user_wallet = safe_get_user_field(user, 'wallet_number', 'غير محدد')
+        
         reports_text = f"""
 📊 **تقاريري الشخصية** 📊
 
-👤 **{user['full_name']}**
-💰 **الرصيد الحالي:** {user['balance']:,.2f} ريال
-💳 **رقم المحفظة:** {user.get('wallet_number', 'غير محدد')}
+👤 **{user_info}**
+💰 **الرصيد الحالي:** {safe_format_balance(user_balance)} ريال
+💳 **رقم المحفظة:** {user_wallet}
 
 📈 **إحصائيات شاملة:**
 
@@ -3761,11 +3781,12 @@ async def personal_reports_handler(update: Update, context: CallbackContext):
              InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
-        await query.edit_message_text(reports_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await safe_edit_message(update, reports_text, InlineKeyboardMarkup(keyboard))
         
     except Exception as e:
         logger.error(f"Error in personal reports handler: {e}")
-        await query.edit_message_text(ErrorMessages.report_error("الشخصية"))
+        from bot_modules.enhanced_error_messages import ErrorMessages
+        await safe_edit_message(update, ErrorMessages.report_error("الشخصية"))
 
 async def promotions_handler(update: Update, context: CallbackContext):
     """معالج العروض والخصومات"""
@@ -3934,7 +3955,18 @@ async def account_settings_handler(update: Update, context: CallbackContext):
     """معالج إعدادات الحساب"""
     try:
         query = update.callback_query
-        user = get_user(query.from_user.id)
+        if query:
+            await safe_answer_query(query)
+        
+        user_id = await safe_get_user_from_update(update)
+        if not user_id:
+            await safe_edit_message(update, "❌ خطأ في تحديد المستخدم")
+            return
+            
+        user = get_user(user_id)
+        if not user:
+            await safe_edit_message(update, "❌ لم يتم العثور على بيانات المستخدم")
+            return
         
                 # تحديد نوع الحساب
         role_names = {
@@ -3945,14 +3977,22 @@ async def account_settings_handler(update: Update, context: CallbackContext):
             'super_admin': 'مشرف أعلى'
         }
         
+        user_info = {
+            'full_name': safe_get_user_field(user, 'full_name'),
+            'wallet_number': safe_get_user_field(user, 'wallet_number'),
+            'phone': safe_get_user_field(user, 'phone'),
+            'telegram_id': safe_get_user_field(user, 'telegram_id'),
+            'role': safe_get_user_field(user, 'role', 'customer')
+        }
+        
         settings_text = f"""
 ⚙️ **إعدادات الحساب** ⚙️
 
-👤 **{user['full_name']}**
-💳 **رقم المحفظة:** {user.get('wallet_number', 'غير محدد')}
-📱 **رقم الهاتف:** {user['phone'] if user['phone'] else 'غير محدد'}
-🆔 **معرف تلغرام:** {user['telegram_id']}
-👑 **نوع الحساب:** {role_names.get(user['role'], 'عميل')}
+👤 **{user_info['full_name']}**
+💳 **رقم المحفظة:** {user_info['wallet_number']}
+📱 **رقم الهاتف:** {user_info['phone']}
+🆔 **معرف تلغرام:** {user_info['telegram_id']}
+👑 **نوع الحساب:** {role_names.get(user_info['role'], 'عميل')}
 
 ⚙️ **الإعدادات المتاحة:**
 
@@ -3977,7 +4017,7 @@ async def account_settings_handler(update: Update, context: CallbackContext):
 • سجل المعاملات: مفعل ✅
 
 💡 **معلومات الحساب:**
-• تاريخ التسجيل: {user['created_at'][:10] if user['created_at'] else 'غير محدد'}
+• تاريخ التسجيل: {safe_get_user_field(user, 'created_at', 'غير محدد')[:10] if safe_get_user_field(user, 'created_at') != 'غير محدد' else 'غير محدد'}
 • آخر تحديث: اليوم
 • حالة الحساب: نشط ✅
 """
@@ -3991,11 +4031,12 @@ async def account_settings_handler(update: Update, context: CallbackContext):
              InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
-        await query.edit_message_text(settings_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await safe_edit_message(update, settings_text, InlineKeyboardMarkup(keyboard))
         
     except Exception as e:
         logger.error(f"Error in account settings handler: {e}")
-        await query.edit_message_text(ErrorMessages.settings_error("الحساب"))
+        from bot_modules.enhanced_error_messages import ErrorMessages
+        await safe_edit_message(update, ErrorMessages.settings_error("الحساب"))
 
 async def transfer_history_handler(update: Update, context: CallbackContext):
     """معالج سجل التحويلات"""
@@ -4899,26 +4940,24 @@ async def process_supplier_network_creation(update: Update, context: CallbackCon
 async def enhanced_wallet_handler(update: Update, context: CallbackContext):
     """معالج المحفظة المحسنة مع نظام التصفح بالصفحات"""
     try:
-        # تحديد نوع التحديث (callback أو message)
-        if hasattr(update, 'callback_query') and update.callback_query:
-            query = update.callback_query
-            user = get_user(query.from_user.id)
-            is_callback = True
-        else:
-            user = get_user(update.effective_user.id)
-            is_callback = False
-        
-        if not user:
-            error_msg = f"{EMOJIS['error']} يرجى التسجيل أولاً."
-            if is_callback:
-                await update.callback_query.edit_message_text(error_msg)
-            else:
-                await update.message.reply_text(error_msg)
+        # الحصول على معرف المستخدم بشكل آمن
+        user_id = await safe_get_user_from_update(update)
+        if not user_id:
+            await safe_edit_message(update, f"{EMOJIS['error']} خطأ في تحديد المستخدم")
             return
+        
+        user = get_user(user_id)
+        if not user:
+            await safe_edit_message(update, f"{EMOJIS['error']} يرجى التسجيل أولاً.")
+            return
+        
+        # الرد على callback query إذا وجد
+        if update.callback_query:
+            await safe_answer_query(update.callback_query)
         
         # صفحة افتراضية (الصفحة الأولى)
         page = 1
-        return await show_wallet_page(update, context, user, page, is_callback)
+        return await show_wallet_page(update, context, user, page, bool(update.callback_query))
         
     except Exception as e:
         logger.error(f"Error in enhanced wallet handler: {e}")
@@ -4990,12 +5029,19 @@ async def show_wallet_page(update: Update, context: CallbackContext, user: dict,
         rating_data = calculate_user_rating(user['id'])
         
         # بناء نص المحفظة
+        # تنسيق آمن لمعلومات المستخدم
+        user_info = {
+            'full_name': safe_get_user_field(user, 'full_name'),
+            'balance': safe_get_user_field(user, 'balance', 0),
+            'wallet_number': safe_get_user_field(user, 'wallet_number')
+        }
+        
         wallet_text = f"""
 💳 **محفظتي المطورة** 💳
 
-👤 **{user['full_name']}**
-💰 **الرصيد:** {user['balance']:,.2f} ريال
-💳 **رقم المحفظة:** {user.get('wallet_number', 'غير محدد')}
+👤 **{user_info['full_name']}**
+💰 **الرصيد:** {safe_format_balance(user_info['balance'])} ريال
+💳 **رقم المحفظة:** {user_info['wallet_number']}
 
 📊 **إحصائيات المحفظة:**
 📤 المرسل: **{sent_amount:,.2f}** ريال ({total_count} معاملة)
@@ -5106,10 +5152,7 @@ async def show_wallet_page(update: Update, context: CallbackContext, user: dict,
              InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ])
         
-        if is_callback:
-            await update.callback_query.edit_message_text(wallet_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        else:
-            await update.message.reply_text(wallet_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await safe_edit_message(update, wallet_text, InlineKeyboardMarkup(keyboard))
         
     except Exception as e:
         logger.error(f"Error in show wallet page: {e}")
@@ -5121,10 +5164,7 @@ async def show_wallet_page(update: Update, context: CallbackContext, user: dict,
             "WALLET_PAGE_ERROR"
         )
         
-        if is_callback:
-            await update.callback_query.edit_message_text(error_msg)
-        else:
-            await update.message.reply_text(error_msg)
+        await safe_edit_message(update, error_msg)
 
 async def wallet_page_handler(update: Update, context: CallbackContext):
     """معالج التنقل بين صفحات المحفظة"""
@@ -5395,11 +5435,14 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
         
         # الحصول على معلومات الشبكة
         # استخدام النظام الآمن للمعاملات المالية
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        import uuid
+        transaction_id = str(uuid.uuid4())
         
         try:
             # التحقق من الشبكة والبطاقة المتاحة
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
             cursor.execute('SELECT name, provider, supplier_id FROM networks WHERE id = ? AND is_active = 1', (network_id,))
             network = cursor.fetchone()
             
@@ -5409,7 +5452,7 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             network_name, provider, supplier_id = network
             card_price = float(price)
             
-            # التحقق من توفر الكرت مع قفل للصف
+            # التحقق من توفر الكرت
             cursor.execute('''
                 SELECT id, card_code FROM network_cards 
                 WHERE network_id = ? AND card_value = ? AND is_sold = 0
@@ -5421,12 +5464,9 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
                 raise Exception(f"لا توجد كروت متاحة بقيمة {card_price:,.0f} ريال")
             
             card_id, card_code = card_result
+            conn.close()
             
             # استخدام المعاملة الآمنة لتحديث الأرصدة
-            import uuid
-            transaction_id = str(uuid.uuid4())
-            
-            # تحويل آمن من المشتري إلى المورد
             transfer_result = transaction_manager.safe_transfer(
                 from_user_id=user['id'],
                 to_user_id=supplier_id,
@@ -5436,6 +5476,8 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             )
             
             # تحديث حالة البطاقة بعد نجاح التحويل
+            conn = get_db_connection()
+            cursor = conn.cursor()
             cursor.execute('UPDATE network_cards SET is_sold = 1, sold_at = datetime("now") WHERE id = ?', (card_id,))
             
             # تسجيل المعاملة في جدول المعاملات
@@ -5449,6 +5491,7 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             record_purchase_accounting(card_price, user['id'], transaction_id)
             
             conn.commit()
+            conn.close()
             
             # عرض نتيجة الشراء الناجح
             success_text = f"""
@@ -5546,12 +5589,9 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
                 logger.warning(f"Failed to send notification to supplier: {e}")
             
         except Exception as e:
-            # إلغاء المعاملة في حالة الخطأ
-            cursor.execute('ROLLBACK')
+            # لا حاجة لـ ROLLBACK لأن safe_transfer يتعامل مع هذا
+            logger.error(f"Card purchase failed: {e}")
             raise e
-            
-        finally:
-            conn.close()
             
     except Exception as e:
         logger.error(f"Error in process card purchase: {e}")

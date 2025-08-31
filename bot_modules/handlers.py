@@ -2210,7 +2210,7 @@ async def process_amount_selection(update: Update, context: CallbackContext, amo
 ✅ **تأكيد التحويل** ✅
 
 👤 **من:** {user['full_name']}
-💳 محفظتك: {user['wallet_number']}
+💳 محفظتك: {user.get('wallet_number', 'غير محدد')}
 
 📤 **إلى:** {target_name}
 💳 محفظة المستقبل: {target_wallet}
@@ -2295,7 +2295,7 @@ async def process_card_purchase(update: Update, context: CallbackContext, catego
 🛒 **تأكيد الشراء** 🛒
 
 👤 **المشتري:** {user['full_name']}
-💳 محفظتك: {user['wallet_number']}
+💳 محفظتك: {user.get('wallet_number', 'غير محدد')}
 
 🛒 **تفاصيل الشراء:**
 🏢 الشبكة: **{network_name}**
