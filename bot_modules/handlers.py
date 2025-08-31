@@ -313,20 +313,35 @@ async def show_main_menu(update: Update, context: CallbackContext, role: str) ->
 🎯 **اختر العملية المطلوبة:**
 """
         
-        if update.message:
-            await update.message.reply_text(menu_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        else:
-            await update.callback_query.edit_message_text(menu_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        # استخدام المعالج الآمن لإرسال/تحديث الرسالة
+        try:
+            if update.message:
+                await update.message.reply_text(menu_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            else:
+                await update.callback_query.edit_message_text(menu_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        except Exception as msg_error:
+            # تجاهل أخطاء الرسائل المتطابقة
+            if "not modified" in str(msg_error).lower() or "exactly the same" in str(msg_error).lower():
+                logger.debug(f"Message already up to date: {msg_error}")
+            else:
+                logger.warning(f"Message update failed: {msg_error}")
             
         return ConversationHandler.END
         
     except Exception as e:
         logger.error(f"Error in show main menu: {e}")
+        from bot_modules.enhanced_error_messages import menu_error
         error_text = menu_error("القائمة الرئيسية", "تحميل البيانات")
-        if update.message:
-            await update.message.reply_text(error_text)
-        else:
-            await update.callback_query.edit_message_text(error_text)
+        
+        try:
+            if update.message:
+                await update.message.reply_text(error_text)
+            else:
+                await update.callback_query.edit_message_text(error_text)
+        except:
+            # تجنب أخطاء إضافية في معالجة الأخطاء
+            pass
+            
         return ConversationHandler.END
 
 def create_main_keyboard(role: str):

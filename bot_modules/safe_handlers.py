@@ -30,12 +30,18 @@ async def safe_answer_query(query) -> bool:
     """الرد على callback query بشكل آمن"""
     try:
         if query:
+            # التحقق من أن الاستعلام ليس قديماً جداً
             await query.answer()
             return True
         return False
     except Exception as e:
-        logger.warning(f"Failed to answer query: {e}")
-        return False
+        # تجاهل أخطاء الاستعلامات القديمة
+        if "too old" in str(e).lower() or "timeout expired" in str(e).lower():
+            logger.debug(f"Query too old, ignoring: {e}")
+            return False
+        else:
+            logger.warning(f"Failed to answer query: {e}")
+            return False
 
 async def safe_edit_message(update: Update, text: str, 
                           reply_markup: InlineKeyboardMarkup = None,
@@ -56,8 +62,20 @@ async def safe_edit_message(update: Update, text: str,
             logger.warning("No callback_query or message found in update")
             return False
     except Exception as e:
-        logger.error(f"Failed to edit/send message: {e}")
-        return False
+        # تجاهل أخطاء الرسائل المتطابقة والاستعلامات القديمة
+        error_str = str(e).lower()
+        if any(phrase in error_str for phrase in [
+            "message is not modified",
+            "exactly the same",
+            "too old",
+            "timeout expired",
+            "query id is invalid"
+        ]):
+            logger.debug(f"Ignorable Telegram error: {e}")
+            return True  # نعتبرها نجحت لأنها لا تؤثر على المستخدم
+        else:
+            logger.error(f"Failed to edit/send message: {e}")
+            return False
 
 async def safe_send_error_message(update: Update, context: CallbackContext,
                                 error_text: str, 

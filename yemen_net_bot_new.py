@@ -249,13 +249,20 @@ async def button_click_handler(update: Update, context):
     try:
         query = update.callback_query
         
-        # Handle query answer with specific timeout
+        # Handle query answer with enhanced error handling
         try:
-            await asyncio.wait_for(query.answer(), timeout=5.0)
+            await asyncio.wait_for(query.answer(), timeout=3.0)
         except asyncio.TimeoutError:
-            logger.warning(f"Query answer timeout for user {query.from_user.id}")
+            logger.debug(f"Query answer timeout for user {query.from_user.id}")
         except (TelegramError, NetworkError) as e:
-            logger.warning(f"Telegram error in query answer: {e}")
+            # تجاهل الأخطاء المعروفة التي لا تؤثر على الوظيفة
+            error_str = str(e).lower()
+            if any(phrase in error_str for phrase in [
+                "too old", "timeout expired", "invalid", "not modified"
+            ]):
+                logger.debug(f"Ignorable Telegram error: {e}")
+            else:
+                logger.warning(f"Telegram error in query answer: {e}")
         except Exception as e:
             logger.error(f"Unexpected error in query answer: {e}")
         
