@@ -3929,9 +3929,9 @@ async def account_settings_handler(update: Update, context: CallbackContext):
 
 👤 **{user['full_name']}**
 💳 **رقم المحفظة:** {user['wallet_number']}
-📱 **رقم الهاتف:** {user.get('phone', 'غير محدد')}
-🆔 **معرف تلغرام:** {user.get('telegram_id', 'غير محدد')}
-👑 **نوع الحساب:** {role_names.get(user.get('role', 'user'), 'عميل')}
+📱 **رقم الهاتف:** {user['phone'] if user['phone'] else 'غير محدد'}
+🆔 **معرف تلغرام:** {user['telegram_id']}
+👑 **نوع الحساب:** {role_names.get(user['role'], 'عميل')}
 
 ⚙️ **الإعدادات المتاحة:**
 

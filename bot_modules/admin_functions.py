@@ -13,7 +13,10 @@ from bot_modules.config import *
 from bot_modules.database import get_db_connection
 from bot_modules.utils import *
 from bot_modules.enhanced_error_messages import ErrorMessages, perm_error, db_error, unexpected_error, menu_error, wallet_error, coupon_error
-from bot_modules.export_system import export_options_handler
+from bot_modules.export_system import (
+    export_options_handler, export_profits_handler, export_customers_handler,
+    export_suppliers_handler, export_comprehensive_handler, quick_export_handler
+)
 from bot_modules.accounting_search import accounting_search_handler, quick_stats_handler, quick_transaction_report_handler
 
 logger = logging.getLogger(__name__)
