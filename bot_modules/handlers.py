@@ -336,7 +336,7 @@ def create_main_keyboard(role: str):
             [InlineKeyboardButton('💳 محفظتي المطورة', callback_data='enhanced_wallet')],
             [InlineKeyboardButton('🛒 شراء كروت', callback_data='buy_cards'),
              InlineKeyboardButton('💸 تحويل رصيد', callback_data='transfer_to_friend')],
-            [InlineKeyboardButton('🎟️ شحن بكوبون', callback_data='redeem_coupon'),
+            [InlineKeyboardButton('🎫 شحن بكوبون متقدم', callback_data='redeem_coupon'),
              InlineKeyboardButton('🔍 البحث عن شبكات', callback_data='search_networks')],
             [InlineKeyboardButton('📊 تقاريري الشخصية', callback_data='personal_reports'),
              InlineKeyboardButton('🎁 العروض والخصومات', callback_data='promotions')],

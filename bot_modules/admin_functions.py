@@ -90,7 +90,7 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
             [InlineKeyboardButton(f'🔧 إعدادات النظام', callback_data='super_system_settings')],
             [InlineKeyboardButton(f'💾 النسخ الاحتياطي', callback_data='super_backup'),
              InlineKeyboardButton(f'🚨 مراقبة الأمان', callback_data='super_security_monitoring')],
-            [InlineKeyboardButton(f'🎟️ إنشاء كوبونات', callback_data='super_create_coupons')],
+            [InlineKeyboardButton(f'🎫 نظام الكوبونات المتقدم', callback_data='coupon_main')],
             [InlineKeyboardButton(f'📢 إرسال رسالة جماعية', callback_data='super_broadcast_message'),
              InlineKeyboardButton(f'🔄 تحديث أوامر البوت', callback_data='super_update_commands')],
             [InlineKeyboardButton(f'{EMOJIS["home"]} العودة للقائمة', callback_data='main_menu')]

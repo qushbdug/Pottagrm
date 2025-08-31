@@ -64,6 +64,10 @@ try:
     
     # Import permissions system
     from permissions import has_permission, check_permission_or_deny, AVAILABLE_PERMISSIONS
+    
+    # Import new coupon system
+    from coupon_system import coupon_system
+    from coupon_handlers import COUPON_CALLBACKS, COUPON_CONVERSATION_HANDLERS, CouponHandlers
 except ImportError as e:
     print(f"Error importing modules: {e}")
     print("Make sure all module files are in the bot_modules directory")
@@ -437,6 +441,10 @@ async def button_click_handler(update: Update, context):
             else:
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
                 return
+        
+        # New Coupon System Handlers
+        elif callback_data in COUPON_CALLBACKS:
+            return await COUPON_CALLBACKS[callback_data](update, context)
         
         # Coupon quick creation handlers
         elif callback_data.startswith('create_quick_coupon_'):
@@ -4420,6 +4428,8 @@ def main():
         logger.info("Initializing database...")
         try:
             init_db()
+            # Initialize new coupon system
+            coupon_system.init_coupon_tables()
             logger.info("Database initialized successfully")
         except sqlite3.Error as e:
             raise BotDatabaseError(f"Failed to initialize database: {e}")
@@ -4524,6 +4534,11 @@ def main():
         
         # Add handlers
         application.add_handler(conv_handler)
+        
+        # Add new coupon system conversation handlers
+        for handler_name, handler in COUPON_CONVERSATION_HANDLERS.items():
+            application.add_handler(handler)
+        
         application.add_handler(CallbackQueryHandler(button_click_handler))
         application.add_handler(MessageHandler(filters.Document.ALL, handle_document))  # Document handler for file uploads
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
@@ -4539,6 +4554,7 @@ def main():
         application.add_handler(CommandHandler('search_networks', search_networks_handler))
         application.add_handler(CommandHandler('promotions', promotions_handler))
         application.add_handler(CommandHandler('redeem_coupon', redeem_coupon_handler))
+        application.add_handler(CommandHandler('coupon', CouponHandlers.redeem_coupon_start))
         
         # Start the bot with enhanced error handling
         logger.info(f'{EMOJIS["fire"]} Starting Pottagrm Enhanced Bot v2.1.0...')
