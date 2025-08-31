@@ -44,6 +44,7 @@ QUICK_COMMANDS = [
     
     # التقارير والإحصائيات
     BotCommand('reports', '📊 تقاريري الشخصية'),
+    BotCommand('statement', '🎟️ كشف الحساب'),
     BotCommand('notifications', '🔔 إشعاراتي'),
     
     # الإعدادات والحساب

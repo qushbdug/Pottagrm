@@ -340,9 +340,10 @@ def create_main_keyboard(role: str):
              InlineKeyboardButton('🔍 البحث عن شبكات', callback_data='search_networks')],
             [InlineKeyboardButton('📊 تقاريري الشخصية', callback_data='personal_reports'),
              InlineKeyboardButton('🎁 العروض والخصومات', callback_data='promotions')],
-            [InlineKeyboardButton('🔔 إشعاراتي', callback_data='my_notifications'),
-             InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings')],
-            [InlineKeyboardButton('⭐ تقييماتي', callback_data='my_ratings')]
+            [InlineKeyboardButton('🎟️ كشف الحساب', callback_data='account_statement'),
+             InlineKeyboardButton('🔔 إشعاراتي', callback_data='my_notifications')],
+            [InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings'),
+             InlineKeyboardButton('⭐ تقييماتي', callback_data='my_ratings')]
         ]
         
         # Role-specific features

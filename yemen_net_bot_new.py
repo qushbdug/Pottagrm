@@ -48,6 +48,13 @@ try:
         skip_network_location, search_by_type_handler, choose_role
     )
     
+    # Import account statement handlers
+    from account_statement import (
+        account_statement_handler, download_excel_30_handler, download_excel_90_handler,
+        download_excel_all_handler, download_pdf_30_handler, download_pdf_90_handler,
+        download_pdf_all_handler
+    )
+    
     # Import admin functions
     from admin_functions import (
         ADMIN_CALLBACKS, activate_single_supplier, admin_panel_handler,
@@ -571,6 +578,22 @@ async def button_click_handler(update: Update, context):
             await contact_admin_handler(update, context)
         elif callback_data == 'account_status':
             await account_status_handler(update, context)
+        elif callback_data == 'account_statement':
+            await account_statement_handler(update, context)
+        
+        # Account statement download handlers
+        elif callback_data == 'download_excel_30':
+            await download_excel_30_handler(update, context)
+        elif callback_data == 'download_excel_90':
+            await download_excel_90_handler(update, context)
+        elif callback_data == 'download_excel_all':
+            await download_excel_all_handler(update, context)
+        elif callback_data == 'download_pdf_30':
+            await download_pdf_30_handler(update, context)
+        elif callback_data == 'download_pdf_90':
+            await download_pdf_90_handler(update, context)
+        elif callback_data == 'download_pdf_all':
+            await download_pdf_all_handler(update, context)
         
         # Refresh balance
         elif callback_data == 'refresh_balance':
@@ -4637,6 +4660,7 @@ def main():
         application.add_handler(CommandHandler('search_networks', search_networks_handler))
         application.add_handler(CommandHandler('promotions', promotions_handler))
         application.add_handler(CommandHandler('redeem_coupon', redeem_coupon_handler))
+        application.add_handler(CommandHandler('statement', account_statement_handler))
         
         # Start the bot with enhanced error handling
         logger.info(f'{EMOJIS["fire"]} Starting Pottagrm Enhanced Bot v2.1.0...')
@@ -4919,9 +4943,10 @@ async def show_wallet_page(update: Update, context: CallbackContext, user: dict,
              InlineKeyboardButton('🛒 شراء كروت', callback_data='buy_cards')],
             [InlineKeyboardButton('🎟️ شحن بكوبون', callback_data='redeem_coupon'),
              InlineKeyboardButton('📊 تفاصيل المعاملات', callback_data='transaction_details')],
-            [InlineKeyboardButton('📈 إحصائيات المحفظة', callback_data='wallet_stats'),
-             InlineKeyboardButton('🔄 تحديث الرصيد', callback_data='refresh_balance')],
-            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            [InlineKeyboardButton('🎟️ كشف الحساب', callback_data='account_statement'),
+             InlineKeyboardButton('📈 إحصائيات المحفظة', callback_data='wallet_stats')],
+            [InlineKeyboardButton('🔄 تحديث الرصيد', callback_data='refresh_balance'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ])
         
         if is_callback:
