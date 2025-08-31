@@ -14,7 +14,7 @@ from telegram.ext import CallbackContext
 
 from bot_modules.config import EMOJIS, USER_ROLES, PERMISSIONS
 from bot_modules.database import get_db_connection
-from bot_modules.utils import get_user, update_user_activity
+from bot_modules.utils import get_user, get_user_by_id, update_user_activity
 from bot_modules.permissions import (
     AVAILABLE_PERMISSIONS, 
     has_permission, 
@@ -574,7 +574,7 @@ class AdminManagement:
                 return
             
             # الحصول على معلومات المشرف المستهدف
-            target_admin = get_user(admin_id)
+            target_admin = get_user_by_id(admin_id)
             if not target_admin or target_admin['role'] not in ['admin', 'super_admin']:
                 await query.edit_message_text(f"{EMOJIS['error']} المشرف المستهدف غير موجود.")
                 return
@@ -635,7 +635,7 @@ class AdminManagement:
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
                 return
             
-            target_admin = get_user(admin_id)
+            target_admin = get_user_by_id(admin_id)
             if not target_admin:
                 await query.edit_message_text(f"{EMOJIS['error']} المشرف المستهدف غير موجود.")
                 return
@@ -1113,7 +1113,7 @@ class AdminManagement:
                 return
             
             # الحصول على معلومات المشرف المراد حذفه
-            target_admin = get_user(admin_id)
+            target_admin = get_user_by_id(admin_id)
             if not target_admin or target_admin['role'] not in ['admin', 'super_admin']:
                 await query.edit_message_text(f"{EMOJIS['error']} المشرف المستهدف غير موجود.")
                 return
@@ -1167,7 +1167,7 @@ class AdminManagement:
             await query.answer()
             
             current_user = get_user(query.from_user.id)
-            target_admin = get_user(admin_id)
+            target_admin = get_user_by_id(admin_id)
             
             if not target_admin:
                 await query.edit_message_text(f"{EMOJIS['error']} المشرف المستهدف لم يعد موجوداً.")

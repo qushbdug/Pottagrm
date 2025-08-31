@@ -77,6 +77,19 @@ def get_user(telegram_id: int):
         logger.error(f"Error getting user: {e}")
         return None
 
+def get_user_by_id(user_id: int):
+    """Get user by internal database ID"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
+        user = cursor.fetchone()
+        conn.close()
+        return user
+    except Exception as e:
+        logger.error(f"Error getting user by ID: {e}")
+        return None
+
 def update_user_activity(user_id: int):
     """Update user's last activity timestamp"""
     try:
