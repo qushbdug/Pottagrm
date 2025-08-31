@@ -951,7 +951,7 @@ class AdminManagement:
 👤 **بيانات المستخدم:**
 🔸 الاسم: **{target_user['full_name']}**
 🔸 المعرف: `{target_user['telegram_id']}`
-🔸 الهاتف: {target_user.get('phone', 'غير محدد')}
+🔸 الهاتف: {target_user['phone'] if target_user['phone'] else 'غير محدد'}
 🔸 الدور الحالي: **{target_user['role']}**
 
 🛡️ **اختر نوع الترقية:**
@@ -1129,7 +1129,7 @@ class AdminManagement:
 👤 **بيانات المشرف:**
 🔸 الاسم: **{target_admin['full_name']}**
 🔸 المعرف: `{target_admin['telegram_id']}`
-🔸 الهاتف: {target_admin.get('phone', 'غير محدد')}
+🔸 الهاتف: {target_admin['phone'] if target_admin['phone'] else 'غير محدد'}
 🔸 الدور: **{target_admin['role']}**
 
 ❌ **ما سيحدث عند الحذف:**

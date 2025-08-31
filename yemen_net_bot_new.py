@@ -3921,7 +3921,7 @@ async def account_settings_handler(update: Update, context: CallbackContext):
 • سجل المعاملات: مفعل ✅
 
 💡 **معلومات الحساب:**
-• تاريخ التسجيل: {user.get('created_at', 'غير محدد')[:10] if user.get('created_at') else 'غير محدد'}
+• تاريخ التسجيل: {user['created_at'][:10] if user['created_at'] else 'غير محدد'}
 • آخر تحديث: اليوم
 • حالة الحساب: نشط ✅
 """
@@ -4036,9 +4036,9 @@ async def update_profile_handler(update: Update, context: CallbackContext):
 
 👤 **البيانات الحالية:**
 📝 الاسم: **{user['full_name']}**
-📱 الهاتف: **{user.get('phone', 'غير محدد')}**
+📱 الهاتف: **{user['phone'] if user['phone'] else 'غير محدد'}**
 💳 رقم المحفظة: **{user['wallet_number']}**
-🆔 معرف تلغرام: **{user.get('telegram_id', 'غير محدد')}**
+🆔 معرف تلغرام: **{user['telegram_id']}**
 
 ✏️ **يمكنك تحديث:**
 • الاسم الكامل
@@ -4122,7 +4122,7 @@ async def view_full_profile_handler(update: Update, context: CallbackContext):
 
 👤 **المعلومات الأساسية:**
 📝 الاسم: **{user['full_name']}**
-📱 الهاتف: **{user.get('phone', 'غير محدد')}**
+📱 الهاتف: **{user['phone'] if user['phone'] else 'غير محدد'}**
 💳 رقم المحفظة: **{user['wallet_number']}**
 🆔 معرف تلغرام: **{user['telegram_id']}**
 🎭 الدور: **{USER_ROLES.get(user['role'], user['role'])}**

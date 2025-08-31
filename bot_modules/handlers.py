@@ -433,7 +433,7 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
 💳 **محفظتي المطورة** 💳
 
 👤 **{user['full_name']}**
-🏷️ نوع الحساب: **{USER_ROLES.get(user['role'] if 'role' in user.keys() else 'customer', 'عميل')}**
+🏷️ نوع الحساب: **{USER_ROLES.get(user['role'], 'عميل')}**
 ⚡ حالة الحساب: **{"✅ مفعل" if user['is_active'] else "⏳ في انتظار التفعيل"}**
 
 💰 **الرصيد والإحصائيات:**
@@ -479,8 +479,12 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
                 elif "عمولة" in description:
                     type_icon = "🎯"
                 
+                # تنسيق التاريخ - استخدام الفهرسة المباشرة بدلاً من .get()
+                created_at = tx['created_at'] if 'created_at' in tx.keys() else 'غير محدد'
+                date_formatted = created_at[:16] if created_at != 'غير محدد' else 'غير محدد'
+                
                 wallet_text += f"""
-📅 {tx.get('created_at', 'غير محدد')[:16]}
+📅 {date_formatted}
 {direction_color} {direction_text} | {type_icon} {description[:15]} | 💰 {amount_prefix}{amount:,.0f} ريال
 
 """
@@ -1408,7 +1412,7 @@ async def account_settings_handler(update: Update, context: CallbackContext):
 ⚙️ إعدادات الحساب
 
 👤 الاسم: {user['full_name']}
-📱 الهاتف: {user.get('phone','غير محدد')}
+📱 الهاتف: {user['phone'] if user['phone'] else 'غير محدد'}
 👑 الدور: {user['role']}
 """
         kb = [[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]
