@@ -67,6 +67,11 @@ try:
         export_suppliers_handler, export_comprehensive_handler, ExportSystem, quick_export_handler
     )
     
+    # Import accounting search
+    from accounting_search import (
+        accounting_search_handler, quick_stats_handler, quick_transaction_report_handler
+    )
+    
     # Import admin functions
     from admin_functions import (
         ADMIN_CALLBACKS, activate_single_supplier, admin_panel_handler,
@@ -624,6 +629,10 @@ async def button_click_handler(update: Update, context):
             await export_comprehensive_handler(update, context)
         elif callback_data == 'quick_export':
             await quick_export_handler(update, context)
+        elif callback_data == 'quick_stats':
+            await quick_stats_handler(update, context)
+        elif callback_data == 'quick_transaction_report':
+            await quick_transaction_report_handler(update, context)
         
         # Export with period handlers
         elif callback_data.startswith('export_'):
