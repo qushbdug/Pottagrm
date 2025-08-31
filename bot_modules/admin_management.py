@@ -268,7 +268,7 @@ class AdminManagement:
             
             # آخر النشاطات
             cursor.execute("""
-                SELECT action, description, created_at 
+                SELECT activity_type, description, created_at 
                 FROM activity_logs 
                 WHERE user_id = ? 
                 ORDER BY created_at DESC 
@@ -369,12 +369,12 @@ class AdminManagement:
             
             # أكثر الأنشطة تكراراً
             cursor.execute("""
-                SELECT a.action, COUNT(*) as count
+                SELECT a.activity_type, COUNT(*) as count
                 FROM activity_logs a
                 JOIN users u ON a.user_id = u.id
                 WHERE u.role IN ('admin', 'super_admin')
                 AND a.created_at >= datetime('now', '-30 days')
-                GROUP BY a.action
+                GROUP BY a.activity_type
                 ORDER BY count DESC
                 LIMIT 5
             """)
