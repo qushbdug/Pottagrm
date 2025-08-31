@@ -3066,9 +3066,9 @@ async def redeem_coupon_handler(update: Update, context: CallbackContext):
 💰 رصيدك الحالي: **{user['balance']:,.2f}** ريال
 
 📝 **كيفية الاستخدام:**
-🔸 أدخل رقم الكوبون المكون من 9 أرقام
-🔸 يجب أن يبدأ الكوبون بالحرف A
-🔸 مثال: A12345678
+🔸 أدخل رقم الكوبون 
+🔸 التنسيق الجديد: A + 8 أرقام (مثال: A12345678)
+🔸 التنسيق القديم: 8 أحرف مختلطة (مثال: KBSSCENZ)
 
 ⚠️ **ملاحظات مهمة:**
 • كل كوبون يُستخدم مرة واحدة فقط
@@ -3126,10 +3126,9 @@ async def process_coupon_redemption(update: Update, context: CallbackContext):
         if not validate_coupon_format(coupon_code):
             await update.message.reply_text(
                 "❌ **تنسيق الكوبون غير صحيح** ❌\n\n"
-                "📝 **التنسيق المطلوب:**\n"
-                "🔸 يجب أن يبدأ بالحرف A\n"
-                "🔸 متبوع بـ 8 أرقام\n"
-                "🔸 مثال: A12345678\n\n"
+                "📝 **التنسيقات المقبولة:**\n"
+                "🔸 التنسيق الجديد: A + 8 أرقام (مثال: A12345678)\n"
+                "🔸 التنسيق القديم: 8 أحرف مختلطة (مثال: KBSSCENZ)\n\n"
                 "💡 **يرجى إدخال رقم صحيح:**",
                 parse_mode='Markdown'
             )
@@ -3289,21 +3288,17 @@ async def process_coupon_redemption(update: Update, context: CallbackContext):
         context.user_data.clear()
 
 def validate_coupon_format(coupon_code: str) -> bool:
-    """التحقق من صحة تنسيق الكوبون"""
+    """التحقق من صحة تنسيق الكوبون - يدعم تنسيقين"""
     try:
-        # يجب أن يكون 9 أحرف: A + 8 أرقام
-        if len(coupon_code) != 9:
-            return False
+        # التنسيق الجديد: A + 8 أرقام (9 أحرف)
+        if len(coupon_code) == 9 and coupon_code.startswith('A') and coupon_code[1:].isdigit():
+            return True
         
-        # يجب أن يبدأ بالحرف A
-        if not coupon_code.startswith('A'):
-            return False
+        # التنسيق القديم: 8 أحرف مختلطة (للكوبونات الموجودة)
+        if len(coupon_code) == 8 and coupon_code.isalnum():
+            return True
         
-        # الباقي يجب أن يكون أرقام
-        if not coupon_code[1:].isdigit():
-            return False
-        
-        return True
+        return False
         
     except Exception:
         return False

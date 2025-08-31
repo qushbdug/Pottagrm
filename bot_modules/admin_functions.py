@@ -4276,9 +4276,9 @@ async def create_coupons_handler(update: Update, context: CallbackContext):
 
 📋 **تعليمات إنشاء الكوبون:**
 1. اختر نوع الكوبون المطلوب
-2. حدد القيمة والكمية
-3. أضف وصف اختياري
-4. تأكيد الإنشاء
+2. حدد القيمة والكمية  
+3. سيتم إنشاء كود بتنسيق A + 8 أرقام
+4. الكوبون صالح لمدة 30 يوم
 
 🎯 **أنواع الكوبونات المتاحة:**
 """
@@ -4312,10 +4312,29 @@ async def create_quick_coupon_handler(update: Update, context: CallbackContext, 
             await query.edit_message_text("❌ ليس لديك صلاحية لهذه العملية.")
             return
         
-        # إنشاء كود كوبون عشوائي
+        # إنشاء كود كوبون عشوائي بالتنسيق الصحيح (A + 8 أرقام)
         import random
         import string
-        coupon_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        
+        # إنشاء كود بتنسيق A + 8 أرقام ليتوافق مع نظام التحقق
+        # محاولة إنشاء كود فريد (حتى 50 محاولة)
+        coupon_code = None
+        for _ in range(50):
+            trial_code = 'A' + ''.join(random.choices(string.digits, k=8))
+            
+            # التحقق من عدم وجود الكود مسبقاً
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('SELECT 1 FROM coupons WHERE coupon_code = ?', (trial_code,))
+            if not cursor.fetchone():
+                coupon_code = trial_code
+                conn.close()
+                break
+            conn.close()
+        
+        if not coupon_code:
+            await query.edit_message_text(f"{EMOJIS['error']} فشل في إنشاء كود كوبون فريد.")
+            return
         
         # إدراج الكوبون في قاعدة البيانات
         conn = get_db_connection()
