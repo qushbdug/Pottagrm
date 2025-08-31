@@ -44,20 +44,21 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
         cursor = conn.cursor()
         
         # Basic stats
-        cursor.execute('SELECT COUNT(*) as total_users FROM users')
-        total_users = cursor.fetchone()['total_users']
+        cursor.execute('SELECT COUNT(*) FROM users')
+        total_users = cursor.fetchone()[0]
         
-        cursor.execute('SELECT COUNT(*) as active_users FROM users WHERE is_active = 1')
-        active_users = cursor.fetchone()['active_users']
+        cursor.execute('SELECT COUNT(*) FROM users WHERE is_active = 1')
+        active_users = cursor.fetchone()[0]
         
-        cursor.execute('SELECT SUM(balance) as total_balance FROM users')
-        total_balance = cursor.fetchone()['total_balance'] or 0
+        cursor.execute('SELECT SUM(balance) FROM users')
+        result = cursor.fetchone()[0]
+        total_balance = result if result is not None else 0
         
-        cursor.execute('SELECT COUNT(*) as pending_suppliers FROM users WHERE role = "supplier" AND is_active = 0')
-        pending_suppliers = cursor.fetchone()['pending_suppliers']
+        cursor.execute('SELECT COUNT(*) FROM users WHERE role = "supplier" AND is_active = 0')
+        pending_suppliers = cursor.fetchone()[0]
         
-        cursor.execute('SELECT COUNT(*) as total_transactions FROM transactions')
-        total_transactions = cursor.fetchone()['total_transactions']
+        cursor.execute('SELECT COUNT(*) FROM transactions')
+        total_transactions = cursor.fetchone()[0]
         
         conn.close()
         
@@ -88,6 +89,8 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
              InlineKeyboardButton(f'✅ تفعيل مزودين', callback_data='super_activate_suppliers')],
             [InlineKeyboardButton(f'📊 النظام المحاسبي', callback_data='accounting_system'),
              InlineKeyboardButton(f'📄 تنزيل كشوف حسابات', callback_data='download_statements')],
+            [InlineKeyboardButton(f'⚡ تصدير سريع', callback_data='quick_export'),
+             InlineKeyboardButton(f'📊 تصدير مخصص', callback_data='export_profits')],
             [InlineKeyboardButton(f'🔧 إعدادات النظام', callback_data='super_system_settings')],
             [InlineKeyboardButton(f'💾 النسخ الاحتياطي', callback_data='super_backup'),
              InlineKeyboardButton(f'🚨 مراقبة الأمان', callback_data='super_security_monitoring')],

@@ -64,7 +64,7 @@ try:
     # Import export system
     from export_system import (
         export_options_handler, export_profits_handler, export_customers_handler,
-        export_suppliers_handler, export_comprehensive_handler, ExportSystem
+        export_suppliers_handler, export_comprehensive_handler, ExportSystem, quick_export_handler
     )
     
     # Import admin functions
@@ -622,6 +622,8 @@ async def button_click_handler(update: Update, context):
             await export_suppliers_handler(update, context)
         elif callback_data == 'export_comprehensive':
             await export_comprehensive_handler(update, context)
+        elif callback_data == 'quick_export':
+            await quick_export_handler(update, context)
         
         # Export with period handlers
         elif callback_data.startswith('export_'):

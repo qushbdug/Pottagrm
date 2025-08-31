@@ -576,3 +576,58 @@ async def export_suppliers_handler(update: Update, context: CallbackContext):
 async def export_comprehensive_handler(update: Update, context: CallbackContext):
     """تصدير شامل"""
     return await ExportSystem.show_period_selection(update, context, 'comprehensive')
+
+async def quick_export_handler(update: Update, context: CallbackContext):
+    """تصدير سريع للمشرف الأعلى"""
+    try:
+        query = update.callback_query
+        await query.answer("📊 جاري إنشاء التصدير السريع...")
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} هذه الميزة مقتصرة على المشرف الأعلى.")
+            return
+        
+        quick_text = f"""
+⚡ **تصدير سريع للمشرف الأعلى** ⚡
+
+👑 **{user['full_name']}**
+
+📊 **خيارات التصدير السريع:**
+
+💰 **تقارير مالية (آخر 30 يوم):**
+• تقرير الأرباح والإيرادات
+• تحليل المعاملات المالية
+• ملخص الحركة المالية
+
+👥 **تقارير المستخدمين (آخر 30 يوم):**
+• بيانات العملاء وأنشطتهم
+• أداء المزودين ومبيعاتهم
+• إحصائيات شاملة
+
+📋 **تقارير شاملة:**
+• تقرير تنفيذي كامل (آخر 30 يوم)
+• تقرير شامل (جميع البيانات)
+
+⚡ اختر نوع التصدير المطلوب:
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('💰 الأرباح (30 يوم)', callback_data='export_profits_30'),
+             InlineKeyboardButton('👥 العملاء (30 يوم)', callback_data='export_customers_30')],
+            [InlineKeyboardButton('🏪 المزودين (30 يوم)', callback_data='export_suppliers_30'),
+             InlineKeyboardButton('📊 شامل (30 يوم)', callback_data='export_comprehensive_30')],
+            [InlineKeyboardButton('📋 شامل (جميع البيانات)', callback_data='export_comprehensive_all'),
+             InlineKeyboardButton('⚙️ تصدير مخصص', callback_data='export_profits')],
+            [InlineKeyboardButton('🔙 العودة للوحة الإدارة', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(
+            quick_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in quick export handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في التصدير السريع.")
