@@ -61,6 +61,12 @@ try:
         record_coupon_accounting, record_commission_accounting, record_money_creation_accounting
     )
     
+    # Import export system
+    from export_system import (
+        export_options_handler, export_profits_handler, export_customers_handler,
+        export_suppliers_handler, export_comprehensive_handler, ExportSystem
+    )
+    
     # Import admin functions
     from admin_functions import (
         ADMIN_CALLBACKS, activate_single_supplier, admin_panel_handler,
@@ -606,6 +612,24 @@ async def button_click_handler(update: Update, context):
         elif callback_data == 'trial_balance':
             from bot_modules.admin_functions import trial_balance_handler
             await trial_balance_handler(update, context)
+        
+        # Export system handlers
+        elif callback_data == 'export_profits':
+            await export_profits_handler(update, context)
+        elif callback_data == 'export_customers':
+            await export_customers_handler(update, context)
+        elif callback_data == 'export_suppliers':
+            await export_suppliers_handler(update, context)
+        elif callback_data == 'export_comprehensive':
+            await export_comprehensive_handler(update, context)
+        
+        # Export with period handlers
+        elif callback_data.startswith('export_'):
+            parts = callback_data.split('_')
+            if len(parts) >= 3:
+                export_type = parts[1]
+                period = '_'.join(parts[2:])
+                await ExportSystem.export_data_handler(update, context, export_type, period)
         
         # Refresh balance
         elif callback_data == 'refresh_balance':

@@ -13,6 +13,7 @@ from bot_modules.config import *
 from bot_modules.database import get_db_connection
 from bot_modules.utils import *
 from bot_modules.enhanced_error_messages import ErrorMessages, perm_error, db_error, unexpected_error, menu_error, wallet_error, coupon_error
+from bot_modules.export_system import export_options_handler
 
 logger = logging.getLogger(__name__)
 
@@ -2633,7 +2634,7 @@ ADMIN_CALLBACKS.update({
     'accounting_suppliers': lambda u, c: accounting_suppliers_handler(u, c),
     'accounting_customers': lambda u, c: accounting_customers_handler(u, c),
     'accounting_analytics': lambda u, c: accounting_analytics_handler(u, c),
-    'accounting_export': lambda u, c: accounting_export_handler(u, c),
+    'accounting_export': lambda u, c: export_options_handler(u, c),
     'accounting_custom': lambda u, c: accounting_custom_reports_handler(u, c),
     'accounting_search': lambda u, c: accounting_search_handler(u, c),
     
@@ -2905,7 +2906,7 @@ async def accounting_system_handler(update: Update, context: CallbackContext):
              InlineKeyboardButton('👥 تقارير العملاء', callback_data='accounting_customers')],
             [InlineKeyboardButton('📊 التحليلات المتقدمة', callback_data='accounting_analytics'),
              InlineKeyboardButton('📄 تقارير مخصصة', callback_data='accounting_custom')],
-            [InlineKeyboardButton('💾 تصدير البيانات', callback_data='accounting_export'),
+            [InlineKeyboardButton('💾 تصدير البيانات', callback_data='export_profits'),
              InlineKeyboardButton('🔍 بحث في السجلات', callback_data='accounting_search')],
             [InlineKeyboardButton('🔧 إصلاح القيود المفقودة', callback_data='fix_missing_entries'),
              InlineKeyboardButton('⚖️ ميزان المراجعة', callback_data='trial_balance')],
@@ -3149,9 +3150,11 @@ async def accounting_transactions_handler(update: Update, context: CallbackConte
         
         # أحدث المعاملات
         cursor.execute("""
-            SELECT t.transaction_type, t.amount, t.created_at, u.full_name
+            SELECT t.type, t.amount, t.created_at, 
+                   COALESCE(uf.full_name, ut.full_name, 'غير محدد') as user_name
             FROM transactions t
-            LEFT JOIN users u ON t.user_id = u.id
+            LEFT JOIN users uf ON t.from_user = uf.id
+            LEFT JOIN users ut ON t.to_user = ut.id
             ORDER BY t.created_at DESC
             LIMIT 5
         """)
@@ -3401,17 +3404,14 @@ async def accounting_suppliers_handler(update: Update, context: CallbackContext)
         
         # أفضل المزودين حسب المبيعات
         cursor.execute("""
-            SELECT u.full_name, u.phone, COUNT(t.id) as sales_count, 
-                   SUM(t.amount) as revenue, n.name as network_name
+            SELECT u.full_name, u.phone, u.balance,
+                   COUNT(t.id) as sales_count, 
+                   SUM(t.amount) as revenue
             FROM users u
-            LEFT JOIN networks n ON u.id = n.supplier_id
-            LEFT JOIN network_cards nc ON n.id = nc.network_id
-            LEFT JOIN transactions t ON t.description LIKE '%' || n.id || '%' 
-                                    AND t.transaction_type = 'purchase'
-                                    AND DATE(t.created_at) >= DATE('now', '-30 days')
+            LEFT JOIN transactions t ON (u.id = t.to_user AND t.type = 'card_purchase')
             WHERE u.role = 'supplier' AND u.is_active = 1
-            GROUP BY u.id, u.full_name, u.phone, n.name
-            ORDER BY revenue DESC
+            GROUP BY u.id, u.full_name, u.phone, u.balance
+            ORDER BY revenue DESC, u.balance DESC
             LIMIT 10
         """)
         top_suppliers = cursor.fetchall()
@@ -3420,10 +3420,8 @@ async def accounting_suppliers_handler(update: Update, context: CallbackContext)
         cursor.execute("""
             SELECT u.full_name, COUNT(t.id) as today_sales, SUM(t.amount) as today_revenue
             FROM users u
-            LEFT JOIN networks n ON u.id = n.supplier_id
-            LEFT JOIN transactions t ON t.description LIKE '%' || n.id || '%' 
-                                    AND t.transaction_type = 'purchase'
-                                    AND DATE(t.created_at) = DATE('now')
+            LEFT JOIN transactions t ON (u.id = t.to_user AND t.type = 'card_purchase'
+                                       AND DATE(t.created_at) = DATE('now'))
             WHERE u.role = 'supplier' AND u.is_active = 1
             GROUP BY u.id, u.full_name
             HAVING today_sales > 0
@@ -3543,9 +3541,8 @@ async def accounting_customers_handler(update: Update, context: CallbackContext)
             SELECT u.full_name, u.phone, COUNT(t.id) as purchases, 
                    SUM(t.amount) as total_spent, u.balance, u.created_at
             FROM users u
-            LEFT JOIN transactions t ON u.id = t.user_id 
-                                    AND t.transaction_type = 'purchase'
-                                    AND DATE(t.created_at) >= DATE('now', '-30 days')
+            LEFT JOIN transactions t ON (u.id = t.from_user AND t.type = 'card_purchase'
+                                       AND DATE(t.created_at) >= DATE('now', '-30 days'))
             WHERE u.role = 'customer' AND u.is_active = 1
             GROUP BY u.id, u.full_name, u.phone, u.balance, u.created_at
             ORDER BY total_spent DESC
@@ -3557,10 +3554,9 @@ async def accounting_customers_handler(update: Update, context: CallbackContext)
         cursor.execute("""
             SELECT u.full_name, COUNT(t.id) as today_purchases, SUM(t.amount) as today_spent
             FROM users u
-            JOIN transactions t ON u.id = t.user_id 
-            WHERE t.transaction_type = 'purchase'
-            AND DATE(t.created_at) = DATE('now')
-            AND u.role = 'customer'
+            LEFT JOIN transactions t ON (u.id = t.from_user AND t.type = 'card_purchase'
+                                       AND DATE(t.created_at) = DATE('now'))
+            WHERE u.role = 'customer' AND u.is_active = 1
             GROUP BY u.id, u.full_name
             ORDER BY today_spent DESC
             LIMIT 5
