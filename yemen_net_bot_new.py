@@ -4440,6 +4440,14 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
             await query.edit_message_text(f"{EMOJIS['error']} انتهت صلاحية العملية. يرجى البدء من جديد.")
             return
         
+        # حماية ضد الضغط المتعدد
+        if context.user_data.get('transfer_processing'):
+            await query.answer("⏳ العملية قيد التنفيذ، يرجى الانتظار...", show_alert=True)
+            return
+        
+        # تعيين حالة المعالجة
+        context.user_data['transfer_processing'] = True
+        
         # Get transfer details
         target_user_id = context.user_data.get('target_user_id')
         target_user_name = context.user_data.get('target_user_name')
@@ -5283,6 +5291,14 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             await query.edit_message_text("❌ يرجى التسجيل أولاً /start")
             return
         
+        # حماية ضد الضغط المتعدد
+        if context.user_data.get('purchase_processing'):
+            await query.answer("⏳ عملية الشراء قيد التنفيذ، يرجى الانتظار...", show_alert=True)
+            return
+        
+        # تعيين حالة المعالجة
+        context.user_data['purchase_processing'] = True
+        
         # الحصول على معلومات الشبكة
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -5381,6 +5397,9 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             
             await query.edit_message_text(success_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
             
+            # تنظيف حالة المعالجة بعد النجاح
+            context.user_data.clear()
+            
             # Send notification to buyer (about purchase)
             try:
                 buyer_notification = f"""
@@ -5451,6 +5470,10 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             
     except Exception as e:
         logger.error(f"Error in process card purchase: {e}")
+        
+        # تنظيف حالة المعالجة في حالة الخطأ
+        context.user_data.clear()
+        
         from enhanced_error_messages import ErrorMessages
         await query.edit_message_text(
             ErrorMessages.custom_error(

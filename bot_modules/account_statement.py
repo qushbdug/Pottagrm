@@ -274,63 +274,68 @@ class AccountStatementGenerator:
         
         story = []
         
-        # العنوان الرئيسي
-        title = Paragraph("🎟️ كشف الحساب", styles['Title'])
+        # العنوان الرئيسي (بدون أيقونات)
+        title = Paragraph("Account Statement - كشف الحساب", styles['Title'])
         story.append(title)
         story.append(Spacer(1, 12))
         
-        # معلومات المستخدم
+        # حساب الإحصائيات
+        incoming_total = sum(t[2] for t in transactions if t[5] == 'incoming')
+        outgoing_total = sum(t[2] for t in transactions if t[5] == 'outgoing')
+        
+        # معلومات المستخدم (نص بسيط بدون أيقونات)
         user_info = f"""
-        <b>اسم العميل:</b> {user['full_name']}<br/>
-        <b>رقم المحفظة:</b> {user['wallet_number']}<br/>
-        <b>الرصيد الحالي:</b> {user['balance']:,.2f} ريال<br/>
-        <b>الفترة:</b> {"آخر " + str(days) + " يوم" if days else "جميع المعاملات"}<br/>
-        <b>تاريخ الإنشاء:</b> {datetime.now().strftime('%Y-%m-%d %H:%M')}<br/><br/>
-        <b>إحصائيات المعاملات:</b><br/>
-        <b>إجمالي الوارد:</b> +{sum(t[2] for t in transactions if t[5] == 'incoming'):,.2f} ريال<br/>
-        <b>إجمالي الصادر:</b> -{sum(t[2] for t in transactions if t[5] == 'outgoing'):,.2f} ريال<br/>
-        <b>عدد المعاملات:</b> {len(transactions)} معاملة
+        <b>Customer Name:</b> {user['full_name']}<br/>
+        <b>Wallet Number:</b> {user['wallet_number']}<br/>
+        <b>Current Balance:</b> {user['balance']:,.2f} YER<br/>
+        <b>Period:</b> {"Last " + str(days) + " days" if days else "All transactions"}<br/>
+        <b>Generated:</b> {datetime.now().strftime('%Y-%m-%d %H:%M')}<br/><br/>
+        <b>Transaction Summary:</b><br/>
+        <b>Total Incoming:</b> +{incoming_total:,.2f} YER<br/>
+        <b>Total Outgoing:</b> -{outgoing_total:,.2f} YER<br/>
+        <b>Net Movement:</b> {incoming_total - outgoing_total:+,.2f} YER<br/>
+        <b>Total Transactions:</b> {len(transactions)}
         """
         
         user_para = Paragraph(user_info, arabic_style)
         story.append(user_para)
         story.append(Spacer(1, 20))
         
-        # جدول المعاملات
+        # جدول المعاملات (نص بسيط بدون أيقونات)
         if transactions:
-            # عناوين الجدول
-            data = [['التاريخ', 'الاتجاه', 'نوع المعاملة', 'المبلغ', 'الوصف']]
+            # عناوين الجدول (بالإنجليزية لتجنب مشاكل العرض)
+            data = [['Date', 'Direction', 'Type', 'Amount', 'Description']]
             
             transaction_types = {
-                'purchase': 'شراء',
-                'transfer': 'تحويل', 
-                'coupon_redeem': 'شحن بكوبون',
-                'commission': 'عمولة',
-                'card_purchase': 'شراء كرت',
-                'money_creation': 'إنشاء رصيد',
-                'transfer_fee': 'رسوم تحويل',
-                'refund': 'استرداد'
+                'purchase': 'Purchase',
+                'transfer': 'Transfer', 
+                'coupon_redeem': 'Coupon Redeem',
+                'commission': 'Commission',
+                'card_purchase': 'Card Purchase',
+                'money_creation': 'Money Creation',
+                'transfer_fee': 'Transfer Fee',
+                'refund': 'Refund'
             }
             
             for transaction in transactions:
-                # تحديد اتجاه المعاملة
+                # تحديد اتجاه المعاملة (بدون أيقونات)
                 direction = transaction[5]  # الاتجاه من الاستعلام
                 if direction == 'outgoing':
-                    direction_text = "🔴 صادر"
-                    amount_text = f"-{transaction[2]:,.2f} ريال"
+                    direction_text = "OUT"
+                    amount_text = f"-{transaction[2]:,.2f}"
                 elif direction == 'incoming':
-                    direction_text = "🟢 وارد"
-                    amount_text = f"+{transaction[2]:,.2f} ريال"
+                    direction_text = "IN"
+                    amount_text = f"+{transaction[2]:,.2f}"
                 else:
-                    direction_text = "💼 غير محدد"
-                    amount_text = f"{transaction[2]:,.2f} ريال"
+                    direction_text = "N/A"
+                    amount_text = f"{transaction[2]:,.2f}"
                 
                 data.append([
                     transaction[4][:16],  # created_at
                     direction_text,  # الاتجاه
                     transaction_types.get(transaction[1], transaction[1]),  # type
-                    amount_text,  # amount مع الإشارة
-                    (transaction[3] or '')[:30]  # description
+                    amount_text + " YER",  # amount مع العملة
+                    (transaction[3] or '')[:25]  # description
                 ])
             
             table = Table(data)
