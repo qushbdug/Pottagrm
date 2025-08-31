@@ -3036,6 +3036,56 @@ async def trial_balance_handler(update: Update, context: CallbackContext):
         logger.error(f"Error in trial balance handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض ميزان المراجعة.")
 
+async def download_statements_handler(update: Update, context: CallbackContext):
+    """تنزيل كشوف الحسابات للإدارة"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] not in ['admin', 'super_admin']:
+            await query.edit_message_text(f"{EMOJIS['error']} هذه الميزة مقتصرة على الإدارة.")
+            return
+        
+        statements_text = f"""
+📄 **تنزيل كشوف الحسابات** 📄
+
+👑 **المشرف:** {user['full_name']}
+
+📋 **الخيارات المتاحة:**
+
+🎯 **كشوف العملاء:**
+• جميع العملاء النشطين
+• العملاء ذوي الأرصدة العالية
+• العملاء الجدد
+
+🏪 **كشوف المزودين:**
+• جميع المزودين النشطين
+• أداء المزودين
+• عمولات المزودين
+
+📊 **التقارير الإجمالية:**
+• تقرير شامل لجميع المستخدمين
+• تقرير المعاملات الكبيرة
+• تقرير الحركة المالية
+
+💡 **ملاحظة:** هذه الميزة قيد التطوير
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('👥 كشوف العملاء', callback_data='customer_statements'),
+             InlineKeyboardButton('🏪 كشوف المزودين', callback_data='supplier_statements')],
+            [InlineKeyboardButton('📊 التقارير الإجمالية', callback_data='admin_reports'),
+             InlineKeyboardButton('💾 تصدير البيانات', callback_data='export_all_data')],
+            [InlineKeyboardButton('🔙 العودة للوحة الإدارة', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(statements_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in download statements handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تنزيل كشوف الحسابات.")
+
 # ===== معالجات التقارير المحاسبية =====
 
 async def accounting_transactions_handler(update: Update, context: CallbackContext):

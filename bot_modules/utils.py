@@ -367,8 +367,8 @@ def recalc_and_set_user_balance(user_id: int):
             ''', (user_id, user_id, user_id, user_id))
             
             result = cursor.fetchone()
-            credits = result['credits'] if result['credits'] else 0
-            debits = result['debits'] if result['debits'] else 0
+            credits = result[0] if result[0] else 0
+            debits = result[1] if result[1] else 0
             new_balance = credits - debits
             
             # Update user balance
