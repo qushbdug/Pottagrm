@@ -117,18 +117,29 @@ class AccountStatementGenerator:
             
             if days:
                 cursor.execute('''
-                    SELECT id, type, amount, description, created_at, details
+                    SELECT id, type, amount, description, created_at, 
+                           CASE 
+                               WHEN from_user = ? THEN 'outgoing'
+                               WHEN to_user = ? THEN 'incoming'
+                               ELSE 'unknown'
+                           END as direction
                     FROM transactions 
-                    WHERE user_id = ? AND created_at >= datetime('now', '-' || ? || ' days')
+                    WHERE (from_user = ? OR to_user = ?) 
+                    AND created_at >= datetime('now', '-' || ? || ' days')
                     ORDER BY created_at DESC
-                ''', (user_id, days))
+                ''', (user_id, user_id, user_id, user_id, days))
             else:
                 cursor.execute('''
-                    SELECT id, type, amount, description, created_at, details
+                    SELECT id, type, amount, description, created_at,
+                           CASE 
+                               WHEN from_user = ? THEN 'outgoing'
+                               WHEN to_user = ? THEN 'incoming'
+                               ELSE 'unknown'
+                           END as direction
                     FROM transactions 
-                    WHERE user_id = ?
+                    WHERE from_user = ? OR to_user = ?
                     ORDER BY created_at DESC
-                ''', (user_id,))
+                ''', (user_id, user_id, user_id, user_id))
             
             transactions = cursor.fetchall()
             conn.close()
@@ -178,8 +189,22 @@ class AccountStatementGenerator:
         ws['A7'] = "تاريخ الإنشاء:"
         ws['B7'] = datetime.now().strftime('%Y-%m-%d %H:%M')
         
+        # إحصائيات المعاملات
+        incoming_total = sum(t[2] for t in transactions if t[5] == 'incoming')
+        outgoing_total = sum(t[2] for t in transactions if t[5] == 'outgoing')
+        net_total = incoming_total - outgoing_total
+        
+        ws['D3'] = "إجمالي الوارد:"
+        ws['E3'] = f"+{incoming_total:,.2f} ريال"
+        ws['D4'] = "إجمالي الصادر:"
+        ws['E4'] = f"-{outgoing_total:,.2f} ريال"
+        ws['D5'] = "صافي الحركة:"
+        ws['E5'] = f"{net_total:+,.2f} ريال"
+        ws['D6'] = "عدد المعاملات:"
+        ws['E6'] = f"{len(transactions)} معاملة"
+        
         # عناوين الجدول
-        headers = ['التاريخ', 'نوع المعاملة', 'المبلغ', 'الوصف', 'التفاصيل']
+        headers = ['التاريخ', 'الاتجاه', 'نوع المعاملة', 'المبلغ', 'الوصف']
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=9, column=col, value=header)
             cell.font = header_font
@@ -200,11 +225,23 @@ class AccountStatementGenerator:
         }
         
         for row, transaction in enumerate(transactions, 10):
-            ws.cell(row=row, column=1, value=transaction[4][:16]).border = border
-            ws.cell(row=row, column=2, value=transaction_types.get(transaction[1], transaction[1])).border = border
-            ws.cell(row=row, column=3, value=f"{transaction[2]:,.2f}").border = border
-            ws.cell(row=row, column=4, value=transaction[3] or '').border = border
-            ws.cell(row=row, column=5, value=transaction[5] or '').border = border
+            # تحديد اتجاه المعاملة مع الأيقونات
+            direction = transaction[5]  # الاتجاه من الاستعلام الجديد
+            if direction == 'outgoing':
+                direction_text = "🔴 صادر"
+                amount_text = f"-{transaction[2]:,.2f}"
+            elif direction == 'incoming':
+                direction_text = "🟢 وارد"
+                amount_text = f"+{transaction[2]:,.2f}"
+            else:
+                direction_text = "💼 غير محدد"
+                amount_text = f"{transaction[2]:,.2f}"
+            
+            ws.cell(row=row, column=1, value=transaction[4][:16]).border = border  # التاريخ
+            ws.cell(row=row, column=2, value=direction_text).border = border  # الاتجاه
+            ws.cell(row=row, column=3, value=transaction_types.get(transaction[1], transaction[1])).border = border  # النوع
+            ws.cell(row=row, column=4, value=amount_text).border = border  # المبلغ مع الإشارة
+            ws.cell(row=row, column=5, value=transaction[3] or '').border = border  # الوصف
         
         # تنسيق عرض الأعمدة
         for col in range(1, 6):
@@ -248,7 +285,11 @@ class AccountStatementGenerator:
         <b>رقم المحفظة:</b> {user['wallet_number']}<br/>
         <b>الرصيد الحالي:</b> {user['balance']:,.2f} ريال<br/>
         <b>الفترة:</b> {"آخر " + str(days) + " يوم" if days else "جميع المعاملات"}<br/>
-        <b>تاريخ الإنشاء:</b> {datetime.now().strftime('%Y-%m-%d %H:%M')}
+        <b>تاريخ الإنشاء:</b> {datetime.now().strftime('%Y-%m-%d %H:%M')}<br/><br/>
+        <b>إحصائيات المعاملات:</b><br/>
+        <b>إجمالي الوارد:</b> +{sum(t[2] for t in transactions if t[5] == 'incoming'):,.2f} ريال<br/>
+        <b>إجمالي الصادر:</b> -{sum(t[2] for t in transactions if t[5] == 'outgoing'):,.2f} ريال<br/>
+        <b>عدد المعاملات:</b> {len(transactions)} معاملة
         """
         
         user_para = Paragraph(user_info, arabic_style)
@@ -258,7 +299,7 @@ class AccountStatementGenerator:
         # جدول المعاملات
         if transactions:
             # عناوين الجدول
-            data = [['التاريخ', 'نوع المعاملة', 'المبلغ', 'الوصف']]
+            data = [['التاريخ', 'الاتجاه', 'نوع المعاملة', 'المبلغ', 'الوصف']]
             
             transaction_types = {
                 'purchase': 'شراء',
@@ -272,10 +313,23 @@ class AccountStatementGenerator:
             }
             
             for transaction in transactions:
+                # تحديد اتجاه المعاملة
+                direction = transaction[5]  # الاتجاه من الاستعلام
+                if direction == 'outgoing':
+                    direction_text = "🔴 صادر"
+                    amount_text = f"-{transaction[2]:,.2f} ريال"
+                elif direction == 'incoming':
+                    direction_text = "🟢 وارد"
+                    amount_text = f"+{transaction[2]:,.2f} ريال"
+                else:
+                    direction_text = "💼 غير محدد"
+                    amount_text = f"{transaction[2]:,.2f} ريال"
+                
                 data.append([
                     transaction[4][:16],  # created_at
+                    direction_text,  # الاتجاه
                     transaction_types.get(transaction[1], transaction[1]),  # type
-                    f"{transaction[2]:,.2f} ريال",  # amount
+                    amount_text,  # amount مع الإشارة
                     (transaction[3] or '')[:30]  # description
                 ])
             
