@@ -178,7 +178,7 @@ class AccountingSearch:
             
             # آخر 10 معاملات
             cursor.execute('''
-                SELECT id, type, amount, description, created_at,
+                SELECT t.id, t.type, t.amount, t.description, t.created_at,
                        COALESCE(uf.full_name, ut.full_name, 'غير محدد') as user_name
                 FROM transactions t
                 LEFT JOIN users uf ON t.from_user = uf.id

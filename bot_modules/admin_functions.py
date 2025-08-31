@@ -3257,7 +3257,7 @@ async def accounting_profits_handler(update: Update, context: CallbackContext):
         cursor.execute("""
             SELECT COUNT(*), SUM(amount * 0.1) as commission
             FROM transactions 
-            WHERE transaction_type = 'purchase' 
+            WHERE type = 'card_purchase' 
             AND DATE(created_at) = DATE('now')
         """)
         today_profits = cursor.fetchone()
@@ -3268,7 +3268,7 @@ async def accounting_profits_handler(update: Update, context: CallbackContext):
         cursor.execute("""
             SELECT COUNT(*), SUM(amount * 0.1) as commission
             FROM transactions 
-            WHERE transaction_type = 'purchase' 
+            WHERE type = 'card_purchase' 
             AND DATE(created_at) >= DATE('now', '-7 days')
         """)
         week_profits = cursor.fetchone()
@@ -3279,7 +3279,7 @@ async def accounting_profits_handler(update: Update, context: CallbackContext):
         cursor.execute("""
             SELECT COUNT(*), SUM(amount * 0.1) as commission
             FROM transactions 
-            WHERE transaction_type = 'purchase' 
+            WHERE type = 'card_purchase' 
             AND DATE(created_at) >= DATE('now', '-30 days')
         """)
         month_profits = cursor.fetchone()
@@ -3293,7 +3293,7 @@ async def accounting_profits_handler(update: Update, context: CallbackContext):
             JOIN network_cards nc ON t.description LIKE '%' || nc.network_id || '%'
             JOIN networks n ON nc.network_id = n.id  
             JOIN users u ON n.supplier_id = u.id
-            WHERE t.transaction_type = 'purchase'
+            WHERE t.type = 'card_purchase'
             AND DATE(t.created_at) = DATE('now')
             GROUP BY u.id, u.full_name
             ORDER BY revenue DESC
@@ -3341,7 +3341,7 @@ async def accounting_profits_handler(update: Update, context: CallbackContext):
             cursor.execute("""
                 SELECT SUM(amount * 0.1) as commission
                 FROM transactions 
-                WHERE transaction_type = 'purchase' 
+                WHERE type = 'card_purchase' 
                 AND DATE(created_at) BETWEEN DATE('now', '-14 days') AND DATE('now', '-7 days')
             """)
             prev_week = cursor.fetchone()
@@ -3672,7 +3672,7 @@ async def accounting_analytics_handler(update: Update, context: CallbackContext)
                 COUNT(*) as transactions,
                 SUM(amount) as revenue
             FROM transactions 
-            WHERE transaction_type = 'purchase'
+            WHERE type = 'card_purchase'
             AND DATE(created_at) >= DATE('now', '-6 months')
             GROUP BY strftime('%Y-%m', created_at)
             ORDER BY month DESC
@@ -3686,7 +3686,7 @@ async def accounting_analytics_handler(update: Update, context: CallbackContext)
                 strftime('%H', created_at) as hour,
                 COUNT(*) as transactions
             FROM transactions 
-            WHERE transaction_type = 'purchase'
+            WHERE type = 'card_purchase'
             AND DATE(created_at) >= DATE('now', '-7 days')
             GROUP BY strftime('%H', created_at)
             ORDER BY transactions DESC
@@ -3702,7 +3702,7 @@ async def accounting_analytics_handler(update: Update, context: CallbackContext)
                 SUM(t.amount) as total_revenue
             FROM transactions t
             JOIN network_cards nc ON t.description LIKE '%' || nc.network_id || '%'
-            WHERE t.transaction_type = 'purchase'
+            WHERE t.type = 'card_purchase'
             AND DATE(t.created_at) >= DATE('now', '-30 days')
             GROUP BY nc.card_value
             ORDER BY sales_count DESC
@@ -3889,7 +3889,7 @@ async def transactions_detailed_handler(update: Update, context: CallbackContext
         
         # تقرير مفصل آخر 20 معاملة
         cursor.execute("""
-            SELECT t.id, t.transaction_type, t.amount, t.description, 
+            SELECT t.id, t.type, t.amount, t.description, 
                    t.created_at, u.full_name, u.phone
             FROM transactions t
             LEFT JOIN users u ON t.user_id = u.id
@@ -3975,7 +3975,7 @@ async def transactions_purchases_handler(update: Update, context: CallbackContex
         cursor.execute("""
             SELECT COUNT(*), SUM(amount), AVG(amount)
             FROM transactions 
-            WHERE transaction_type = 'purchase'
+            WHERE type = 'card_purchase'
             AND DATE(created_at) >= DATE('now', '-30 days')
         """)
         purchase_stats = cursor.fetchone()
@@ -3988,7 +3988,7 @@ async def transactions_purchases_handler(update: Update, context: CallbackContex
             SELECT t.amount, t.created_at, u.full_name, t.description
             FROM transactions t
             LEFT JOIN users u ON t.user_id = u.id
-            WHERE t.transaction_type = 'purchase'
+            WHERE t.type = 'card_purchase'
             ORDER BY t.created_at DESC
             LIMIT 10
         """)
@@ -4061,7 +4061,7 @@ async def transactions_transfers_handler(update: Update, context: CallbackContex
         cursor.execute("""
             SELECT COUNT(*), SUM(amount), AVG(amount)
             FROM transactions 
-            WHERE transaction_type = 'transfer'
+            WHERE type = 'transfer'
             AND DATE(created_at) >= DATE('now', '-30 days')
         """)
         transfer_stats = cursor.fetchone()
@@ -4074,7 +4074,7 @@ async def transactions_transfers_handler(update: Update, context: CallbackContex
             SELECT t.amount, t.created_at, u.full_name, t.description
             FROM transactions t
             LEFT JOIN users u ON t.user_id = u.id
-            WHERE t.transaction_type = 'transfer'
+            WHERE t.type = 'transfer'
             ORDER BY t.created_at DESC
             LIMIT 10
         """)
