@@ -50,7 +50,7 @@ class AccountStatementGenerator:
         try:
             query = update.callback_query
             if query:
-                await query.answer()
+                await query.answer("🎟️ جاري إنشاء كشف الحساب...")
                 user_id = query.from_user.id
             else:
                 user_id = update.effective_user.id
@@ -391,7 +391,13 @@ class AccountStatementGenerator:
         """معالج تنزيل كشف الحساب"""
         try:
             query = update.callback_query
+            if not query:
+                return
+            
             await query.answer("🎟️ جاري إنشاء كشف الحساب...")
+            
+            # عرض مؤشر تقدم
+            await query.edit_message_text("⏳ **جاري إنشاء كشف الحساب...**\n\n🔄 يرجى الانتظار...")
             
             user = get_user(query.from_user.id)
             if not user:
@@ -419,11 +425,13 @@ class AccountStatementGenerator:
                 filename = f"كشف_حساب_{user.get('wallet_number', 'غير محدد')}_{filename_date}.xlsx"
                 
                 # إرسال الملف
+                chat_id = query.message.chat_id if query.message else query.from_user.id
                 await context.bot.send_document(
-                    chat_id=query.message.chat_id,
+                    chat_id=chat_id,
                     document=excel_buffer,
                     filename=filename,
-                    caption=f"🎟️ **كشف الحساب - Excel**\n\n👤 **{user['full_name']}**\n📅 **الفترة:** {period_text}\n⏰ **تم الإنشاء:** {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+                    caption=f"🎟️ **كشف الحساب - Excel**\n\n👤 **{user['full_name']}**\n📅 **الفترة:** {period_text}\n⏰ **تم الإنشاء:** {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                    parse_mode='Markdown'
                 )
                 
             elif format_type == 'pdf':
@@ -436,11 +444,13 @@ class AccountStatementGenerator:
                 filename = f"كشف_حساب_{user.get('wallet_number', 'غير محدد')}_{filename_date}.pdf"
                 
                 # إرسال الملف
+                chat_id = query.message.chat_id if query.message else query.from_user.id
                 await context.bot.send_document(
-                    chat_id=query.message.chat_id,
+                    chat_id=chat_id,
                     document=pdf_buffer,
                     filename=filename,
-                    caption=f"🎟️ **كشف الحساب - PDF**\n\n👤 **{user['full_name']}**\n📅 **الفترة:** {period_text}\n⏰ **تم الإنشاء:** {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+                    caption=f"🎟️ **كشف الحساب - PDF**\n\n👤 **{user['full_name']}**\n📅 **الفترة:** {period_text}\n⏰ **تم الإنشاء:** {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                    parse_mode='Markdown'
                 )
             
             # رسالة تأكيد
@@ -469,7 +479,23 @@ class AccountStatementGenerator:
             
         except Exception as e:
             logger.error(f"Error downloading statement: {e}")
-            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إنشاء كشف الحساب.")
+            error_msg = f"{EMOJIS['error']} حدث خطأ في إنشاء كشف الحساب.\n\n🔍 السبب: {str(e)}\n💡 يرجى المحاولة مرة أخرى"
+            
+            error_keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton('🔄 إعادة المحاولة', callback_data='statement'),
+                 InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            ])
+            
+            try:
+                await query.edit_message_text(error_msg, reply_markup=error_keyboard, parse_mode='Markdown')
+            except:
+                # في حالة فشل تحديث الرسالة، أرسل رسالة جديدة
+                await context.bot.send_message(
+                    chat_id=query.from_user.id,
+                    text=error_msg,
+                    reply_markup=error_keyboard,
+                    parse_mode='Markdown'
+                )
 
 # دوال مساعدة للاستدعاء السريع
 async def account_statement_handler(update: Update, context: CallbackContext):
