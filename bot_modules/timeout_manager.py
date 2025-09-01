@@ -49,11 +49,8 @@ class TimeoutManager:
         
         conn = None
         try:
-            # إنشاء اتصال مع timeout
-            conn = await asyncio.wait_for(
-                asyncio.create_task(asyncio.to_thread(get_db_connection)),
-                timeout=timeout
-            )
+            # إنشاء اتصال مباشر (SQLite لا يدعم async بشكل طبيعي)
+            conn = get_db_connection()
             
             cursor = conn.cursor()
             cursor.execute('PRAGMA busy_timeout = 5000')  # 5 seconds busy timeout
@@ -90,13 +87,18 @@ class TimeoutManager:
                 except:
                     pass
     
-    async def safe_purchase_transaction(self, user_id: int, supplier_id: int, 
-                                      card_id: int, card_price: float, 
-                                      transaction_id: str, network_name: str):
+    def safe_purchase_transaction(self, user_id: int, supplier_id: int, 
+                                   card_id: int, card_price: float, 
+                                   transaction_id: str, network_name: str):
         """معاملة شراء آمنة مع timeout"""
         
-        async def purchase_operation():
-            async with self.safe_db_transaction() as (conn, cursor):
+        def purchase_operation():
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            try:
+                cursor.execute('PRAGMA busy_timeout = 10000')
+                cursor.execute('BEGIN IMMEDIATE')
                 # التحقق من الرصيد
                 cursor.execute('SELECT balance FROM users WHERE id = ?', (user_id,))
                 balance_result = cursor.fetchone()
@@ -135,17 +137,22 @@ class TimeoutManager:
                 ''', (transaction_id, user_id, supplier_id, card_price, 'card_purchase', 
                       f"شراء كرت {card_price:,.0f} ريال من شبكة {network_name}", datetime.now()))
                 
+                conn.commit()
+                
                 return {
                     'card_code': card_code,
                     'new_balance': new_balance,
                     'transaction_id': transaction_id
                 }
+                
+            except Exception as e:
+                conn.rollback()
+                raise e
+            finally:
+                conn.close()
         
-        return await self.execute_with_timeout(
-            purchase_operation, 
-            self.db_timeout, 
-            "معاملة الشراء"
-        )
+        # تنفيذ العملية مباشرة (SQLite لا يحتاج async)
+        return purchase_operation()
 
 # إنشاء مثيل عام للاستخدام
 timeout_manager = TimeoutManager()

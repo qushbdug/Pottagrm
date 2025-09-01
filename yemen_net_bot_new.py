@@ -5523,7 +5523,7 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             conn.close()
             
             # استخدام معاملة آمنة مع timeout
-            purchase_result = await timeout_manager.safe_purchase_transaction(
+            purchase_result = timeout_manager.safe_purchase_transaction(
                 user_id=user['id'],
                 supplier_id=supplier_id,
                 card_id=card_id,
@@ -5547,12 +5547,12 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
 💰 المبلغ المدفوع: **{card_price:,.0f}** ريال
 
 🎫 **بيانات الكرت:**
-🔢 رقم الكرت: `{card_code}`
+🔢 رقم الكرت: **{card_code}**
 💰 القيمة: **{card_price:,.0f}** ريال
 
-💳 **رصيدك الجديد:** {current_balance - card_price:,.2f} ريال
+💳 **رصيدك الجديد:** {new_buyer_balance:,.2f} ريال
 
-📋 **معرف المعاملة:** `{transaction_id[:8]}`
+📋 **معرف المعاملة:** **{transaction_id[:8]}**
 ⏰ **وقت الشراء:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
 
 🎉 **شكراً لاستخدام خدماتنا!**
