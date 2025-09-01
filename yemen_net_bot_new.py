@@ -91,6 +91,9 @@ try:
     # Import safe handlers for error-free operations
     from safe_handlers import safe_get_user_from_update, safe_answer_query, safe_edit_message, safe_get_user_field, safe_format_balance
     
+    # Import timeout manager to prevent hanging
+    from timeout_manager import timeout_manager
+    
     # Import export system
     from export_system import (
         export_options_handler, export_profits_handler, export_customers_handler,
@@ -5440,8 +5443,10 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
         # تعيين حالة المعالجة
         context.user_data['purchase_processing'] = True
         
+        # عرض مؤشر التقدم
+        await safe_edit_message(update, "⏳ **جاري معالجة عملية الشراء...**\n\n🔄 يرجى الانتظار...")
+        
         # الحصول على معلومات الشبكة
-        # استخدام النظام الآمن للمعاملات المالية
         import uuid
         transaction_id = str(uuid.uuid4())
         
@@ -5449,6 +5454,9 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             # التحقق من الشبكة والبطاقة المتاحة
             conn = get_db_connection()
             cursor = conn.cursor()
+            
+            # تعيين timeout لتجنب التعليق
+            cursor.execute('PRAGMA busy_timeout = 10000')  # 10 seconds
             
             cursor.execute('SELECT name, provider, supplier_id FROM networks WHERE id = ? AND is_active = 1', (network_id,))
             network = cursor.fetchone()
@@ -5471,34 +5479,21 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
                 raise Exception(f"لا توجد كروت متاحة بقيمة {card_price:,.0f} ريال")
             
             card_id, card_code = card_result
+            
             conn.close()
             
-            # استخدام المعاملة الآمنة لتحديث الأرصدة
-            transfer_result = transaction_manager.safe_transfer(
-                from_user_id=user['id'],
-                to_user_id=supplier_id,
-                amount=card_price,
-                description=f"شراء كرت {card_price:,.0f} ريال من شبكة {network_name}",
-                reference_id=transaction_id
+            # استخدام معاملة آمنة مع timeout
+            purchase_result = await timeout_manager.safe_purchase_transaction(
+                user_id=user['id'],
+                supplier_id=supplier_id,
+                card_id=card_id,
+                card_price=card_price,
+                transaction_id=transaction_id,
+                network_name=network_name
             )
             
-            # تحديث حالة البطاقة بعد نجاح التحويل
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute('UPDATE network_cards SET is_sold = 1, sold_at = datetime("now") WHERE id = ?', (card_id,))
-            
-            # تسجيل المعاملة في جدول المعاملات
-            cursor.execute('''
-                INSERT INTO transactions (id, from_user, to_user, amount, type, description, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, datetime("now"))
-            ''', (transaction_id, user['id'], supplier_id, card_price, 'card_purchase', 
-                  f"شراء كرت {card_price:,.0f} ريال من شبكة {network_name}"))
-            
-            # تسجيل القيد المحاسبي لشراء الكرت
-            record_purchase_accounting(card_price, user['id'], transaction_id)
-            
-            conn.commit()
-            conn.close()
+            card_code = purchase_result['card_code']
+            new_buyer_balance = purchase_result['new_balance']
             
             # عرض نتيجة الشراء الناجح
             success_text = f"""
@@ -5596,7 +5591,12 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
                 logger.warning(f"Failed to send notification to supplier: {e}")
             
         except Exception as e:
-            # لا حاجة لـ ROLLBACK لأن safe_transfer يتعامل مع هذا
+            # إلغاء المعاملة في حالة الخطأ
+            try:
+                conn.rollback()
+                conn.close()
+            except:
+                pass
             logger.error(f"Card purchase failed: {e}")
             raise e
             
@@ -5604,21 +5604,26 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
         logger.error(f"Error in process card purchase: {e}")
         
         # تنظيف حالة المعالجة في حالة الخطأ
-        context.user_data.clear()
+        context.user_data.pop('purchase_processing', None)
         
-        from enhanced_error_messages import ErrorMessages
-        await query.edit_message_text(
-            ErrorMessages.custom_error(
-                "تنفيذ الشراء",
-                f"فشل في إتمام عملية الشراء - {str(e)}",
-                "تحقق من رصيدك وتوفر الكروت وحاول مرة أخرى",
-                "PURCHASE_ERROR"
-            ),
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton('🔄 إعادة المحاولة', callback_data=f'buy_from_network_{network_id}'),
-                 InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-            ])
+        from bot_modules.enhanced_error_messages import ErrorMessages
+        error_msg = ErrorMessages.custom_error(
+            "تنفيذ الشراء",
+            f"فشل في إتمام عملية الشراء - {str(e)}",
+            "تحقق من رصيدك وتوفر الكروت وحاول مرة أخرى",
+            "PURCHASE_ERROR"
         )
+        
+        error_keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton('🔄 إعادة المحاولة', callback_data=f'buy_from_network_{network_id}'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ])
+        
+        await safe_edit_message(update, error_msg, error_keyboard)
+    
+    finally:
+        # تنظيف حالة المعالجة دائماً
+        context.user_data.pop('purchase_processing', None)
 
 
 # معالجات إدارة الشبكات للمشرف الأعلى
