@@ -94,6 +94,9 @@ try:
     # Import timeout manager to prevent hanging
     from timeout_manager import timeout_manager
     
+    # Import constraints system for data validation
+    from constraints_system import constraints_system
+    
     # Import export system
     from export_system import (
         export_options_handler, export_profits_handler, export_customers_handler,
@@ -701,6 +704,25 @@ async def button_click_handler(update: Update, context):
             user = get_user(user['id'])
             # العودة للمحفظة المطورة مع الرصيد المحدث
             return await enhanced_wallet_handler(update, context)
+        
+        # Constraints System (Admin only)
+        elif callback_data == 'constraints_report' and user['role'] in ['admin', 'super_admin']:
+            constraints_report = constraints_system.create_constraints_summary()
+            await safe_edit_message(update, constraints_report, InlineKeyboardMarkup([
+                [InlineKeyboardButton('🔄 تحديث التقرير', callback_data='constraints_report'),
+                 InlineKeyboardButton('📊 انتهاكات القيود', callback_data='constraints_violations')],
+                [InlineKeyboardButton('👑 لوحة الإدارة', callback_data='admin_panel'),
+                 InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            ]))
+        
+        elif callback_data == 'constraints_violations' and user['role'] in ['admin', 'super_admin']:
+            violations_report = constraints_system.create_violation_report()
+            await safe_edit_message(update, violations_report, InlineKeyboardMarkup([
+                [InlineKeyboardButton('🛡️ تقرير القيود', callback_data='constraints_report'),
+                 InlineKeyboardButton('🔄 تحديث', callback_data='constraints_violations')],
+                [InlineKeyboardButton('👑 لوحة الإدارة', callback_data='admin_panel'),
+                 InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            ]))
         
         # Interactive Help System
         elif callback_data == 'help' or callback_data == 'help_menu':
@@ -4582,6 +4604,27 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
         import uuid
         from datetime import datetime
         
+        # التحقق من القيود قبل تنفيذ التحويل
+        constraints_valid, constraint_violations = constraints_system.validate_transfer_operation(
+            from_user_id=user['id'],
+            to_user_id=target_user_id,
+            amount=amount
+        )
+        
+        if not constraints_valid:
+            # عرض انتهاكات القيود
+            violations_text = "❌ **لا يمكن إتمام التحويل:**\n\n"
+            for violation in constraint_violations:
+                emoji = {"error": "❌", "warning": "⚠️", "critical": "🚨"}.get(violation.get('severity'), "❓")
+                violations_text += f"{emoji} {violation['error_message']}\n"
+                violations_text += f"💡 {violation['user_action']}\n\n"
+            
+            await safe_edit_message(update, violations_text, InlineKeyboardMarkup([
+                [InlineKeyboardButton('🔄 إعادة المحاولة', callback_data='transfer'),
+                 InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            ]))
+            return
+        
         # بدء معاملة آمنة
         cursor.execute('BEGIN IMMEDIATE')
         
@@ -4771,6 +4814,15 @@ def main():
         except Exception as e:
             logger.error(f"Database optimization failed: {e}")
             # Don't fail bot startup for optimization issues
+        
+        # Enforce database constraints
+        logger.info("Enforcing database constraints...")
+        try:
+            constraints_system.enforce_database_constraints()
+            logger.info("Database constraints enforced successfully")
+        except Exception as e:
+            logger.error(f"Failed to enforce constraints: {e}")
+            # Don't fail bot startup for constraint issues
         
         # Validate configuration
         if not BOT_TOKEN:
@@ -5521,6 +5573,28 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             card_id, card_code = card_result
             
             conn.close()
+            
+            # التحقق من القيود قبل تنفيذ الشراء
+            constraints_valid, constraint_violations = constraints_system.validate_purchase_operation(
+                user_id=user['id'],
+                card_id=card_id,
+                amount=card_price,
+                network_id=int(network_id)
+            )
+            
+            if not constraints_valid:
+                # عرض انتهاكات القيود
+                violations_text = "❌ **لا يمكن إتمام الشراء:**\n\n"
+                for violation in constraint_violations:
+                    emoji = {"error": "❌", "warning": "⚠️", "critical": "🚨"}.get(violation.get('severity'), "❓")
+                    violations_text += f"{emoji} {violation['error_message']}\n"
+                    violations_text += f"💡 {violation['user_action']}\n\n"
+                
+                await safe_edit_message(update, violations_text, InlineKeyboardMarkup([
+                    [InlineKeyboardButton('🔄 إعادة المحاولة', callback_data=f'buy_from_network_{network_id}'),
+                     InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+                ]))
+                return
             
             # استخدام معاملة آمنة مع timeout
             purchase_result = timeout_manager.safe_purchase_transaction(
