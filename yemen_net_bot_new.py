@@ -4582,19 +4582,43 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
         import uuid
         from datetime import datetime
         
-        # Transfer transaction
+        # بدء معاملة آمنة
+        cursor.execute('BEGIN IMMEDIATE')
+        
+        # التحقق من الرصيد مرة أخرى
+        cursor.execute('SELECT balance FROM users WHERE id = ?', (user['id'],))
+        current_balance_check = cursor.fetchone()
+        if not current_balance_check:
+            raise Exception("خطأ في قراءة رصيد المرسل")
+        
+        current_balance = float(current_balance_check['balance'])
+        if current_balance < amount:
+            raise Exception(f"الرصيد غير كافي: {current_balance} < {amount}")
+        
+        # تحديث الأرصدة
+        new_sender_balance = current_balance - amount
+        
+        # خصم من المرسل
+        cursor.execute('UPDATE users SET balance = ?, last_activity = ? WHERE id = ?', 
+                      (new_sender_balance, datetime.now(), user['id']))
+        
+        # إضافة للمستقبل
+        cursor.execute('UPDATE users SET balance = balance + ?, last_activity = ? WHERE id = ?', 
+                      (amount, datetime.now(), target_user_id))
+        
+        # الحصول على الرصيد الجديد للمستقبل
+        cursor.execute('SELECT balance FROM users WHERE id = ?', (target_user_id,))
+        receiver_new_balance = float(cursor.fetchone()['balance'])
+        
+        # تسجيل المعاملة
         transfer_id = str(uuid.uuid4())
         cursor.execute('''
             INSERT INTO transactions 
             (id, from_user, to_user, amount, type, description, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (transfer_id, user['id'], target_user['id'], amount, 'transfer', 'تحويل رصيد من صديق', datetime.now()))
+        ''', (transfer_id, user['id'], target_user_id, amount, 'transfer', 'تحويل رصيد من صديق', datetime.now()))
         
-        # No fee transaction - transfers are FREE!
-        
-        # Update balances
-        sender_new_balance = recalc_and_set_user_balance(user['id'])
-        receiver_new_balance = recalc_and_set_user_balance(target_user['id'])
+        sender_new_balance = new_sender_balance
         
         # تسجيل القيد المحاسبي للتحويل
         record_transfer_accounting(amount, user['id'], target_user['id'], transfer_id)
@@ -4679,8 +4703,24 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
         logger.info(f"User {user['full_name']} sent {amount} YER to {target_user['full_name']} (fee: {transfer_fee})")
         
     except Exception as e:
+        # إلغاء المعاملة في حالة الخطأ
+        try:
+            conn.rollback()
+            conn.close()
+        except:
+            pass
+        
         logger.error(f"Error in confirm transfer handler: {e}")
-        await query.edit_message_text(wallet_error("تنفيذ التحويل"))
+        
+        # تنظيف حالة المعالجة
+        context.user_data.pop('transfer_processing', None)
+        
+        from bot_modules.enhanced_error_messages import wallet_error
+        await safe_edit_message(update, wallet_error("تنفيذ التحويل"))
+    
+    finally:
+        # تنظيف حالة المعالجة دائماً
+        context.user_data.pop('transfer_processing', None)
 
 def main():
     """Main function to start the bot with enhanced error handling"""
