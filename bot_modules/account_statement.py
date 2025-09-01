@@ -215,19 +215,24 @@ class AccountStatementGenerator:
         ws['A7'] = "تاريخ الإنشاء:"
         ws['B7'] = datetime.now().strftime('%Y-%m-%d %H:%M')
         
-        # إحصائيات المعاملات
+        # حساب الرصيد الابتدائي
+        current_balance = float(user['balance'])
         incoming_total = sum(t[2] for t in transactions if t[5] == 'incoming')
         outgoing_total = sum(t[2] for t in transactions if t[5] == 'outgoing')
+        net_transactions = incoming_total - outgoing_total
+        initial_balance = current_balance - net_transactions
         net_total = incoming_total - outgoing_total
         
-        ws['D3'] = "إجمالي الوارد:"
-        ws['E3'] = f"+{incoming_total:,.2f} ريال"
-        ws['D4'] = "إجمالي الصادر:"
-        ws['E4'] = f"-{outgoing_total:,.2f} ريال"
-        ws['D5'] = "صافي الحركة:"
-        ws['E5'] = f"{net_total:+,.2f} ريال"
-        ws['D6'] = "عدد المعاملات:"
-        ws['E6'] = f"{len(transactions)} معاملة"
+        ws['D3'] = "الرصيد الابتدائي:"
+        ws['E3'] = f"{initial_balance:,.2f} ريال"
+        ws['D4'] = "إجمالي الوارد:"
+        ws['E4'] = f"+{incoming_total:,.2f} ريال"
+        ws['D5'] = "إجمالي الصادر:"
+        ws['E5'] = f"-{outgoing_total:,.2f} ريال"
+        ws['D6'] = "صافي الحركة:"
+        ws['E6'] = f"{net_transactions:+,.2f} ريال"
+        ws['D7'] = "عدد المعاملات:"
+        ws['E7'] = f"{len(transactions)} معاملة"
         
         # عناوين الجدول
         headers = ['التاريخ', 'الاتجاه', 'نوع المعاملة', 'المبلغ', 'الوصف']
@@ -316,10 +321,12 @@ class AccountStatementGenerator:
         <b>Current Balance:</b> {user['balance']:,.2f} YER<br/>
         <b>Period:</b> {"Last " + str(days) + " days" if days else "All transactions"}<br/>
         <b>Generated:</b> {datetime.now().strftime('%Y-%m-%d %H:%M')}<br/><br/>
-        <b>Transaction Summary:</b><br/>
+        <b>Balance Summary:</b><br/>
+        <b>Initial Balance:</b> {current_balance - (incoming_total - outgoing_total):,.2f} YER<br/>
         <b>Total Incoming:</b> +{incoming_total:,.2f} YER<br/>
         <b>Total Outgoing:</b> -{outgoing_total:,.2f} YER<br/>
         <b>Net Movement:</b> {incoming_total - outgoing_total:+,.2f} YER<br/>
+        <b>Final Balance:</b> {user['balance']:,.2f} YER<br/>
         <b>Total Transactions:</b> {len(transactions)}
         """
         
