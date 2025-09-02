@@ -307,26 +307,41 @@ async def show_main_menu(update: Update, context: CallbackContext, role: str) ->
 👤 أهلاً وسهلاً **{user['full_name']}**
 🏷️ النوع: **{USER_ROLES.get(role, role)}**
 💰 رصيدك: **{user['balance']:,.2f}** ريال
-💳 رقم محفظتك: **{user['wallet_number']}**
+💳 رقم محفظتك: **{user.get('wallet_number', 'غير محدد')}**
 ⚡ الحالة: **{"✅ مفعل" if user['is_active'] else "⏳ في انتظار التفعيل"}**
 
 🎯 **اختر العملية المطلوبة:**
 """
         
-        if update.message:
-            await update.message.reply_text(menu_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        else:
-            await update.callback_query.edit_message_text(menu_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        # استخدام المعالج الآمن لإرسال/تحديث الرسالة
+        try:
+            if update.message:
+                await update.message.reply_text(menu_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            else:
+                await update.callback_query.edit_message_text(menu_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        except Exception as msg_error:
+            # تجاهل أخطاء الرسائل المتطابقة
+            if "not modified" in str(msg_error).lower() or "exactly the same" in str(msg_error).lower():
+                logger.debug(f"Message already up to date: {msg_error}")
+            else:
+                logger.warning(f"Message update failed: {msg_error}")
             
         return ConversationHandler.END
         
     except Exception as e:
         logger.error(f"Error in show main menu: {e}")
+        from bot_modules.enhanced_error_messages import menu_error
         error_text = menu_error("القائمة الرئيسية", "تحميل البيانات")
-        if update.message:
-            await update.message.reply_text(error_text)
-        else:
-            await update.callback_query.edit_message_text(error_text)
+        
+        try:
+            if update.message:
+                await update.message.reply_text(error_text)
+            else:
+                await update.callback_query.edit_message_text(error_text)
+        except:
+            # تجنب أخطاء إضافية في معالجة الأخطاء
+            pass
+            
         return ConversationHandler.END
 
 def create_main_keyboard(role: str):
@@ -438,7 +453,7 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
 
 💰 **الرصيد والإحصائيات:**
 💵 الرصيد المتاح: **{available_balance:,.2f}** ريال
-🆔 رقم المحفظة: **{user['wallet_number']}**
+🆔 رقم المحفظة: **{user.get('wallet_number', 'غير محدد')}**
 📊 معدل الادخار: **{savings_rate:.1f}%**
 
 📈 **ملخص المعاملات:**
@@ -918,7 +933,7 @@ async def process_transfer_step1(update: Update, context: CallbackContext):
         # Save target user info and move to step 2
         context.user_data['target_user_id'] = target_user['id']
         context.user_data['target_user_name'] = target_user['full_name']
-        context.user_data['target_wallet'] = target_user['wallet_number'] if 'wallet_number' in target_user.keys() else 'غير محدد'
+        context.user_data['target_wallet'] = target_user.get('wallet_number', 'غير محدد')
         context.user_data.pop('awaiting_transfer_step1', None)
         context.user_data['awaiting_transfer_step2'] = True
         
@@ -926,7 +941,7 @@ async def process_transfer_step1(update: Update, context: CallbackContext):
 ✅ **تم العثور على المستخدم!**
 
 👤 **المستلم:** {target_user['full_name']}
-🆔 **رقم المحفظة:** {target_user['wallet_number'] if 'wallet_number' in target_user.keys() else 'غير محدد'}
+🆔 **رقم المحفظة:** {target_user.get('wallet_number', 'غير محدد')}
 📱 **رقم الهاتف:** {target_user['phone']}
 
 💰 **رصيدك الحالي:** {user['balance']:,.2f} ريال
@@ -1453,7 +1468,7 @@ async def help_handler(update: Update, context: CallbackContext):
 ❓ **المساعدة والدعم** ❓
 
 👤 مرحباً **{user['full_name']}**
-🆔 رقم محفظتك: **{user['wallet_number']}**
+🆔 رقم محفظتك: **{user.get('wallet_number', 'غير محدد')}**
 
 📋 **الأوامر الأساسية:**
 • `/start` - بدء أو إعادة تشغيل البوت
@@ -2210,7 +2225,7 @@ async def process_amount_selection(update: Update, context: CallbackContext, amo
 ✅ **تأكيد التحويل** ✅
 
 👤 **من:** {user['full_name']}
-💳 محفظتك: {user['wallet_number']}
+💳 محفظتك: {user.get('wallet_number', 'غير محدد')}
 
 📤 **إلى:** {target_name}
 💳 محفظة المستقبل: {target_wallet}
@@ -2295,7 +2310,7 @@ async def process_card_purchase(update: Update, context: CallbackContext, catego
 🛒 **تأكيد الشراء** 🛒
 
 👤 **المشتري:** {user['full_name']}
-💳 محفظتك: {user['wallet_number']}
+💳 محفظتك: {user.get('wallet_number', 'غير محدد')}
 
 🛒 **تفاصيل الشراء:**
 🏢 الشبكة: **{network_name}**

@@ -65,11 +65,29 @@ def decrypt_data(encrypted_data: str) -> str:
 
 # User management utilities
 def get_user(telegram_id: int):
-    """Get user by telegram ID"""
+    """Get user by telegram ID with Supabase support"""
     try:
+        # محاولة استخدام Supabase أولاً
+        try:
+            from bot_modules.supabase_simple import get_user as supabase_get_user
+            user = supabase_get_user(telegram_id)
+            if user:
+                return user
+        except ImportError:
+            logger.info("Supabase not available, using SQLite")
+        except Exception as e:
+            logger.warning(f"Supabase failed, falling back to SQLite: {e}")
+        
+        # fallback إلى SQLite
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT * FROM users WHERE telegram_id = ?', (telegram_id,))
+        cursor.execute('''
+            SELECT id, telegram_id, full_name, phone, role, balance, 
+                   is_active, total_purchases, total_spent, created_at, 
+                   last_activity, invite_code, wallet_number, referred_by
+            FROM users 
+            WHERE telegram_id = ?
+        ''', (telegram_id,))
         user = cursor.fetchone()
         conn.close()
         return user
@@ -318,7 +336,7 @@ def format_user_info(user) -> str:
 {EMOJIS['phone']} {user['phone']}
 🏷️ {role_name}
 {EMOJIS['wallet']} {user['balance']:.2f} ريال
-{EMOJIS['id']} {user['wallet_number']}
+{EMOJIS['id']} {user.get('wallet_number', 'غير محدد')}
 📊 حالة الحساب: {status}
 """
 

@@ -98,6 +98,8 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
             [InlineKeyboardButton(f'🔧 إعدادات النظام', callback_data='super_system_settings')],
             [InlineKeyboardButton(f'💾 النسخ الاحتياطي', callback_data='super_backup'),
              InlineKeyboardButton(f'🚨 مراقبة الأمان', callback_data='super_security_monitoring')],
+            [InlineKeyboardButton(f'🛡️ تقرير القيود', callback_data='constraints_report'),
+             InlineKeyboardButton(f'📊 انتهاكات القيود', callback_data='constraints_violations')],
             [InlineKeyboardButton(f'🎟️ إنشاء كوبونات', callback_data='super_create_coupons')],
             [InlineKeyboardButton(f'📢 إرسال رسالة جماعية', callback_data='super_broadcast_message'),
              InlineKeyboardButton(f'🔄 تحديث أوامر البوت', callback_data='super_update_commands')],
@@ -540,7 +542,7 @@ async def platform_management_handler(update: Update, context: CallbackContext):
             ('SELECT COUNT(*) as count FROM users WHERE role = "agent"', 'agents'),
             ('SELECT COUNT(*) as count FROM users WHERE role = "supplier"', 'suppliers'),
             ('SELECT COUNT(*) as count FROM networks WHERE is_active = 1', 'active_networks'),
-            ('SELECT COUNT(*) as count FROM cards WHERE is_used = 0', 'available_cards'),
+            ('SELECT COUNT(*) as count FROM network_cards WHERE is_sold = 0', 'available_cards'),
             ('SELECT SUM(amount) as total FROM transactions WHERE type = "purchase"', 'total_sales'),
         ]
         

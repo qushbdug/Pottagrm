@@ -49,16 +49,28 @@ class AccountStatementGenerator:
         """عرض خيارات كشف الحساب"""
         try:
             query = update.callback_query
-            await query.answer()
+            if query:
+                await query.answer("🎟️ جاري إنشاء كشف الحساب...")
+                user_id = query.from_user.id
+            else:
+                user_id = update.effective_user.id
             
-            user = get_user(query.from_user.id)
+            user = get_user(user_id)
             if not user:
-                await query.edit_message_text(f"{EMOJIS['error']} لم يتم العثور على بيانات المستخدم.")
+                error_msg = f"{EMOJIS['error']} لم يتم العثور على بيانات المستخدم."
+                if query:
+                    await query.edit_message_text(error_msg)
+                else:
+                    await update.message.reply_text(error_msg)
                 return
             
             # التحقق من أن المستخدم عميل أو مزود
             if user['role'] not in ['customer', 'supplier']:
-                await query.edit_message_text(f"{EMOJIS['error']} هذه الميزة متاحة للعملاء والمزودين فقط.")
+                error_msg = f"{EMOJIS['error']} هذه الميزة متاحة للعملاء والمزودين فقط."
+                if query:
+                    await query.edit_message_text(error_msg)
+                else:
+                    await update.message.reply_text(error_msg)
                 return
             
             statement_text = f"""
@@ -66,7 +78,7 @@ class AccountStatementGenerator:
 
 👤 **{user['full_name']}**
 🎭 **{USER_ROLES.get(user['role'], user['role'])}**
-💳 **رقم المحفظة:** {user['wallet_number']}
+💳 **رقم المحفظة:** {user.get('wallet_number', 'غير محدد')}
 
 📋 **خيارات التنزيل المتاحة:**
 
@@ -98,15 +110,29 @@ class AccountStatementGenerator:
                 [InlineKeyboardButton('🏠 العودة للقائمة الرئيسية', callback_data='main_menu')]
             ]
             
-            await query.edit_message_text(
-                statement_text, 
-                reply_markup=InlineKeyboardMarkup(keyboard), 
-                parse_mode='Markdown'
-            )
+            if query:
+                await query.edit_message_text(
+                    statement_text, 
+                    reply_markup=InlineKeyboardMarkup(keyboard), 
+                    parse_mode='Markdown'
+                )
+            else:
+                await update.message.reply_text(
+                    statement_text, 
+                    reply_markup=InlineKeyboardMarkup(keyboard), 
+                    parse_mode='Markdown'
+                )
             
         except Exception as e:
             logger.error(f"Error showing statement options: {e}")
-            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض خيارات كشف الحساب.")
+            error_msg = f"{EMOJIS['error']} حدث خطأ في عرض خيارات كشف الحساب."
+            try:
+                if query:
+                    await query.edit_message_text(error_msg)
+                else:
+                    await update.message.reply_text(error_msg)
+            except:
+                pass  # تجنب أخطاء إضافية
 
     @staticmethod
     def get_user_transactions(user_id: int, days: Optional[int] = None):
@@ -179,7 +205,7 @@ class AccountStatementGenerator:
         ws['A3'] = "اسم العميل:"
         ws['B3'] = user['full_name']
         ws['A4'] = "رقم المحفظة:"
-        ws['B4'] = user['wallet_number']
+        ws['B4'] = user.get('wallet_number', 'غير محدد')
         ws['A5'] = "الرصيد الحالي:"
         ws['B5'] = f"{user['balance']:,.2f} ريال"
         
@@ -189,19 +215,24 @@ class AccountStatementGenerator:
         ws['A7'] = "تاريخ الإنشاء:"
         ws['B7'] = datetime.now().strftime('%Y-%m-%d %H:%M')
         
-        # إحصائيات المعاملات
+        # حساب الرصيد الابتدائي
+        current_balance = float(user['balance'])
         incoming_total = sum(t[2] for t in transactions if t[5] == 'incoming')
         outgoing_total = sum(t[2] for t in transactions if t[5] == 'outgoing')
+        net_transactions = incoming_total - outgoing_total
+        initial_balance = current_balance - net_transactions
         net_total = incoming_total - outgoing_total
         
-        ws['D3'] = "إجمالي الوارد:"
-        ws['E3'] = f"+{incoming_total:,.2f} ريال"
-        ws['D4'] = "إجمالي الصادر:"
-        ws['E4'] = f"-{outgoing_total:,.2f} ريال"
-        ws['D5'] = "صافي الحركة:"
-        ws['E5'] = f"{net_total:+,.2f} ريال"
-        ws['D6'] = "عدد المعاملات:"
-        ws['E6'] = f"{len(transactions)} معاملة"
+        ws['D3'] = "الرصيد الابتدائي:"
+        ws['E3'] = f"{initial_balance:,.2f} ريال"
+        ws['D4'] = "إجمالي الوارد:"
+        ws['E4'] = f"+{incoming_total:,.2f} ريال"
+        ws['D5'] = "إجمالي الصادر:"
+        ws['E5'] = f"-{outgoing_total:,.2f} ريال"
+        ws['D6'] = "صافي الحركة:"
+        ws['E6'] = f"{net_transactions:+,.2f} ريال"
+        ws['D7'] = "عدد المعاملات:"
+        ws['E7'] = f"{len(transactions)} معاملة"
         
         # عناوين الجدول
         headers = ['التاريخ', 'الاتجاه', 'نوع المعاملة', 'المبلغ', 'الوصف']
@@ -286,14 +317,16 @@ class AccountStatementGenerator:
         # معلومات المستخدم (نص بسيط بدون أيقونات)
         user_info = f"""
         <b>Customer Name:</b> {user['full_name']}<br/>
-        <b>Wallet Number:</b> {user['wallet_number']}<br/>
+        <b>Wallet Number:</b> {user.get('wallet_number', 'غير محدد')}<br/>
         <b>Current Balance:</b> {user['balance']:,.2f} YER<br/>
         <b>Period:</b> {"Last " + str(days) + " days" if days else "All transactions"}<br/>
         <b>Generated:</b> {datetime.now().strftime('%Y-%m-%d %H:%M')}<br/><br/>
-        <b>Transaction Summary:</b><br/>
+        <b>Balance Summary:</b><br/>
+        <b>Initial Balance:</b> {current_balance - (incoming_total - outgoing_total):,.2f} YER<br/>
         <b>Total Incoming:</b> +{incoming_total:,.2f} YER<br/>
         <b>Total Outgoing:</b> -{outgoing_total:,.2f} YER<br/>
         <b>Net Movement:</b> {incoming_total - outgoing_total:+,.2f} YER<br/>
+        <b>Final Balance:</b> {user['balance']:,.2f} YER<br/>
         <b>Total Transactions:</b> {len(transactions)}
         """
         
@@ -365,7 +398,13 @@ class AccountStatementGenerator:
         """معالج تنزيل كشف الحساب"""
         try:
             query = update.callback_query
+            if not query:
+                return
+            
             await query.answer("🎟️ جاري إنشاء كشف الحساب...")
+            
+            # عرض مؤشر تقدم
+            await query.edit_message_text("⏳ **جاري إنشاء كشف الحساب...**\n\n🔄 يرجى الانتظار...")
             
             user = get_user(query.from_user.id)
             if not user:
@@ -390,14 +429,16 @@ class AccountStatementGenerator:
                 
                 # إنشاء ملف Excel
                 excel_buffer = AccountStatementGenerator.generate_excel_statement(user, transactions, days)
-                filename = f"كشف_حساب_{user['wallet_number']}_{filename_date}.xlsx"
+                filename = f"كشف_حساب_{user.get('wallet_number', 'غير محدد')}_{filename_date}.xlsx"
                 
                 # إرسال الملف
+                chat_id = query.message.chat_id if query.message else query.from_user.id
                 await context.bot.send_document(
-                    chat_id=query.message.chat_id,
+                    chat_id=chat_id,
                     document=excel_buffer,
                     filename=filename,
-                    caption=f"🎟️ **كشف الحساب - Excel**\n\n👤 **{user['full_name']}**\n📅 **الفترة:** {period_text}\n⏰ **تم الإنشاء:** {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+                    caption=f"🎟️ **كشف الحساب - Excel**\n\n👤 **{user['full_name']}**\n📅 **الفترة:** {period_text}\n⏰ **تم الإنشاء:** {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                    parse_mode='Markdown'
                 )
                 
             elif format_type == 'pdf':
@@ -407,14 +448,16 @@ class AccountStatementGenerator:
                 
                 # إنشاء ملف PDF
                 pdf_buffer = AccountStatementGenerator.generate_pdf_statement(user, transactions, days)
-                filename = f"كشف_حساب_{user['wallet_number']}_{filename_date}.pdf"
+                filename = f"كشف_حساب_{user.get('wallet_number', 'غير محدد')}_{filename_date}.pdf"
                 
                 # إرسال الملف
+                chat_id = query.message.chat_id if query.message else query.from_user.id
                 await context.bot.send_document(
-                    chat_id=query.message.chat_id,
+                    chat_id=chat_id,
                     document=pdf_buffer,
                     filename=filename,
-                    caption=f"🎟️ **كشف الحساب - PDF**\n\n👤 **{user['full_name']}**\n📅 **الفترة:** {period_text}\n⏰ **تم الإنشاء:** {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+                    caption=f"🎟️ **كشف الحساب - PDF**\n\n👤 **{user['full_name']}**\n📅 **الفترة:** {period_text}\n⏰ **تم الإنشاء:** {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                    parse_mode='Markdown'
                 )
             
             # رسالة تأكيد
@@ -443,7 +486,23 @@ class AccountStatementGenerator:
             
         except Exception as e:
             logger.error(f"Error downloading statement: {e}")
-            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إنشاء كشف الحساب.")
+            error_msg = f"{EMOJIS['error']} حدث خطأ في إنشاء كشف الحساب.\n\n🔍 السبب: {str(e)}\n💡 يرجى المحاولة مرة أخرى"
+            
+            error_keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton('🔄 إعادة المحاولة', callback_data='statement'),
+                 InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            ])
+            
+            try:
+                await query.edit_message_text(error_msg, reply_markup=error_keyboard, parse_mode='Markdown')
+            except:
+                # في حالة فشل تحديث الرسالة، أرسل رسالة جديدة
+                await context.bot.send_message(
+                    chat_id=query.from_user.id,
+                    text=error_msg,
+                    reply_markup=error_keyboard,
+                    parse_mode='Markdown'
+                )
 
 # دوال مساعدة للاستدعاء السريع
 async def account_statement_handler(update: Update, context: CallbackContext):

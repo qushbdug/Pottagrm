@@ -1,0 +1,13 @@
+{
+  "timestamp": "2025-08-31T23:16:06.129818",
+  "backup_type": "startup",
+  "backup_file": "yemen_net_backup_20250831_231606_startup.db.gz",
+  "compressed": true,
+  "file_size": 30622,
+  "statistics": {
+    "users_count": 6,
+    "transactions_count": 38,
+    "total_balance": 112616.0,
+    "db_size": 471040
+  }
+}

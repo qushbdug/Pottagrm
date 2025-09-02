@@ -1,0 +1,13 @@
+{
+  "timestamp": "2025-09-02T01:17:20.959392",
+  "backup_type": "auto",
+  "backup_file": "yemen_net_backup_20250902_011720_auto.db.gz",
+  "compressed": true,
+  "file_size": 43738,
+  "statistics": {
+    "users_count": 6,
+    "transactions_count": 51,
+    "total_balance": 107716.0,
+    "db_size": 577536
+  }
+}
