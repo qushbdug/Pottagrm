@@ -4676,31 +4676,17 @@ def main():
         # Create persistence with error handling
         try:
             persistence = PicklePersistence(filepath='yemen_net_bot_data')
-            application = Application.builder().token(BOT_TOKEN).persistence(persistence).build()
+        except Exception as e:
+            raise BotConfigurationError(f"Failed to init persistence: {e}")
+        
+        # Build application (commands/menu can be set later lazily)
+        try:
+            application = Application.builder() \
+                .token(BOT_TOKEN) \
+                .persistence(persistence) \
+                .build()
         except Exception as e:
             raise BotConfigurationError(f"Failed to create application: {e}")
-        
-        # Set bot commands (will be done after startup)
-        async def post_init(application):
-            try:
-                logger.info("Setting bot commands...")
-                await asyncio.wait_for(
-                    application.bot.set_my_commands(QUICK_COMMANDS),
-                    timeout=30.0
-                )
-                await asyncio.wait_for(
-                    application.bot.set_chat_menu_button(menu_button=MenuButtonCommands()),
-                    timeout=30.0
-                )
-                logger.info("Bot commands set successfully")
-            except asyncio.TimeoutError:
-                logger.error("Timeout setting bot commands")
-            except (TelegramError, NetworkError) as e:
-                logger.error(f'Telegram error setting commands/menu: {e}')
-            except Exception as e:
-                logger.error(f'Unexpected error setting commands/menu: {e}')
-        
-        application.post_init = post_init
         
         # Create conversation handler with proper fallbacks
         conv_handler = ConversationHandler(
