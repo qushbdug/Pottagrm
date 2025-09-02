@@ -18,9 +18,42 @@ logger = logging.getLogger(__name__)
 
 # Command handlers
 async def start(update: Update, context: CallbackContext) -> int:
-    """Handle /start command"""
+    """Handle /start command with optional deep-link payloads (referrals, provider share)."""
     try:
+        payload = None
+        if update.message and update.message.text:
+            parts = update.message.text.strip().split(' ', 1)
+            if len(parts) > 1 and parts[1]:
+                payload = parts[1].strip()
+
         user = get_user(update.effective_user.id)
+
+        # Handle provider share deep-link (net_<share_code>) for both existing and new users
+        if payload and payload.startswith(('net_', 'prov_', 'provider_')):
+            share_code = payload.split('_', 1)[1]
+            from bot_modules.utils import get_network_by_share_code
+            mapping = get_network_by_share_code(share_code)
+            if mapping:
+                network_id, provider_id = mapping
+                # Existing user: open the network directly
+                if user:
+                    update_user_activity(user['id'])
+                    from yemen_net_bot_new import show_network_details as main_show_network
+                    return await main_show_network(update, context, str(network_id))
+                else:
+                    # New user: store for post-registration redirect
+                    context.user_data['pending_network_id'] = network_id
+
+        # Handle referral deep-link (ref_<invite_code>)
+        if payload and payload.startswith(('ref_', 'r_')):
+            invite_code = payload.split('_', 1)[1]
+            from bot_modules.utils import get_user_by_invite_code
+            referrer = get_user_by_invite_code(invite_code)
+            if referrer:
+                # If user already exists, don't change referred_by; just continue
+                if not user:
+                    context.user_data['pending_referrer_id'] = referrer['id']
+
         if user:
             update_user_activity(user['id'])
             return await show_main_menu(update, context, user['role'])
@@ -208,15 +241,37 @@ async def choose_role(update: Update, context: CallbackContext) -> int:
                 invite_code = trial
                 break
         
-        # Insert new user
-        cursor.execute('''
-            INSERT INTO users (telegram_id, full_name, phone, role, wallet_number, invite_code, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (update.effective_user.id, context.user_data['full_name'], 
-              context.user_data['phone'], role, wallet_number, invite_code, 
-              1 if role == 'customer' else 0))  # Auto-activate customers only
+        # Insert new user (attach referrer if present)
+        referred_by = context.user_data.get('pending_referrer_id')
+        if referred_by:
+            cursor.execute('''
+                INSERT INTO users (telegram_id, full_name, phone, role, wallet_number, invite_code, is_active, referred_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (update.effective_user.id, context.user_data['full_name'], 
+                  context.user_data['phone'], role, wallet_number, invite_code, 
+                  1 if role == 'customer' else 0, referred_by))
+        else:
+            cursor.execute('''
+                INSERT INTO users (telegram_id, full_name, phone, role, wallet_number, invite_code, is_active)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (update.effective_user.id, context.user_data['full_name'], 
+                  context.user_data['phone'], role, wallet_number, invite_code, 
+                  1 if role == 'customer' else 0))  # Auto-activate customers only
         
         user_id = cursor.lastrowid
+
+        # If referral exists, create referral record and increment counter
+        if referred_by:
+            try:
+                import uuid
+                referral_id = str(uuid.uuid4())
+                cursor.execute('''
+                    INSERT INTO referrals (id, referrer_id, referred_id)
+                    VALUES (?, ?, ?)
+                ''', (referral_id, referred_by, user_id))
+                cursor.execute('UPDATE users SET total_referrals = COALESCE(total_referrals,0) + 1 WHERE id = ?', (referred_by,))
+            except Exception as e:
+                logger.warning(f"Failed to record referral: {e}")
         
         # Log the registration
         log_activity(user_id, 'user_registration', f'New user registered as {role}', {
@@ -281,6 +336,15 @@ async def choose_role(update: Update, context: CallbackContext) -> int:
             # Notify admins about new registration
             pass  # Will implement admin notification
         
+        # If registration came from provider network share link, redirect to the network
+        pending_network_id = context.user_data.pop('pending_network_id', None)
+        if pending_network_id:
+            try:
+                from yemen_net_bot_new import show_network_details as main_show_network
+                return await main_show_network(update, context, str(pending_network_id))
+            except Exception as e:
+                logger.warning(f"Failed to redirect to shared network after registration: {e}")
+
         return ConversationHandler.END
         
     except Exception as e:

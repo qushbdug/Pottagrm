@@ -37,7 +37,7 @@ try:
         get_user, recalc_and_set_user_balance,
         get_or_create_supplier_code, get_cards_stats_by_category,
         get_card_categories, process_uploaded_cards, calculate_user_rating,
-        get_user_permissions
+        get_user_permissions, get_or_create_provider_share_code
     )
     
     # Import handlers
@@ -3471,9 +3471,10 @@ async def mark_all_read_handler(update: Update, context: CallbackContext):
         await query.edit_message_text(ErrorMessages.notification_error("تحديث حالة القراءة"))
 
 async def show_network_details(update: Update, context: CallbackContext, network_id: str):
-    """Show detailed information about a specific network"""
+    """Show detailed information about a specific network (supports callback or message)."""
     try:
-        query = update.callback_query
+        is_callback = hasattr(update, 'callback_query') and update.callback_query
+        query = update.callback_query if is_callback else None
         
         # الحصول على تفاصيل الشبكة
         conn = get_db_connection()
@@ -3492,12 +3493,20 @@ async def show_network_details(update: Update, context: CallbackContext, network
         network = cursor.fetchone()
         
         if not network:
-            await query.edit_message_text(
-                "❌ الشبكة غير موجودة أو غير متاحة",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton('🔙 العودة', callback_data='search_networks')
-                ]])
-            )
+            if is_callback:
+                await query.edit_message_text(
+                    "❌ الشبكة غير موجودة أو غير متاحة",
+                    reply_markup=InlineKeyboardMarkup([[ 
+                        InlineKeyboardButton('🔙 العودة', callback_data='search_networks')
+                    ]])
+                )
+            else:
+                await update.message.reply_text(
+                    "❌ الشبكة غير موجودة أو غير متاحة",
+                    reply_markup=InlineKeyboardMarkup([[ 
+                        InlineKeyboardButton('🔙 العودة', callback_data='search_networks')
+                    ]])
+                )
             return
         
         net_id, name, provider, location, description, created_at, cat_count, min_price, max_price, available_cards = network
@@ -3548,16 +3557,41 @@ async def show_network_details(update: Update, context: CallbackContext, network
             details_text += "❌ لا توجد فئات متاحة حالياً"
         
         keyboard = [
-            [InlineKeyboardButton(f'🛒 شراء من {name}', callback_data=f'buy_from_network_{net_id}')],
-            [InlineKeyboardButton('🔙 العودة للشبكات', callback_data='search_networks'),
-             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            [InlineKeyboardButton(f'🛒 شراء من {name}', callback_data=f'buy_from_network_{net_id}')]
         ]
+
+        # If the viewer is the supplier, add a share link button
+        try:
+            viewer = get_user(update.effective_user.id)
+            if viewer and viewer['id']:
+                # fetch supplier_id for this network
+                conn2 = get_db_connection()
+                cur2 = conn2.cursor()
+                cur2.execute('SELECT supplier_id FROM networks WHERE id = ?', (net_id,))
+                supplier_row = cur2.fetchone()
+                conn2.close()
+                if supplier_row and supplier_row[0] == viewer['id']:
+                    share_code = get_or_create_provider_share_code(net_id, viewer['id'])
+                    if hasattr(context.bot, 'username') and context.bot.username and share_code:
+                        deep_link = f"https://t.me/{context.bot.username}?start=net_{share_code}"
+                        keyboard.append([InlineKeyboardButton('🔗 مشاركة الشبكة', url=deep_link)])
+        except Exception as e:
+            logger.warning(f"Failed to add provider share link: {e}")
+
+        keyboard.append([InlineKeyboardButton('🔙 العودة للشبكات', callback_data='search_networks'),
+                         InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')])
         
-        await query.edit_message_text(details_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        if is_callback:
+            await query.edit_message_text(details_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        else:
+            await update.message.reply_text(details_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
     except Exception as e:
         logger.error(f"Error in show network details: {e}")
-        await query.edit_message_text(search_error("تفاصيل الشبكة", "قاعدة البيانات"))
+        if hasattr(update, 'callback_query') and update.callback_query:
+            await update.callback_query.edit_message_text(search_error("تفاصيل الشبكة", "قاعدة البيانات"))
+        else:
+            await update.message.reply_text(search_error("تفاصيل الشبكة", "قاعدة البيانات"))
 
 async def legacy_search_networks_handler(update: Update, context: CallbackContext):
     """Legacy search function - shows all networks (deprecated)"""
@@ -4642,31 +4676,17 @@ def main():
         # Create persistence with error handling
         try:
             persistence = PicklePersistence(filepath='yemen_net_bot_data')
-            application = Application.builder().token(BOT_TOKEN).persistence(persistence).build()
+        except Exception as e:
+            raise BotConfigurationError(f"Failed to init persistence: {e}")
+        
+        # Build application (commands/menu can be set later lazily)
+        try:
+            application = Application.builder() \
+                .token(BOT_TOKEN) \
+                .persistence(persistence) \
+                .build()
         except Exception as e:
             raise BotConfigurationError(f"Failed to create application: {e}")
-        
-        # Set bot commands (will be done after startup)
-        async def post_init(application):
-            try:
-                logger.info("Setting bot commands...")
-                await asyncio.wait_for(
-                    application.bot.set_my_commands(QUICK_COMMANDS),
-                    timeout=30.0
-                )
-                await asyncio.wait_for(
-                    application.bot.set_chat_menu_button(menu_button=MenuButtonCommands()),
-                    timeout=30.0
-                )
-                logger.info("Bot commands set successfully")
-            except asyncio.TimeoutError:
-                logger.error("Timeout setting bot commands")
-            except (TelegramError, NetworkError) as e:
-                logger.error(f'Telegram error setting commands/menu: {e}')
-            except Exception as e:
-                logger.error(f'Unexpected error setting commands/menu: {e}')
-        
-        application.post_init = post_init
         
         # Create conversation handler with proper fallbacks
         conv_handler = ConversationHandler(
@@ -5058,6 +5078,16 @@ async def show_wallet_page(update: Update, context: CallbackContext, user: dict,
             [InlineKeyboardButton('🔄 تحديث الرصيد', callback_data='refresh_balance'),
              InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ])
+
+        # زر مشاركة رابط الإحالة الخاص بالمستخدم (deep-link)
+        try:
+            if hasattr(context.bot, 'username') and context.bot.username and user.get('invite_code'):
+                deep_link_ref = f"https://t.me/{context.bot.username}?start=ref_{user['invite_code']}"
+                # إدراج قبل صف القائمة الرئيسية
+                insert_at = max(0, len(keyboard) - 1)
+                keyboard.insert(insert_at, [InlineKeyboardButton('🔗 رابط إحالتي', url=deep_link_ref)])
+        except Exception as e:
+            logger.warning(f"Failed to add referral link button: {e}")
         
         if is_callback:
             await update.callback_query.edit_message_text(wallet_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
@@ -5408,6 +5438,32 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             
             # تسجيل القيد المحاسبي لشراء الكرت
             record_purchase_accounting(card_price, user['id'], transaction_id)
+
+            # احتساب عمولة الإحالة 5% إن وجدت علاقة إحالة مباشرة
+            try:
+                if user.get('referred_by'):
+                    referrer_id = user['referred_by']
+                    if referrer_id and referrer_id != user['id']:
+                        commission_rate = AGENT_COMMISSION_RATE if 'AGENT_COMMISSION_RATE' in globals() else 0.05
+                        commission_amount = round(card_price * commission_rate, 2)
+                        # إضافة معاملة عمولة لصالح المُحيل
+                        commission_tx_id = str(uuid.uuid4())
+                        cursor.execute('''
+                            INSERT INTO transactions (id, to_user, amount, type, description, created_at)
+                            VALUES (?, ?, ?, 'commission', ?, datetime("now"))
+                        ''', (commission_tx_id, referrer_id, commission_amount, f"عمولة إحالة 5% عن شراء {card_price:,.0f} ريال"))
+                        # تحديث رصيد المُحيل مباشرة
+                        cursor.execute('UPDATE users SET balance = balance + ? WHERE id = ?', (commission_amount, referrer_id))
+                        # سجل تفصيلي في جدول referral_commissions
+                        ref_comm_id = str(uuid.uuid4())
+                        cursor.execute('''
+                            INSERT INTO referral_commissions (id, referrer_id, referred_id, transaction_id, purchase_amount, commission_rate, commission_amount)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ''', (ref_comm_id, referrer_id, user['id'], transaction_id, card_price, commission_rate, commission_amount))
+                        # قيود محاسبية
+                        record_commission_accounting(commission_amount, referrer_id, commission_tx_id)
+            except Exception as e:
+                logger.warning(f"Failed to record referral commission: {e}")
             
             # تأكيد المعاملة
             cursor.execute('COMMIT')

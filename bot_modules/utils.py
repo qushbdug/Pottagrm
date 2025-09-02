@@ -90,6 +90,19 @@ def get_user_by_id(user_id: int):
         logger.error(f"Error getting user by ID: {e}")
         return None
 
+def get_user_by_invite_code(invite_code: str):
+    """Get user by invite code (referrer lookup)"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM users WHERE invite_code = ?', (invite_code,))
+        user = cursor.fetchone()
+        conn.close()
+        return user
+    except Exception as e:
+        logger.error(f"Error getting user by invite code: {e}")
+        return None
+
 def update_user_activity(user_id: int):
     """Update user's last activity timestamp"""
     try:
@@ -424,6 +437,60 @@ def update_inventory_stock(network_id: str, category_id: int, change: int) -> bo
     except Exception as e:
         logger.error(f"Error updating inventory: {e}")
         return False
+
+def get_or_create_provider_share_code(network_id: int, provider_id: int) -> str:
+    """Return existing provider share code for a network or create a new one."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT share_code FROM provider_share_links
+            WHERE network_id = ? AND provider_id = ?
+        ''', (network_id, provider_id))
+        row = cursor.fetchone()
+        if row and row[0]:
+            conn.close()
+            return row[0]
+
+        # Create new unique share code
+        code = None
+        for _ in range(50):
+            candidate = uuid.uuid4().hex[:10]
+            cursor.execute('SELECT 1 FROM provider_share_links WHERE share_code = ?', (candidate,))
+            if not cursor.fetchone():
+                code = candidate
+                break
+        if not code:
+            code = uuid.uuid4().hex  # fallback
+
+        rec_id = str(uuid.uuid4())
+        cursor.execute('''
+            INSERT INTO provider_share_links (id, network_id, provider_id, share_code)
+            VALUES (?, ?, ?, ?)
+        ''', (rec_id, network_id, provider_id, code))
+        conn.commit()
+        conn.close()
+        return code
+    except Exception as e:
+        logger.error(f"Error creating provider share code: {e}")
+        return None
+
+def get_network_by_share_code(share_code: str):
+    """Get (network_id, provider_id) by provider share code"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT network_id, provider_id
+            FROM provider_share_links
+            WHERE share_code = ?
+        ''', (share_code,))
+        row = cursor.fetchone()
+        conn.close()
+        return row if row else None
+    except Exception as e:
+        logger.error(f"Error fetching network by share code: {e}")
+        return None
 
 def is_super_admin(user_id: int) -> bool:
     """Check if user is super admin"""
