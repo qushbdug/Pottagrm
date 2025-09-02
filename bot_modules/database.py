@@ -391,6 +391,23 @@ def init_db():
             )
         ''')
 
+        # Referral commissions table (records 5% commissions for referrers on purchases)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS referral_commissions (
+                id TEXT PRIMARY KEY,
+                referrer_id INTEGER NOT NULL,
+                referred_id INTEGER NOT NULL,
+                transaction_id TEXT NOT NULL,
+                purchase_amount REAL NOT NULL,
+                commission_rate REAL NOT NULL DEFAULT 0.05,
+                commission_amount REAL NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(referrer_id) REFERENCES users(id),
+                FOREIGN KEY(referred_id) REFERENCES users(id),
+                FOREIGN KEY(transaction_id) REFERENCES transactions(id)
+            )
+        ''')
+
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS system_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -512,6 +529,19 @@ def init_db():
                 is_active BOOLEAN DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (supplier_id) REFERENCES users (id)
+            )
+        ''')
+        
+        # Provider share links (unique deep links per provider network)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS provider_share_links (
+                id TEXT PRIMARY KEY,
+                network_id INTEGER NOT NULL,
+                provider_id INTEGER NOT NULL,
+                share_code TEXT UNIQUE NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (network_id) REFERENCES networks (id),
+                FOREIGN KEY (provider_id) REFERENCES users (id)
             )
         ''')
         
