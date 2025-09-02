@@ -126,10 +126,31 @@ def get_db_connection():
     return supabase_simple.client
 
 def get_user(telegram_id: int) -> Optional[Dict]:
-    """الحصول على مستخدم من Supabase"""
+    """الحصول على مستخدم من Supabase مع توافق SQLite"""
     try:
         result = supabase_simple.client.table('users').select('*').eq('telegram_id', telegram_id).execute()
-        return result.data[0] if result.data else None
+        
+        if result.data:
+            user = result.data[0]
+            
+            # إضافة الحقول المفقودة للتوافق مع SQLite
+            user['bank_account'] = user.get('bank_account', None)
+            user['referral_bonus'] = user.get('referral_bonus', 0.0)
+            user['is_verified'] = user.get('is_verified', False)
+            user['updated_at'] = user.get('updated_at', user.get('created_at'))
+            
+            # التأكد من صحة البيانات
+            user['balance'] = float(user.get('balance', 0))
+            user['total_referrals'] = int(user.get('total_referrals', 0))
+            user['total_purchases'] = int(user.get('total_purchases', 0))
+            user['total_spent'] = float(user.get('total_spent', 0))
+            user['is_active'] = bool(user.get('is_active', False))
+            
+            logger.debug(f"Successfully got user from Supabase: {user['full_name']}")
+            return user
+        
+        return None
+        
     except Exception as e:
         logger.error(f"Error getting user from Supabase: {e}")
         # fallback إلى SQLite في حالة الفشل
@@ -141,16 +162,39 @@ def get_user(telegram_id: int) -> Optional[Dict]:
             cursor.execute('SELECT * FROM users WHERE telegram_id = ?', (telegram_id,))
             user = cursor.fetchone()
             conn.close()
-            return dict(user) if user else None
+            if user:
+                logger.debug(f"Fallback to SQLite successful for user: {user['full_name']}")
+                return dict(user)
+            return None
         except Exception as fallback_error:
             logger.error(f"Fallback to SQLite also failed: {fallback_error}")
             return None
 
 def get_user_by_id(user_id: int) -> Optional[Dict]:
-    """الحصول على مستخدم بـ ID من Supabase"""
+    """الحصول على مستخدم بـ ID من Supabase مع توافق SQLite"""
     try:
         result = supabase_simple.client.table('users').select('*').eq('id', user_id).execute()
-        return result.data[0] if result.data else None
+        
+        if result.data:
+            user = result.data[0]
+            
+            # إضافة الحقول المفقودة للتوافق مع SQLite
+            user['bank_account'] = user.get('bank_account', None)
+            user['referral_bonus'] = user.get('referral_bonus', 0.0)
+            user['is_verified'] = user.get('is_verified', False)
+            user['updated_at'] = user.get('updated_at', user.get('created_at'))
+            
+            # التأكد من صحة البيانات
+            user['balance'] = float(user.get('balance', 0))
+            user['total_referrals'] = int(user.get('total_referrals', 0))
+            user['total_purchases'] = int(user.get('total_purchases', 0))
+            user['total_spent'] = float(user.get('total_spent', 0))
+            user['is_active'] = bool(user.get('is_active', False))
+            
+            return user
+        
+        return None
+        
     except Exception as e:
         logger.error(f"Error getting user by id from Supabase: {e}")
         # fallback إلى SQLite
@@ -166,3 +210,74 @@ def get_user_by_id(user_id: int) -> Optional[Dict]:
         except Exception as fallback_error:
             logger.error(f"Fallback to SQLite also failed: {fallback_error}")
             return None
+
+def update_user_balance(telegram_id: int, new_balance: float) -> bool:
+    """تحديث رصيد المستخدم في Supabase"""
+    try:
+        result = supabase_simple.client.table('users').update({
+            'balance': new_balance,
+            'last_activity': datetime.now().isoformat()
+        }).eq('telegram_id', telegram_id).execute()
+        
+        return bool(result.data)
+        
+    except Exception as e:
+        logger.error(f"Error updating user balance in Supabase: {e}")
+        # fallback إلى SQLite
+        try:
+            import sqlite3
+            conn = sqlite3.connect('yemen_net.db')
+            cursor = conn.cursor()
+            cursor.execute(
+                'UPDATE users SET balance = ?, last_activity = ? WHERE telegram_id = ?',
+                (new_balance, datetime.now().isoformat(), telegram_id)
+            )
+            conn.commit()
+            success = cursor.rowcount > 0
+            conn.close()
+            return success
+        except Exception as fallback_error:
+            logger.error(f"Fallback balance update failed: {fallback_error}")
+            return False
+
+def get_networks() -> List[Dict]:
+    """الحصول على جميع الشبكات من Supabase"""
+    try:
+        result = supabase_simple.client.table('networks').select('*').eq('is_active', True).execute()
+        return result.data if result.data else []
+    except Exception as e:
+        logger.error(f"Error getting networks from Supabase: {e}")
+        # fallback إلى SQLite
+        try:
+            import sqlite3
+            conn = sqlite3.connect('yemen_net.db')
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM networks WHERE is_active = 1')
+            networks = [dict(row) for row in cursor.fetchall()]
+            conn.close()
+            return networks
+        except Exception as fallback_error:
+            logger.error(f"Fallback networks query failed: {fallback_error}")
+            return []
+
+def get_network_cards(network_id: int, is_sold: bool = False) -> List[Dict]:
+    """الحصول على بطاقات الشبكة من Supabase"""
+    try:
+        result = supabase_simple.client.table('network_cards').select('*').eq('network_id', network_id).eq('is_sold', is_sold).execute()
+        return result.data if result.data else []
+    except Exception as e:
+        logger.error(f"Error getting network cards from Supabase: {e}")
+        # fallback إلى SQLite
+        try:
+            import sqlite3
+            conn = sqlite3.connect('yemen_net.db')
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM network_cards WHERE network_id = ? AND is_sold = ?', (network_id, is_sold))
+            cards = [dict(row) for row in cursor.fetchall()]
+            conn.close()
+            return cards
+        except Exception as fallback_error:
+            logger.error(f"Fallback cards query failed: {fallback_error}")
+            return []

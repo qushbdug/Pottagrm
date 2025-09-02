@@ -159,11 +159,9 @@ class HybridDatabase:
         return success
     
     def get_connection(self):
-        """الحصول على اتصال - للتوافق مع الكود الحالي"""
-        if self.supabase_available:
-            return self.supabase_client
-        else:
-            return self.get_sqlite_connection()
+        """الحصول على اتصال SQLite دائماً - للتوافق مع الكود الحالي"""
+        # إرجاع SQLite دائماً لأن الكود يتوقع cursor()
+        return self.get_sqlite_connection()
     
     def get_database_status(self) -> Dict[str, Any]:
         """الحصول على حالة قاعدة البيانات"""
