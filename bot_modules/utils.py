@@ -65,18 +65,20 @@ def decrypt_data(encrypted_data: str) -> str:
 
 # User management utilities
 def get_user(telegram_id: int):
-    """Get user by telegram ID with caching support"""
+    """Get user by telegram ID with Supabase support"""
     try:
-        # محاولة الحصول من التخزين المؤقت أولاً
+        # محاولة استخدام Supabase أولاً
         try:
-            from bot_modules.cache_manager import cached_db_ops
-            cached_user = cached_db_ops.get_user_by_telegram_id(telegram_id)
-            if cached_user:
-                return cached_user
+            from bot_modules.supabase_simple import get_user as supabase_get_user
+            user = supabase_get_user(telegram_id)
+            if user:
+                return user
         except ImportError:
-            # التخزين المؤقت غير متاح، استخدم قاعدة البيانات مباشرة
-            pass
+            logger.info("Supabase not available, using SQLite")
+        except Exception as e:
+            logger.warning(f"Supabase failed, falling back to SQLite: {e}")
         
+        # fallback إلى SQLite
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('''

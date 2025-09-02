@@ -30,7 +30,8 @@ from telegram.ext import (
 try:
     # Import configuration and database
     from config import *
-    from database import init_db, get_db_connection
+    from database import init_db
+    from hybrid_database import get_db_connection, hybrid_db
     
     # Import utilities
     from utils import (
@@ -4771,7 +4772,16 @@ def main():
         # Initialize database with timeout
         logger.info("Initializing database...")
         try:
-            init_db()
+            # عرض حالة قاعدة البيانات
+            db_status = hybrid_db.get_database_status()
+            logger.info(f"Database status: {db_status}")
+            
+            if db_status['supabase_available']:
+                logger.info("🚀 Using Supabase PostgreSQL database")
+            else:
+                logger.info("📁 Using SQLite database (fallback)")
+                init_db()  # تهيئة SQLite فقط إذا كان Supabase غير متاح
+            
             logger.info("Database initialized successfully")
         except sqlite3.Error as e:
             raise BotDatabaseError(f"Failed to initialize database: {e}")
