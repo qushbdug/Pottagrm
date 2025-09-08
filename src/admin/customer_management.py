@@ -10,9 +10,9 @@ from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext
 
-from bot_modules.config import EMOJIS, USER_ROLES
-from bot_modules.database import get_db_connection
-from bot_modules.utils import get_user, update_user_activity
+from src.core.config import EMOJIS, USER_ROLES
+from src.core.database import get_db_connection
+from src.utils.user_utils import get_user, update_user_activity
 
 logger = logging.getLogger(__name__)
 
