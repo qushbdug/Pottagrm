@@ -5,10 +5,17 @@ Contains all constants, settings, and configurations
 """
 
 import os
+try:
+    # Load environment variables from .env if present
+    from dotenv import load_dotenv  # type: ignore
+    load_dotenv()
+except Exception:
+    pass
 from telegram import BotCommand
 
 # Bot configuration
-BOT_TOKEN = '7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0'
+# Read sensitive values from environment variables
+BOT_TOKEN = os.getenv('BOT_TOKEN')
 DB_PATH = os.getenv('DB_PATH', os.path.abspath('yemen_net.db'))
 
 # Accounting constants
