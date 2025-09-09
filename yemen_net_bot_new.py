@@ -5831,13 +5831,25 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
                 raise Exception("الشبكة غير موجودة أو غير متاحة")
             
             network_name, provider, supplier_id = network
-            card_price = float(price)
             
-            # التحقق من توفر الكرت (مع قفل للصف لتجنب التضارب)
+            # التحقق من صحة السعر (Input Validation)
+            try:
+                card_price = float(price)
+                if card_price <= 0:
+                    raise ValueError("السعر يجب أن يكون أكبر من صفر")
+                if card_price > 10000:  # حد أقصى معقول
+                    raise ValueError("السعر أكبر من الحد المسموح")
+                if card_price != card_price:  # Check for NaN
+                    raise ValueError("السعر غير صحيح")
+            except (ValueError, TypeError) as e:
+                raise Exception(f"سعر الكرت غير صحيح: {price}")
+            
+            # التحقق من توفر الكرت وحجزه (SELECT FOR UPDATE لمنع Race Conditions)
             cursor.execute('''
                 SELECT id FROM network_cards 
                 WHERE network_id = ? AND card_value = ? AND is_sold = 0
                 LIMIT 1
+                FOR UPDATE
             ''', (network_id, card_price))
             
             card_result = cursor.fetchone()
@@ -5846,8 +5858,14 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             
             card_id = card_result[0]
             
-            # التحقق من الرصيد مرة أخرى
-            cursor.execute('SELECT balance FROM users WHERE telegram_id = ?', (user['telegram_id'],))
+            # تحقق مزدوج من حالة الكرت (أمان إضافي)
+            cursor.execute('SELECT is_sold FROM network_cards WHERE id = ?', (card_id,))
+            card_status = cursor.fetchone()
+            if not card_status or card_status[0] != 0:
+                raise Exception("الكرت غير متاح للبيع (تم بيعه بواسطة عملية أخرى)")
+            
+            # التحقق من الرصيد مرة أخرى (استخدام user['id'] للاتساق)
+            cursor.execute('SELECT balance FROM users WHERE id = ?', (user['id'],))
             result = cursor.fetchone()
             if not result:
                 raise Exception("خطأ في استرداد بيانات المستخدم")
@@ -5859,11 +5877,22 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             # تحديث حالة الكرت إلى مباع
             cursor.execute('UPDATE network_cards SET is_sold = 1, sold_at = datetime("now") WHERE id = ?', (card_id,))
             
-            # خصم المبلغ من رصيد المشتري
-            cursor.execute('UPDATE users SET balance = balance - ? WHERE telegram_id = ?', (card_price, user['telegram_id']))
+            # حساب تقسيم الأرباح (70% للمزود، 30% للمشرف)
+            provider_share = card_price * 0.70  # 70% للمزود
+            admin_share = card_price * 0.30     # 30% للمشرف
             
-            # إضافة المبلغ لرصيد المزود
-            cursor.execute('UPDATE users SET balance = balance + ? WHERE id = ?', (card_price, supplier_id))
+            # خصم المبلغ كاملاً من رصيد المشتري (استخدام user['id'] للاتساق)
+            cursor.execute('UPDATE users SET balance = balance - ? WHERE id = ?', (card_price, user['id']))
+            
+            # إضافة حصة المزود فقط (70%)
+            cursor.execute('UPDATE users SET balance = balance + ? WHERE id = ?', (provider_share, supplier_id))
+            
+            # إضافة حصة المشرف الأعلى (30%)
+            cursor.execute("SELECT id FROM users WHERE role = 'super_admin' LIMIT 1")
+            admin_result = cursor.fetchone()
+            if admin_result:
+                admin_id = admin_result[0]
+                cursor.execute('UPDATE users SET balance = balance + ? WHERE id = ?', (admin_share, admin_id))
             
             # إنشاء معاملة في السجل
             import uuid
@@ -5888,19 +5917,27 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             # تأكيد المعاملة
             cursor.execute('COMMIT')
             
-            # معالجة عمولة الإحالة (5% للمحيل)
+            # معالجة عمولة الإحالة (5% من حصة المشرف الأعلى)
             try:
-                from bot_modules.utils import process_referral_commission
-                process_referral_commission(user['id'], card_price, transaction_id)
+                from bot_modules.utils import process_referral_commission_fixed
+                if admin_result:  # إذا كان هناك مشرف أعلى
+                    referral_commission = process_referral_commission_fixed(user['id'], card_price, transaction_id, admin_id)
+                    if referral_commission > 0:
+                        # خصم العمولة من حصة المشرف الأعلى
+                        cursor.execute('UPDATE users SET balance = balance - ? WHERE id = ?', (referral_commission, admin_id))
+                        logger.info(f"Referral commission {referral_commission:.2f} deducted from admin share")
             except Exception as e:
                 logger.warning(f"Failed to process referral commission: {e}")
             
-            # معالجة تقسيم الأرباح (70% للمزود، 30% للمشرف الأعلى)
+            # تسجيل تفاصيل التقسيم في المعاملة (اختياري للتقارير)
             try:
-                from bot_modules.utils import process_purchase_profit_sharing
-                process_purchase_profit_sharing(card_price, supplier_id, transaction_id)
+                cursor.execute('''
+                    UPDATE transactions 
+                    SET provider_id = ?, total_amount = ?, provider_share = ?, admin_share = ?
+                    WHERE id = ?
+                ''', (supplier_id, card_price, provider_share, admin_share, transaction_id))
             except Exception as e:
-                logger.warning(f"Failed to process profit sharing: {e}")
+                logger.warning(f"Failed to update transaction details: {e}")
             
             # عرض نتيجة الشراء الناجح
             success_text = f"""
@@ -5998,8 +6035,12 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
                 logger.warning(f"Failed to send notification to supplier: {e}")
             
         except Exception as e:
-            # إلغاء المعاملة في حالة الخطأ
-            cursor.execute('ROLLBACK')
+            # إلغاء المعاملة في حالة الخطأ (مع معالجة آمنة)
+            try:
+                cursor.execute('ROLLBACK')
+                logger.info("Transaction rolled back successfully")
+            except Exception as rollback_error:
+                logger.error(f"Failed to rollback transaction: {rollback_error}")
             raise e
             
         finally:

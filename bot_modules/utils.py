@@ -675,8 +675,8 @@ def get_cards_stats_by_category(supplier_id):
     conn.close()
     return stats
 
-def process_referral_commission(buyer_user_id: int, purchase_amount: float, transaction_id: str):
-    """معالجة عمولة الإحالة عند الشراء"""
+def process_referral_commission_fixed(buyer_user_id: int, purchase_amount: float, transaction_id: str, admin_id: int):
+    """معالجة عمولة الإحالة عند الشراء - مصلحة (تُخصم من حصة المشرف)"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -687,11 +687,11 @@ def process_referral_commission(buyer_user_id: int, purchase_amount: float, tran
         
         if not result or not result[0]:
             conn.close()
-            return False  # لا يوجد محيل
+            return 0  # لا يوجد محيل - لا توجد عمولة
             
         referrer_id = result[0]
         
-        # حساب العمولة (5%)
+        # حساب العمولة (5% من إجمالي المبلغ)
         commission_rate = 0.05
         commission_amount = purchase_amount * commission_rate
         
@@ -703,7 +703,7 @@ def process_referral_commission(buyer_user_id: int, purchase_amount: float, tran
             INSERT INTO referral_commissions 
             (id, referrer_id, referred_user_id, transaction_id, purchase_amount, 
              commission_amount, commission_rate, paid, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 0, datetime('now'))
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, datetime('now'))
         ''', (commission_id, referrer_id, buyer_user_id, transaction_id, 
               purchase_amount, commission_amount, commission_rate))
         
@@ -717,18 +717,14 @@ def process_referral_commission(buyer_user_id: int, purchase_amount: float, tran
             INSERT INTO transactions 
             (id, from_user, to_user, amount, type, description, created_at)
             VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-        ''', (commission_transaction_id, None, referrer_id, commission_amount, 
+        ''', (commission_transaction_id, admin_id, referrer_id, commission_amount, 
               'commission', f'عمولة إحالة 5% من شراء بقيمة {purchase_amount:.2f} ريال'))
-        
-        # تحديث حالة الدفع
-        cursor.execute('UPDATE referral_commissions SET paid = 1, paid_at = datetime("now") WHERE id = ?', 
-                      (commission_id,))
         
         conn.commit()
         conn.close()
         
-        logger.info(f"Referral commission {commission_amount:.2f} paid to user {referrer_id} for purchase {transaction_id}")
-        return True
+        logger.info(f"Referral commission {commission_amount:.2f} paid to user {referrer_id}, deducted from admin share")
+        return commission_amount
         
     except Exception as e:
         logger.error(f"Error processing referral commission: {e}")
@@ -736,7 +732,13 @@ def process_referral_commission(buyer_user_id: int, purchase_amount: float, tran
             conn.close()
         except:
             pass
-        return False
+        return 0
+
+# Keep old function for backward compatibility but mark as deprecated
+def process_referral_commission(buyer_user_id: int, purchase_amount: float, transaction_id: str):
+    """معالجة عمولة الإحالة عند الشراء - DEPRECATED: استخدم process_referral_commission_fixed"""
+    logger.warning("Using deprecated process_referral_commission function")
+    return process_referral_commission_fixed(buyer_user_id, purchase_amount, transaction_id, None)
 
 def get_referral_stats(user_id: int):
     """الحصول على إحصائيات الإحالات والعمولات"""
@@ -803,8 +805,61 @@ def get_referral_stats(user_id: int):
             'monthly_commission_amount': 0
         }
 
+def sanitize_input(text: str, max_length: int = 100, allow_numbers: bool = True) -> str:
+    """تنظيف وتعقيم المدخلات النصية"""
+    if not text:
+        return ""
+    
+    # إزالة المسافات الزائدة
+    text = text.strip()
+    
+    # قطع النص إذا كان طويلاً جداً
+    if len(text) > max_length:
+        text = text[:max_length]
+    
+    # إزالة الأحرف الخطيرة
+    dangerous_chars = ['<', '>', '"', "'", '&', ';', '|', '`', '$']
+    for char in dangerous_chars:
+        text = text.replace(char, '')
+    
+    # إزالة الأرقام إذا لم تكن مسموحة
+    if not allow_numbers:
+        text = ''.join(c for c in text if not c.isdigit())
+    
+    return text
+
+def validate_amount(amount_str: str) -> float:
+    """التحقق من صحة المبلغ المالي"""
+    try:
+        amount = float(amount_str.replace(',', '.').strip())
+        
+        if amount <= 0:
+            raise ValueError("المبلغ يجب أن يكون أكبر من صفر")
+        if amount > 1000000:  # حد أقصى مليون ريال
+            raise ValueError("المبلغ أكبر من الحد المسموح")
+        if amount != amount:  # Check for NaN
+            raise ValueError("المبلغ غير صحيح")
+            
+        # تقريب لرقمين عشريين
+        return round(amount, 2)
+        
+    except (ValueError, TypeError) as e:
+        raise ValueError(f"مبلغ غير صحيح: {amount_str}")
+
+def validate_wallet_number(wallet_number: str) -> bool:
+    """التحقق من صحة رقم المحفظة"""
+    if not wallet_number or len(wallet_number) != 9:
+        return False
+    
+    # يجب أن يكون 9 أرقام فقط
+    return wallet_number.isdigit()
+
 def generate_supplier_share_link(network_id: str, bot_username: str = "YemenNetBot"):
     """إنشاء رابط مشاركة للمزود لفتح شبكته مباشرة"""
+    # تنظيف معرف الشبكة
+    network_id = sanitize_input(str(network_id), max_length=50)
+    bot_username = sanitize_input(bot_username, max_length=50, allow_numbers=False)
+    
     # إنشاء deep link للشبكة
     deep_link = f"https://t.me/{bot_username}?start=network_{network_id}"
     return deep_link
