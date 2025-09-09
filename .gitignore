@@ -1,6 +1,20 @@
 # Django stuff:
 *.log
 bot.log
+.env
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+.cache/
+**/__pycache__/
+.vscode/
+.idea/
 yemen_net_bot_data
 reports/daily_reports/*.json
 reports/daily_reports/*.txt
