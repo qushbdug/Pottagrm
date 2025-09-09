@@ -202,50 +202,7 @@ def send_smart_notification(user_id: int, notification_type: str, title: str,
         logger.error(f"Error sending smart notification: {e}")
         return None
 
-def calculate_user_rating(user_id: int) -> Dict:
-    """Calculate and update user rating summary"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT rating, COUNT(*) as count FROM ratings 
-            WHERE rated_user_id = ? AND is_visible = 1
-            GROUP BY rating
-        ''', (user_id,))
-        
-        rating_counts = {i: 0 for i in range(1, 6)}
-        total_ratings = 0
-        total_score = 0
-        
-        for rating, count in cursor.fetchall():
-            rating_counts[rating] = count
-            total_ratings += count
-            total_score += rating * count
-        
-        average_rating = total_score / total_ratings if total_ratings > 0 else 0.0
-        
-        # Update or insert rating summary
-        cursor.execute('''
-            INSERT OR REPLACE INTO user_ratings_summary 
-            (user_id, total_ratings, average_rating, rating_1_count, rating_2_count,
-             rating_3_count, rating_4_count, rating_5_count, last_updated)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (user_id, total_ratings, average_rating, rating_counts[1], 
-              rating_counts[2], rating_counts[3], rating_counts[4], 
-              rating_counts[5], datetime.now()))
-        
-        conn.commit()
-        conn.close()
-        
-        return {
-            'total_ratings': total_ratings,
-            'average_rating': round(average_rating, 2),
-            'rating_distribution': rating_counts
-        }
-    except Exception as e:
-        logger.error(f"Error calculating user rating: {e}")
-        return {'total_ratings': 0, 'average_rating': 0.0, 'rating_distribution': {}}
+# calculate_user_rating function removed as requested
 
 # Permission management
 def get_user_permissions(user_id: int) -> List[str]:

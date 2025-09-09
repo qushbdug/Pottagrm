@@ -36,7 +36,7 @@ try:
     from utils import (
         get_user, recalc_and_set_user_balance,
         get_or_create_supplier_code, get_cards_stats_by_category,
-        get_card_categories, process_uploaded_cards, calculate_user_rating,
+        get_card_categories, process_uploaded_cards,
         get_user_permissions
     )
     
@@ -373,8 +373,6 @@ async def button_click_handler(update: Update, context):
             return await AdminManagement.manage_admins(update, context)
         elif callback_data == 'admin_analytics':
             return await AdminManagement.get_admin_analytics(update, context)
-        elif callback_data == 'admin_security':
-            return await AdminManagement.admin_security_center(update, context)
         elif callback_data.startswith('admin_profile_'):
             admin_id = int(callback_data.split('_')[2])
             return await AdminManagement.show_admin_profile(update, context, admin_id)
@@ -523,14 +521,10 @@ async def button_click_handler(update: Update, context):
         # Personal features
         elif callback_data == 'personal_reports':
             await personal_reports_handler(update, context)
-        elif callback_data == 'my_ratings':
-            await my_ratings_handler(update, context)
         elif callback_data == 'my_notifications':
             await my_notifications_handler(update, context)
         elif callback_data == 'promotions':
             await promotions_handler(update, context)
-        elif callback_data == 'account_settings':
-            await account_settings_handler(update, context)
         
         # Role-specific features
 
@@ -542,8 +536,6 @@ async def button_click_handler(update: Update, context):
             await view_networks_handler(update, context)
         elif callback_data == 'search_user':
             await search_user_handler(update, context)
-        elif callback_data == 'my_sent_ratings':
-            await my_sent_ratings_handler(update, context)
         elif callback_data == 'transaction_details':
             await transaction_details_handler(update, context)
         elif callback_data == 'wallet_stats':
@@ -781,52 +773,7 @@ async def button_click_handler(update: Update, context):
 
 # Placeholder handlers for features being implemented
 
-async def my_ratings_handler(update: Update, context):
-    """Show user ratings"""
-    try:
-        query = update.callback_query
-        user = get_user(query.from_user.id)
-        
-        rating_summary = calculate_user_rating(user['id'])
-        
-        rating_text = f"""
-⭐ **تقييماتي ومراجعاتي** ⭐
-
-👤 **{user['full_name']}**
-
-📊 **ملخص التقييمات:**
-⭐ متوسط التقييم: **{rating_summary['average_rating']}/5**
-🔢 إجمالي التقييمات: **{rating_summary['total_ratings']}**
-
-📈 **توزيع النجوم:**
-⭐⭐⭐⭐⭐ {rating_summary['rating_distribution'].get(5, 0)} تقييم
-⭐⭐⭐⭐ {rating_summary['rating_distribution'].get(4, 0)} تقييم  
-⭐⭐⭐ {rating_summary['rating_distribution'].get(3, 0)} تقييم
-⭐⭐ {rating_summary['rating_distribution'].get(2, 0)} تقييم
-⭐ {rating_summary['rating_distribution'].get(1, 0)} تقييم
-
-🎯 **نصائح لتحسين تقييمك:**
-• كن مهذباً في التعامل
-• أكمل المعاملات بسرعة
-• قدم خدمة عملاء ممتازة
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton(f'📝 تقييماتي المرسلة', callback_data='my_sent_ratings')],
-            [InlineKeyboardButton(f'📨 تقييماتي المستلمة', callback_data='my_received_ratings')],
-            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
-        ]
-        
-        await query.edit_message_text(rating_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in my ratings handler: {e}")
-        await query.edit_message_text(ErrorMessages.custom_error(
-            "عرض التقييمات",
-            "لا يمكن الوصول إلى بيانات التقييمات حالياً",
-            "تأكد من الاتصال بالإنترنت وحاول مرة أخرى خلال دقائق",
-            "RATING_ERROR"
-        ))
+# my_ratings_handler removed as requested
 
 async def my_notifications_handler(update: Update, context):
     """Show user notifications"""
@@ -1190,93 +1137,8 @@ async def search_user_handler(update: Update, context):
         logger.error(f"Error in search user handler: {e}")
         await query.edit_message_text(search_error("المستخدم", "قاعدة بيانات المستخدمين"))
 
-async def my_sent_ratings_handler(update: Update, context):
-    """Handle my sent ratings"""
-    try:
-        query = update.callback_query
-        user = get_user(query.from_user.id)
-        
-        # الحصول على مشتريات المستخدم للتقييم
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # البحث عن الشبكات التي اشترى منها المستخدم
-        cursor.execute('''
-            SELECT DISTINCT n.id, n.name, n.provider, n.location, 
-                   COUNT(t.id) as purchase_count,
-                   MAX(t.created_at) as last_purchase,
-                   SUM(t.amount) as total_spent
-            FROM transactions t
-            LEFT JOIN cards c ON t.description LIKE '%' || c.code || '%'
-            LEFT JOIN card_categories cc ON c.category_id = cc.id
-            LEFT JOIN networks n ON cc.network_id = n.id
-            WHERE t.to_user = ? AND t.type = 'card_purchase' AND n.id IS NOT NULL
-            GROUP BY n.id, n.name, n.provider, n.location
-            ORDER BY last_purchase DESC
-            LIMIT 10
-        ''', (user['id'],))
-        purchased_networks = cursor.fetchall()
-        
-        # إجمالي المشتريات
-        cursor.execute('''
-            SELECT COUNT(*), COALESCE(SUM(amount), 0)
-            FROM transactions 
-            WHERE to_user = ? AND type = 'card_purchase'
-        ''', (user['id'],))
-        result = cursor.fetchone()
-        total_purchases, total_amount = result if result else (0, 0)
-        
-        conn.close()
-        
-        ratings_text = f"""
-📝 **تقييماتي والمراجعات** 📝
-
-👤 **{user['full_name']}**
-🛒 **إجمالي مشترياتك:** {total_purchases or 0} عملية شراء
-💰 **إجمالي الإنفاق:** {total_amount or 0:,.2f} ريال
-
-⭐ **الشبكات التي يمكنك تقييمها:**
-
-"""
-        
-        if purchased_networks:
-            for network in purchased_networks:
-                net_id, name, provider, location, purchase_count, last_purchase, spent = network
-                location_text = f"📍 {location}" if location else ""
-                
-                ratings_text += f"""
-🌐 **{name}**
-👤 {provider} {location_text}
-🛒 اشتريت منها: {purchase_count} مرة
-💰 أنفقت: {spent:,.2f} ريال
-📅 آخر شراء: {last_purchase[:10] if last_purchase else 'غير محدد'}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-"""
-        else:
-            ratings_text += """
-❌ **لم تشتري من أي شبكة بعد**
-
-💡 **لتقييم الشبكات:**
-• قم بشراء كروت من الشبكات أولاً
-• بعد الشراء ستظهر هنا للتقييم
-• تقييمك يساعد المستخدمين الآخرين
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton(f'⭐ تقييماتي', callback_data='my_ratings')],
-            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
-        ]
-        
-        await query.edit_message_text(ratings_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in my sent ratings handler: {e}")
-        await query.edit_message_text(ErrorMessages.custom_error(
-            "عرض التقييمات المرسلة",
-            "فشل في استرداد قائمة التقييمات التي أرسلتها",
-            "قد تكون قاعدة البيانات مشغولة، حاول مرة أخرى خلال دقائق",
-            "SENT_RATING_ERROR"
-        ))
+# my_sent_ratings_handler removed as requested
+# my_sent_ratings_handler removed as requested
 
 async def transaction_details_handler(update: Update, context):
     """Handle transaction details"""
@@ -2062,7 +1924,7 @@ async def supplier_settings_handler(update: Update, context):
 • نظام الدفع: شهري
 • طريقة الاستلام: تحويل مباشر
 
-🔧 **إعدادات النظام:**
+🔧 **إعدادات المزود:**
 • حالة الحساب: نشط ✅
 • مستوى التحقق: مؤكد ✅
 • آخر تحديث: اليوم
@@ -4085,72 +3947,8 @@ async def my_notifications_handler(update: Update, context: CallbackContext):
         logger.error(f"Error in my notifications handler: {e}")
         await query.edit_message_text(ErrorMessages.notification_error("عرض الإشعارات"))
 
-async def account_settings_handler(update: Update, context: CallbackContext):
-    """معالج إعدادات الحساب"""
-    try:
-        query = update.callback_query
-        user = get_user(query.from_user.id)
-        
-                # تحديد نوع الحساب
-        role_names = {
-            'user': 'عميل', 
- 
-            'supplier': 'مزود', 
-            'admin': 'مشرف', 
-            'super_admin': 'مشرف أعلى'
-        }
-        
-        settings_text = f"""
-⚙️ **إعدادات الحساب** ⚙️
-
-👤 **{user['full_name']}**
-💳 **رقم المحفظة:** {user['wallet_number']}
-📱 **رقم الهاتف:** {user['phone'] if user['phone'] else 'غير محدد'}
-🆔 **معرف تلغرام:** {user['telegram_id']}
-👑 **نوع الحساب:** {role_names.get(user['role'], 'عميل')}
-
-⚙️ **الإعدادات المتاحة:**
-
-🔔 **إعدادات الإشعارات:**
-• إشعارات المعاملات: مفعل ✅
-• إشعارات التحديثات: مفعل ✅
-• إشعارات العروض: مفعل ✅
-
-🔒 **إعدادات الأمان:**
-• حماية المحفظة: مفعل ✅
-• تأكيد العمليات: مفعل ✅
-• إشعارات الأمان: مفعل ✅
-
-👁️ **إعدادات الخصوصية:**
-• إظهار الاسم: مفعل ✅
-• إظهار رقم الهاتف: مخفي ❌
-• إظهار آخر ظهور: مفعل ✅
-
-📊 **إعدادات التقارير:**
-• التقارير الشخصية: مفعل ✅
-• إحصائيات المحفظة: مفعل ✅
-• سجل المعاملات: مفعل ✅
-
-💡 **معلومات الحساب:**
-• تاريخ التسجيل: {user['created_at'][:10] if user['created_at'] else 'غير محدد'}
-• آخر تحديث: اليوم
-• حالة الحساب: نشط ✅
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('🔔 إعدادات الإشعارات', callback_data='notification_settings'),
-             InlineKeyboardButton('🔒 إعدادات الخصوصية', callback_data='privacy_settings')],
-            [InlineKeyboardButton('🔄 تحديث البيانات', callback_data='update_profile'),
-             InlineKeyboardButton('🔐 تغيير كلمة المرور', callback_data='change_password')],
-            [InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet'),
-             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-        ]
-        
-        await query.edit_message_text(settings_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in account settings handler: {e}")
-        await query.edit_message_text(ErrorMessages.settings_error("الحساب"))
+# account_settings_handler removed as requested
+# account_settings_handler removed as requested
 
 async def transfer_history_handler(update: Update, context: CallbackContext):
     """معالج سجل التحويلات"""
@@ -4267,7 +4065,7 @@ async def update_profile_handler(update: Update, context: CallbackContext):
         keyboard = [
             [InlineKeyboardButton('📞 تواصل مع الدعم', callback_data='contact_admin'),
              InlineKeyboardButton('📋 عرض البيانات الكاملة', callback_data='view_full_profile')],
-            [InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings'),
+            [
              InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
@@ -4362,7 +4160,7 @@ async def view_full_profile_handler(update: Update, context: CallbackContext):
         keyboard = [
             [InlineKeyboardButton('📊 تقاريري المفصلة', callback_data='detailed_reports'),
              InlineKeyboardButton('💳 محفظتي المطورة', callback_data='enhanced_wallet')],
-            [InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings'),
+            [
              InlineKeyboardButton('🔄 تحديث البيانات', callback_data='update_profile')],
             [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
@@ -4409,10 +4207,7 @@ async def change_password_handler(update: Update, context: CallbackContext):
 """
         
         keyboard = [
-            [InlineKeyboardButton('🛡️ إعدادات الأمان', callback_data='security_settings'),
-             InlineKeyboardButton('🔔 إشعارات الأمان', callback_data='security_notifications')],
-            [InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings'),
-             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
         await query.edit_message_text(password_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
@@ -4472,7 +4267,7 @@ async def contact_admin_handler(update: Update, context: CallbackContext):
              InlineKeyboardButton('📱 واتساب', url='https://wa.me/967777777777')],
             [InlineKeyboardButton('📧 إرسال إيميل', callback_data='send_email'),
              InlineKeyboardButton('🏢 عناوين المكاتب', callback_data='office_locations')],
-            [InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings'),
+            [
              InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
@@ -4562,8 +4357,7 @@ async def account_status_handler(update: Update, context: CallbackContext):
         keyboard = [
             [InlineKeyboardButton('📊 تقاريري الشخصية', callback_data='personal_reports'),
              InlineKeyboardButton('📈 إحصائيات المحفظة', callback_data='wallet_stats')],
-            [InlineKeyboardButton('🔔 إشعاراتي', callback_data='my_notifications'),
-             InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings')],
+            [InlineKeyboardButton('🔔 إشعاراتي', callback_data='my_notifications')],
             [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
@@ -4852,10 +4646,10 @@ def main():
         if not BOT_TOKEN:
             raise BotConfigurationError("BOT_TOKEN is not configured")
         
-        # Create persistence with error handling
+        # Create application without persistence to avoid sqlite3.Row pickle issues
         try:
-            persistence = PicklePersistence(filepath='yemen_net_bot_data')
-            application = Application.builder().token(BOT_TOKEN).persistence(persistence).build()
+            # تم تعطيل persistence مؤقتاً لحل مشكلة sqlite3.Row
+            application = Application.builder().token(BOT_TOKEN).build()
         except Exception as e:
             raise BotConfigurationError(f"Failed to create application: {e}")
         
@@ -4895,7 +4689,7 @@ def main():
                 MessageHandler(filters.TEXT & filters.Regex(r'^/cancel$'), COMMAND_HANDLERS['cancel']),
             ],
             name='yemen_net_conversation',
-            persistent=True,
+            persistent=False,
             allow_reentry=True,
             per_message=False,
             per_chat=True,
@@ -5155,8 +4949,8 @@ async def show_wallet_page(update: Update, context: CallbackContext, user: dict,
         
         conn.close()
         
-        # حساب التقييم
-        rating_data = calculate_user_rating(user['id'])
+        # حساب التقييم (محذوف)
+        rating_data = {'total_ratings': 0, 'average_rating': 0.0}
         
         # بناء نص المحفظة
         wallet_text = f"""

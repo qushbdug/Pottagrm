@@ -99,9 +99,6 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
              InlineKeyboardButton(f'📄 تنزيل كشوف حسابات', callback_data='download_statements')],
             [InlineKeyboardButton(f'⚡ تصدير سريع', callback_data='quick_export'),
              InlineKeyboardButton(f'📊 تصدير مخصص', callback_data='export_profits')],
-            [InlineKeyboardButton(f'🔧 إعدادات النظام', callback_data='super_system_settings')],
-            [InlineKeyboardButton(f'💾 النسخ الاحتياطي', callback_data='super_backup'),
-             InlineKeyboardButton(f'🚨 مراقبة الأمان', callback_data='super_security_monitoring')],
             [InlineKeyboardButton(f'🎟️ إنشاء كوبونات', callback_data='super_create_coupons')],
             [InlineKeyboardButton(f'📢 إرسال رسالة جماعية', callback_data='super_broadcast_message'),
              InlineKeyboardButton(f'🔄 تحديث أوامر البوت', callback_data='super_update_commands')],
@@ -620,80 +617,7 @@ async def placeholder_handler(update, context, feature_name):
 # Placeholder handlers for missing features
 
 
-async def backup_handler(update, context):
-    """Handle backup management"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        user = get_user(query.from_user.id)
-        if not user or user['role'] != 'super_admin':
-            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
-            return
-        
-        import os
-        from datetime import datetime
-        
-        # Check backup directory and get backup info
-        backup_dir = '/workspace/backups'
-        if not os.path.exists(backup_dir):
-            os.makedirs(backup_dir)
-        
-        # Get backup files
-        backup_files = []
-        try:
-            for f in os.listdir(backup_dir):
-                if f.endswith('.db') or f.endswith('.sql'):
-                    full_path = os.path.join(backup_dir, f)
-                    size = os.path.getsize(full_path)
-                    mtime = os.path.getmtime(full_path)
-                    backup_files.append({
-                        'name': f,
-                        'size': size,
-                        'date': datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')
-                    })
-        except Exception:
-            pass
-        
-        # Sort by date (newest first)
-        backup_files.sort(key=lambda x: x['date'], reverse=True)
-        
-        text = f"""
-💾 **إدارة النسخ الاحتياطي** 💾
-
-📊 **معلومات النسخ الاحتياطي:**
-📁 مجلد النسخ: `/workspace/backups`
-📈 عدد النسخ المتاحة: **{len(backup_files)}**
-
-📋 **آخر النسخ الاحتياطية:**
-"""
-        
-        for backup in backup_files[:3]:
-            size_mb = backup['size'] / (1024 * 1024)
-            text += f"\n• {backup['name']}"
-            text += f"\n  📅 {backup['date']} | 📊 {size_mb:.1f} MB"
-        
-        if not backup_files:
-            text += "\nلا توجد نسخ احتياطية حالياً"
-        
-        text += "\n\n🔧 **العمليات المتاحة:**"
-        
-        keyboard = [
-            [InlineKeyboardButton('💾 إنشاء نسخة كاملة', callback_data='backup_full'),
-             InlineKeyboardButton('📋 نسخ البيانات فقط', callback_data='backup_data_only')],
-            [InlineKeyboardButton('🔄 استعادة نسخة', callback_data='backup_restore'),
-             InlineKeyboardButton('📂 عرض جميع النسخ', callback_data='backup_list')],
-            [InlineKeyboardButton('⏰ جدولة تلقائية', callback_data='backup_schedule'),
-             InlineKeyboardButton('⚙️ إعدادات النسخ', callback_data='backup_settings')],
-            [InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel'),
-             InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
-        ]
-        
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in backup handler: {e}")
-        await query.edit_message_text(ErrorMessages.admin_error("تحميل إدارة النسخ الاحتياطي"))
+# Backup handler removed as requested
 async def executive_reports_handler(update: Update, context: CallbackContext):
     """التقارير التنفيذية الشاملة"""
     try:
@@ -880,8 +804,7 @@ async def executive_reports_handler(update: Update, context: CallbackContext):
 
 
 
-async def security_monitoring_handler(update, context):
-    return await placeholder_handler(update, context, "مراقبة الأمان")
+# Security monitoring handler removed as requested
 
 async def manage_admins_handler(update, context):
     """Handle admin management"""
@@ -1443,43 +1366,7 @@ def generate_serial_number():
 
 # Missing Admin Functions Implementation
 
-async def system_settings_handler(update: Update, context: CallbackContext):
-    """Handle system settings management"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        user = get_user(query.from_user.id)
-        if not user or user['role'] != 'super_admin':
-            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
-            return
-        
-        text = f"""
-⚙️ **إدارة إعدادات النظام** ⚙️
-
-{EMOJIS['admin']} مرحباً **{user['full_name']}**
-
-📊 **الإعدادات الحالية:**
-💳 نسبة عمولة البطاقات: **{CARD_COMMISSION_RATE * 100:.1f}%**
-👥 نسبة عمولة الوكلاء: **{AGENT_COMMISSION_RATE * 100:.1f}%**
-🗄️ مسار قاعدة البيانات: `{DB_PATH}`
-
-🔧 **الخيارات المتاحة:**
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('💳 تعديل عمولة البطاقات', callback_data='system_edit_card_commission'),
-             InlineKeyboardButton('👥 تعديل عمولة الوكلاء', callback_data='system_edit_agent_commission')],
-            [InlineKeyboardButton('🔄 إعادة تحميل الإعدادات', callback_data='system_reload_config'),
-             InlineKeyboardButton('📊 عرض إحصائيات النظام', callback_data='system_stats')],
-            [InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]
-        ]
-        
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in system settings handler: {e}")
-        await query.edit_message_text(ErrorMessages.settings_error("النظام"))
+# System settings handler removed as requested
 
 async def dashboard_handler(update: Update, context: CallbackContext):
     """Handle dashboard view"""
@@ -1837,40 +1724,7 @@ async def manage_users_handler(update: Update, context: CallbackContext):
         logger.error(f"Error in manage users handler: {e}")
         await query.edit_message_text(ErrorMessages.admin_error("إدارة المستخدمين"))
 
-async def backup_handler(update: Update, context: CallbackContext):
-    """Handle backup operations"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        user = get_user(query.from_user.id)
-        if not user or user['role'] != 'super_admin':
-            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
-            return
-        
-        text = f"""
-💾 **النسخ الاحتياطي** 💾
-
-{EMOJIS['admin']} مرحباً **{user['full_name']}**
-
-📋 **خيارات النسخ الاحتياطي:**
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('💾 إنشاء نسخة احتياطية كاملة', callback_data='backup_full'),
-             InlineKeyboardButton('📊 نسخة احتياطية للبيانات فقط', callback_data='backup_data_only')],
-            [InlineKeyboardButton('📥 استعادة من نسخة احتياطية', callback_data='backup_restore'),
-             InlineKeyboardButton('📋 عرض النسخ المتاحة', callback_data='backup_list')],
-            [InlineKeyboardButton('🕐 جدولة النسخ التلقائي', callback_data='backup_schedule'),
-             InlineKeyboardButton('⚙️ إعدادات النسخ', callback_data='backup_settings')],
-            [InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]
-        ]
-        
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in backup handler: {e}")
-        await query.edit_message_text(ErrorMessages.admin_error("إدارة النسخ الاحتياطي"))
+# Second backup handler removed as requested
 
 # Placeholder functions for features that need detailed implementation
 async def platform_management_handler(update, context):
@@ -1907,15 +1761,11 @@ async def platform_management_handler(update, context):
 💰 إجمالي المعاملات: **{total_transactions:,.2f}** ريال
 
 🔧 **إدارة المنصة:**
-⚙️ إعدادات النظام العامة
-🔒 إدارة الأمان والصلاحيات
 📊 مراقبة الأداء والاستقرار
 🔄 إدارة الصيانة والتحديثات
 """
     
     keyboard = [
-        [InlineKeyboardButton('⚙️ إعدادات النظام', callback_data='super_system_settings'),
-         InlineKeyboardButton('🔒 إدارة الأمان', callback_data='super_security_management')],
         [InlineKeyboardButton('📊 مراقبة الأداء', callback_data='super_performance_monitor'),
          InlineKeyboardButton('🔄 إدارة الصيانة', callback_data='super_maintenance')],
         [InlineKeyboardButton('📈 تقارير المنصة', callback_data='super_platform_reports'),
@@ -1947,26 +1797,7 @@ async def commission_settings_handler(update, context):
     keyboard = [[InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
-async def security_monitoring_handler(update, context):
-    """Handle security monitoring"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-🚨 **مراقبة الأمان** 🚨
-
-🚨 **نظام مراقبة الأمان النشط:**
-
-🔒 **مراقبة تسجيلات الدخول المشبوهة**
-🛡️ **كشف المحاولات الاحتيالية**
-⚠️ **تنبيهات الأمان**
-📋 **سجلات الأنشطة الحساسة**
-
-🏠 العودة للوحة الإدارة
-"""
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+# Security monitoring handler removed as requested
 
 # Export functions for callback routing
 ADMIN_CALLBACKS = {
@@ -1976,12 +1807,9 @@ ADMIN_CALLBACKS = {
     'activate_all_suppliers': activate_all_suppliers,
     'super_platform_management': platform_management_handler,
     'super_commission_settings': commission_settings_handler,
-    'super_backup': backup_handler,
     'executive_reports': executive_reports_handler,
     'super_manage_users': manage_users_handler,
     'super_executive_reports': executive_reports_handler,
-    'super_system_settings': system_settings_handler,
-    'super_security_monitoring': security_monitoring_handler,
     'super_manage_admins': manage_admins_handler,
     'super_dashboard': dashboard_handler,
     'super_view_all_suppliers': view_all_suppliers_handler,
@@ -1997,202 +1825,24 @@ ADMIN_CALLBACKS = {
 
 # Missing handler implementations
 
-async def backup_full_handler(update, context):
-    """Handle full backup creation"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-💾 **إنشاء نسخة احتياطية كاملة** 💾
+# backup_full_handler removed as requested
 
-🔄 جاري إنشاء النسخة الاحتياطية...
+# backup_data_only_handler removed as requested
 
-⚠️ قد تستغرق هذه العملية بضع دقائق.
+# backup_restore_handler removed as requested
 
-🏠 العودة لإدارة النسخ
-"""
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة النسخ', callback_data='super_backup')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+# backup_list_handler removed as requested
+# backup_schedule_handler removed as requested
 
-async def backup_data_only_handler(update, context):
-    """Handle data-only backup"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-📊 **نسخة احتياطية للبيانات فقط** 📊
+# backup_settings_handler removed as requested
 
-📊 **نسخ احتياطي ذكي:**
-• نسخ تلقائي للبيانات الحساسة
-• ضغط وتشفير البيانات
-• استعادة سريعة وآمنة
-• جدولة مرنة للنسخ
+# System settings handlers removed as requested
 
-🏠 العودة لإدارة النسخ
-"""
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة النسخ', callback_data='super_backup')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+# system_edit_agent_commission_handler removed as requested
 
-async def backup_restore_handler(update, context):
-    """Handle backup restore"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-📥 **استعادة من نسخة احتياطية** 📥
+# system_reload_config_handler removed as requested
 
-✅ **استعادة النسخ الاحتياطية:**
-• استعادة انتقائية للبيانات
-• معاينة المحتوى قبل الاستعادة
-• حماية من فقدان البيانات
-• نقاط استعادة متعددة
-
-⚠️ **تحذير:** استعادة النسخة الاحتياطية ستحل محل جميع البيانات الحالية.
-
-🏠 العودة لإدارة النسخ
-"""
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة النسخ', callback_data='super_backup')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-
-async def backup_list_handler(update, context):
-    """Handle backup list"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-📋 **عرض النسخ المتاحة** 📋
-
-لا توجد نسخ احتياطية متاحة حالياً.
-
-🏠 العودة لإدارة النسخ
-"""
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة النسخ', callback_data='super_backup')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-async def backup_schedule_handler(update, context):
-    """Handle backup scheduling"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-🕐 **جدولة النسخ التلقائي** 🕐
-
-🕐 **جدولة النسخ التلقائي:**
-• نسخ يومي/أسبوعي/شهري
-• تنبيهات حالة النسخ
-• إدارة مساحة التخزين
-• نسخ متزايد وكامل
-
-🏠 العودة لإدارة النسخ
-"""
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة النسخ', callback_data='super_backup')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-
-async def backup_settings_handler(update, context):
-    """Handle backup settings"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-⚙️ **إعدادات النسخ** ⚙️
-
-⚙️ **إعدادات النسخ المتقدمة:**
-• اختيار البيانات للنسخ
-• مواقع تخزين متعددة
-• تشفير متقدم
-• ضغط تكيفي
-
-🏠 العودة لإدارة النسخ
-"""
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة النسخ', callback_data='super_backup')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-
-# System settings handlers
-async def system_edit_card_commission_handler(update, context):
-    """Handle card commission editing"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-💳 **تعديل عمولة البطاقات** 💳
-
-العمولة الحالية: **{CARD_COMMISSION_RATE * 100:.1f}%**
-
-💳 **إدارة عمولات البطاقات:**
-• نسب عمولة مخصصة لكل شبكة
-• عمولات متدرجة حسب الحجم
-• تتبع الأرباح في الوقت الفعلي
-• تقارير مالية مفصلة
-
-🏠 العودة لإعدادات النظام
-"""
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة لإعدادات النظام', callback_data='super_system_settings')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-
-async def system_edit_agent_commission_handler(update, context):
-    """Handle agent commission editing"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-👥 **تعديل عمولة الوكلاء** 👥
-
-العمولة الحالية: **{AGENT_COMMISSION_RATE * 100:.1f}%**
-
-🤝 **إدارة عمولات الوكلاء:**
-• هيكل عمولات متعدد المستويات
-• مكافآت الأداء
-• تتبع المبيعات والعمولات
-• دفعات تلقائية للعمولات
-
-🏠 العودة لإعدادات النظام
-"""
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة لإعدادات النظام', callback_data='super_system_settings')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-
-async def system_reload_config_handler(update, context):
-    """Handle config reload"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-🔄 **إعادة تحميل الإعدادات** 🔄
-
-تم إعادة تحميل إعدادات النظام بنجاح.
-
-🏠 العودة لإعدادات النظام
-"""
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة لإعدادات النظام', callback_data='super_system_settings')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-
-async def system_stats_handler(update, context):
-    """Handle system stats"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-📊 **إحصائيات النظام** 📊
-
-📊 **إحصائيات النظام الشاملة:**
-• أداء الخادم والذاكرة
-• إحصائيات المستخدمين النشطين
-• معدلات المعاملات
-• تحليل الأخطاء والمشاكل
-• رسوم بيانية تفاعلية
-
-🏠 العودة لإعدادات النظام
-"""
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة لإعدادات النظام', callback_data='super_system_settings')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+# system_stats_handler removed as requested
 
 # Dashboard handlers
 async def dashboard_users_handler(update, context):
@@ -2624,11 +2274,9 @@ ADMIN_CALLBACKS.update({
     'admin_wallet': admin_wallet_handler,
     'admin_send_money': admin_send_money_handler,
   # Keep for compatibility
-    'super_system_settings': system_settings_handler,
     'super_manage_admins': manage_admins_handler,
     'super_manage_users': manage_users_handler,
     'super_dashboard': dashboard_handler,
-    'super_backup': backup_handler,
     'super_executive_reports': executive_reports_handler,
     'super_platform_management': platform_management_handler,
     'super_commission_settings': commission_settings_handler,
@@ -2739,18 +2387,8 @@ ADMIN_CALLBACKS.update({
     'super_coupons_stats': lambda u, c: coupons_stats_handler(u, c),
     'super_list_coupons': lambda u, c: list_coupons_handler(u, c),
     
-    # Backup handlers
-    'backup_full': backup_full_handler,
-    'backup_data_only': backup_data_only_handler,
-    'backup_restore': backup_restore_handler,
-    'backup_list': backup_list_handler,
-    'backup_schedule': backup_schedule_handler,
-    'backup_settings': backup_settings_handler,
-    # System settings handlers
-    'system_edit_card_commission': system_edit_card_commission_handler,
-    'system_edit_agent_commission': system_edit_agent_commission_handler,
-    'system_reload_config': system_reload_config_handler,
-    'system_stats': system_stats_handler,
+    # Backup and system handlers removed as requested
+    # Additional cleanup
     # Dashboard handlers
     'dashboard_users': dashboard_users_handler,
     'dashboard_financial': dashboard_financial_handler,
@@ -2771,10 +2409,7 @@ ADMIN_CALLBACKS.update({
     'users_top': users_top_handler,
     # Additional handlers for improved functionality
     'super_detailed_report': lambda u, c: placeholder_handler(u, c, "التقرير المفصل"),
-    'system_edit_transfer_fee': lambda u, c: placeholder_handler(u, c, "تعديل رسوم التحويل"),
-    'system_security': lambda u, c: placeholder_handler(u, c, "إعدادات الأمان"),
-    'system_notifications': lambda u, c: placeholder_handler(u, c, "إعدادات الإشعارات"),
-    'system_maintenance_toggle': lambda u, c: placeholder_handler(u, c, "تبديل وضع الصيانة"),
+    # System handlers removed as requested
     'dashboard_networks': lambda u, c: placeholder_handler(u, c, "تقرير الشبكات"),
     'dashboard_charts': lambda u, c: placeholder_handler(u, c, "الرسوم البيانية"),
     'users_list_all': lambda u, c: placeholder_handler(u, c, "عرض جميع المستخدمين"),

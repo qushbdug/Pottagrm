@@ -403,8 +403,7 @@ def create_main_keyboard(role: str):
              InlineKeyboardButton('🎁 العروض والخصومات', callback_data='promotions')],
             [InlineKeyboardButton('🎟️ كشف الحساب', callback_data='account_statement'),
              InlineKeyboardButton('🔔 إشعاراتي', callback_data='my_notifications')],
-            [InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings'),
-             InlineKeyboardButton('⭐ تقييماتي', callback_data='my_ratings')]
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
         # Role-specific features
@@ -1459,44 +1458,7 @@ async def my_notifications_handler(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in my_notifications_handler: {e}")
 
-async def account_settings_handler(update: Update, context: CallbackContext):
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            if update.message:
-                await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
-            else:
-                await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-        text = f"""
-⚙️ إعدادات الحساب
-
-👤 الاسم: {user['full_name']}
-📱 الهاتف: {user['phone'] if user['phone'] else 'غير محدد'}
-👑 الدور: {user['role']}
-"""
-        kb = [[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]
-        if update.message:
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
-        else:
-            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
-    except Exception as e:
-        logger.error(f"Error in account_settings_handler: {e}")
-
-async def my_ratings_handler(update: Update, context: CallbackContext):
-    try:
-        text = """
-⭐ تقييماتي
-
-لا توجد تقييمات متاحة حالياً.
-"""
-        kb = [[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]
-        if update.message:
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
-        else:
-            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
-    except Exception as e:
-        logger.error(f"Error in my_ratings_handler: {e}")
+# account_settings_handler and my_ratings_handler removed as requested
 
 async def help_handler(update: Update, context: CallbackContext):
     """Enhanced help and support"""
@@ -1550,7 +1512,7 @@ async def help_handler(update: Update, context: CallbackContext):
         keyboard = [
             [InlineKeyboardButton('📞 التواصل مع الإدارة', callback_data='contact_admin'),
              InlineKeyboardButton('🔔 الإشعارات', callback_data='my_notifications')],
-            [InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings'),
+            [
              InlineKeyboardButton('📊 حالة الحساب', callback_data='account_status')],
             [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
@@ -2398,8 +2360,6 @@ COMMAND_HANDLERS = {
     'personal_reports': personal_reports_handler,
     # promotions now handled by enhanced system in main bot
     'my_notifications': my_notifications_handler,
-    'account_settings': account_settings_handler,
-    'my_ratings': my_ratings_handler,
 
     'supplier_panel': lambda u, c: enhanced_placeholder_handler(u, c, "🏪 لوحة المزود", "لوحة تحكم خاصة بالمزودين"),
     'manage_networks': lambda u, c: supplier_manage_networks(u, c),

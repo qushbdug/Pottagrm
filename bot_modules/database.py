@@ -228,36 +228,9 @@ def init_db():
         ''')
 
         # Rating and review system
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS ratings (
-                id TEXT PRIMARY KEY,
-                rater_id INTEGER NOT NULL,
-                rated_user_id INTEGER NOT NULL,
-                transaction_id TEXT,
-                rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
-                review_text TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                is_visible BOOLEAN DEFAULT 1,
-                FOREIGN KEY(rater_id) REFERENCES users(id),
-                FOREIGN KEY(rated_user_id) REFERENCES users(id),
-                FOREIGN KEY(transaction_id) REFERENCES transactions(id)
-            )
-        ''')
+        # ratings table removed as requested
 
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS user_ratings_summary (
-                user_id INTEGER PRIMARY KEY,
-                total_ratings INTEGER DEFAULT 0,
-                average_rating REAL DEFAULT 0.0,
-                rating_1_count INTEGER DEFAULT 0,
-                rating_2_count INTEGER DEFAULT 0,
-                rating_3_count INTEGER DEFAULT 0,
-                rating_4_count INTEGER DEFAULT 0,
-                rating_5_count INTEGER DEFAULT 0,
-                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(user_id) REFERENCES users(id)
-            )
-        ''')
+        # user_ratings_summary table removed as requested
 
         # Smart notifications system
         cursor.execute('''
@@ -766,39 +739,9 @@ def init_db():
         ''')
 
         # Admin system settings table - For system-wide admin settings
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS admin_system_settings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                setting_key TEXT UNIQUE NOT NULL,
-                setting_value TEXT NOT NULL,
-                setting_type TEXT DEFAULT 'string',  -- 'string', 'boolean', 'integer', 'json'
-                description TEXT,
-                updated_by INTEGER,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (updated_by) REFERENCES users(id)
-            )
-        ''')
+        # admin_system_settings table removed as requested
 
-        # Initialize default admin system settings
-        try:
-            default_settings = [
-                ('permissions_system_enabled', 'true', 'boolean', 'تفعيل/تعطيل نظام الصلاحيات'),
-                ('max_admins_allowed', '50', 'integer', 'الحد الأقصى لعدد المشرفين المسموح'),
-                ('admin_session_timeout', '3600', 'integer', 'مهلة انتهاء جلسة المشرف بالثواني'),
-                ('require_2fa_for_admins', 'false', 'boolean', 'إجبار المشرفين على استخدام المصادقة الثنائية'),
-                ('auto_deactivate_inactive_admins', 'false', 'boolean', 'إلغاء تفعيل المشرفين غير النشطين تلقائياً'),
-                ('inactive_admin_threshold_days', '30', 'integer', 'عدد أيام عدم النشاط قبل الإلغاء التلقائي')
-            ]
-            
-            for setting_key, setting_value, setting_type, description in default_settings:
-                cursor.execute('''
-                    INSERT OR IGNORE INTO admin_system_settings 
-                    (setting_key, setting_value, setting_type, description) 
-                    VALUES (?, ?, ?, ?)
-                ''', (setting_key, setting_value, setting_type, description))
-                
-        except Exception as e:
-            logger.warning(f"Error initializing admin system settings: {e}")
+        # Admin system settings initialization removed as requested
         
         # Data insertion is handled separately to avoid conflicts
 
