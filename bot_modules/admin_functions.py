@@ -96,9 +96,9 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
             [InlineKeyboardButton(f'🎁 إضافة عروض', callback_data='admin_add_offers'),
              InlineKeyboardButton(f'✅ تفعيل مزودين', callback_data='super_activate_suppliers')],
             [InlineKeyboardButton(f'📊 النظام المحاسبي', callback_data='accounting_system'),
-             InlineKeyboardButton(f'📄 تنزيل كشوف حسابات', callback_data='download_statements')],
-            [InlineKeyboardButton(f'⚡ تصدير سريع', callback_data='quick_export'),
-             InlineKeyboardButton(f'📊 تصدير مخصص', callback_data='export_profits')],
+             InlineKeyboardButton(f'💰 طلبات السحب', callback_data='admin_withdrawals')],
+            [InlineKeyboardButton(f'📄 تنزيل كشوف حسابات', callback_data='download_statements'),
+             InlineKeyboardButton(f'⚡ تصدير سريع', callback_data='quick_export')],
             [InlineKeyboardButton(f'🎟️ إنشاء كوبونات', callback_data='super_create_coupons')],
             [InlineKeyboardButton(f'📢 إرسال رسالة جماعية', callback_data='super_broadcast_message'),
              InlineKeyboardButton(f'🔄 تحديث أوامر البوت', callback_data='super_update_commands')],
@@ -1844,6 +1844,106 @@ ADMIN_CALLBACKS = {
 
 # system_stats_handler removed as requested
 
+async def admin_withdrawals_handler(update: Update, context: CallbackContext):
+    """معالج طلبات السحب للمشرف الأعلى"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # الحصول على طلبات السحب المعلقة
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT w.withdrawal_id, w.provider_name, w.amount, w.method, w.requested_at,
+                   u.full_name, u.phone
+            FROM withdrawals w
+            JOIN users u ON w.provider_id = u.id
+            WHERE w.status = 'Pending'
+            ORDER BY w.requested_at ASC
+        ''')
+        
+        pending_withdrawals = cursor.fetchall()
+        
+        # إحصائيات إضافية
+        cursor.execute("SELECT COUNT(*) FROM withdrawals WHERE status = 'Pending'")
+        result = cursor.fetchone()
+        pending_count = result[0] if result else 0
+        
+        cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM withdrawals WHERE status = 'Pending'")
+        result = cursor.fetchone()
+        pending_amount = result[0] if result else 0
+        
+        cursor.execute("SELECT COUNT(*) FROM withdrawals WHERE status = 'Approved' AND DATE(confirmed_at) = DATE('now')")
+        result = cursor.fetchone()
+        approved_today = result[0] if result else 0
+        
+        conn.close()
+        
+        withdrawals_text = f"""
+💰 **إدارة طلبات السحب** 💰
+
+👑 **{user['full_name']}**
+
+📊 **ملخص الطلبات:**
+⏳ طلبات معلقة: **{pending_count}** طلب
+💰 إجمالي المبالغ المعلقة: **{pending_amount:,.2f}** ريال
+✅ تم الموافقة عليها اليوم: **{approved_today}** طلب
+
+📋 **الطلبات المعلقة:**
+"""
+        
+        if pending_withdrawals:
+            for withdrawal in pending_withdrawals:
+                w_id, provider_name, amount, method, requested_at, full_name, phone = withdrawal
+                date_str = requested_at[:10] if requested_at else 'غير محدد'
+                
+                withdrawals_text += f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+👤 **{full_name}** ({provider_name})
+📱 {phone}
+💰 المبلغ: **{amount:,.2f}** ريال
+🏦 الطريقة: {method}
+📅 تاريخ الطلب: {date_str}
+🆔 `{w_id[:8]}...`
+
+[الموافقة] [الرفض]
+"""
+        else:
+            withdrawals_text += """
+✅ **لا توجد طلبات معلقة حالياً**
+
+💡 ستظهر هنا طلبات السحب من المزودين عند تقديمها.
+"""
+        
+        keyboard = []
+        
+        # إضافة أزرار الموافقة والرفض لكل طلب
+        for withdrawal in pending_withdrawals:
+            w_id = withdrawal[0]
+            provider_name = withdrawal[1]
+            keyboard.append([
+                InlineKeyboardButton(f'✅ موافقة {provider_name[:10]}...', callback_data=f'approve_withdrawal_{w_id}'),
+                InlineKeyboardButton(f'❌ رفض {provider_name[:10]}...', callback_data=f'reject_withdrawal_{w_id}')
+            ])
+        
+        keyboard.extend([
+            [InlineKeyboardButton('🔄 تحديث القائمة', callback_data='admin_withdrawals')],
+            [InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ])
+        
+        await query.edit_message_text(withdrawals_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in admin withdrawals handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض طلبات السحب")
+
 # Dashboard handlers
 async def dashboard_users_handler(update, context):
     """Handle dashboard users detail"""
@@ -2389,6 +2489,7 @@ ADMIN_CALLBACKS.update({
     
     # Backup and system handlers removed as requested
     # Additional cleanup
+    'admin_withdrawals': admin_withdrawals_handler,
     # Dashboard handlers
     'dashboard_users': dashboard_users_handler,
     'dashboard_financial': dashboard_financial_handler,

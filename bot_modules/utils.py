@@ -846,3 +846,138 @@ def get_network_share_info(network_id: str, supplier_id: int):
     except Exception as e:
         logger.error(f"Error getting network share info: {e}")
         return None
+
+def process_purchase_profit_sharing(purchase_amount: float, provider_id: int, transaction_id: str):
+    """معالجة تقسيم الأرباح على عملية الشراء - 70% للمزود و 30% للمشرف الأعلى"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # حساب التقسيم
+        provider_share = purchase_amount * 0.70  # 70% للمزود
+        admin_share = purchase_amount * 0.30     # 30% للمشرف الأعلى
+        
+        # تحديث المعاملة بتفاصيل التقسيم
+        cursor.execute('''
+            UPDATE transactions 
+            SET provider_id = ?, total_amount = ?, provider_share = ?, admin_share = ?
+            WHERE id = ?
+        ''', (provider_id, purchase_amount, provider_share, admin_share, transaction_id))
+        
+        # البحث عن المشرف الأعلى
+        cursor.execute("SELECT id FROM users WHERE role = 'super_admin' LIMIT 1")
+        admin_result = cursor.fetchone()
+        
+        if admin_result:
+            admin_id = admin_result[0]
+            
+            # إضافة حصة المشرف الأعلى لرصيده
+            cursor.execute('UPDATE users SET balance = balance + ? WHERE id = ?', 
+                          (admin_share, admin_id))
+            
+            # إنشاء معاملة منفصلة لحصة المشرف
+            import uuid
+            admin_transaction_id = str(uuid.uuid4())
+            cursor.execute('''
+                INSERT INTO transactions 
+                (id, from_user, to_user, amount, type, description, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+            ''', (admin_transaction_id, None, admin_id, admin_share, 
+                  'admin_profit', f'حصة إدارية 30% من عملية شراء بقيمة {purchase_amount:.2f} ريال'))
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"Profit sharing processed: Provider {provider_id} gets {provider_share:.2f}, Admin gets {admin_share:.2f}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error processing profit sharing: {e}")
+        try:
+            conn.close()
+        except:
+            pass
+        return False
+
+def get_provider_withdrawable_amount(provider_id: int):
+    """حساب المبلغ القابل للسحب للمزود (حصته من المبيعات)"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # حساب إجمالي حصة المزود من المبيعات
+        cursor.execute('''
+            SELECT COALESCE(SUM(provider_share), 0) as total_earnings
+            FROM transactions 
+            WHERE provider_id = ? AND type = 'card_purchase' AND provider_share IS NOT NULL
+        ''', (provider_id,))
+        
+        result = cursor.fetchone()
+        total_earnings = result[0] if result else 0
+        
+        # حساب المبالغ المسحوبة أو المعلقة
+        cursor.execute('''
+            SELECT COALESCE(SUM(amount), 0) as withdrawn_amount
+            FROM withdrawals 
+            WHERE provider_id = ? AND status IN ('Approved', 'Pending')
+        ''', (provider_id,))
+        
+        result = cursor.fetchone()
+        withdrawn_amount = result[0] if result else 0
+        
+        conn.close()
+        
+        # المبلغ المتاح للسحب
+        available_amount = total_earnings - withdrawn_amount
+        
+        return {
+            'total_earnings': total_earnings,
+            'withdrawn_amount': withdrawn_amount,
+            'available_amount': max(0, available_amount)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error calculating withdrawable amount: {e}")
+        return {'total_earnings': 0, 'withdrawn_amount': 0, 'available_amount': 0}
+
+def can_request_withdrawal():
+    """التحقق من إمكانية طلب السحب (فقط يوم الجمعة)"""
+    from datetime import datetime
+    today = datetime.now()
+    # 4 = الجمعة في Python (0=الاثنين)
+    return today.weekday() == 4
+
+def create_withdrawal_request(provider_id: int, provider_name: str, account_number: str, 
+                            method: str, amount: float):
+    """إنشاء طلب سحب جديد"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # التحقق من إمكانية السحب
+        if not can_request_withdrawal():
+            return {"success": False, "error": "يمكن طلب السحب فقط يوم الجمعة"}
+        
+        # التحقق من المبلغ المتاح
+        withdrawable = get_provider_withdrawable_amount(provider_id)
+        if amount > withdrawable['available_amount']:
+            return {"success": False, "error": f"المبلغ المطلوب ({amount:.2f}) أكبر من المتاح ({withdrawable['available_amount']:.2f})"}
+        
+        # إنشاء طلب السحب
+        import uuid
+        withdrawal_id = str(uuid.uuid4())
+        
+        cursor.execute('''
+            INSERT INTO withdrawals 
+            (withdrawal_id, provider_id, provider_name, account_number, method, amount, requested_at)
+            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+        ''', (withdrawal_id, provider_id, provider_name, account_number, method, amount))
+        
+        conn.commit()
+        conn.close()
+        
+        return {"success": True, "withdrawal_id": withdrawal_id}
+        
+    except Exception as e:
+        logger.error(f"Error creating withdrawal request: {e}")
+        return {"success": False, "error": "حدث خطأ في إنشاء الطلب"}

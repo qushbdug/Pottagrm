@@ -133,11 +133,16 @@ def init_db():
                 status TEXT DEFAULT 'completed',
                 reference_id TEXT,
                 description TEXT,
+                provider_id INTEGER,
+                total_amount REAL,
+                provider_share REAL,
+                admin_share REAL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 is_withdrawable BOOLEAN DEFAULT 0,
                 commission_amount REAL DEFAULT 0.0,
                 FOREIGN KEY(from_user) REFERENCES users(id),
-                FOREIGN KEY(to_user) REFERENCES users(id)
+                FOREIGN KEY(to_user) REFERENCES users(id),
+                FOREIGN KEY(provider_id) REFERENCES users(id)
             )
         ''')
 
@@ -742,6 +747,42 @@ def init_db():
         # admin_system_settings table removed as requested
 
         # Admin system settings initialization removed as requested
+        
+        # جدول طلبات السحب للمزودين
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS withdrawals (
+                withdrawal_id TEXT PRIMARY KEY,
+                provider_id INTEGER NOT NULL,
+                provider_name TEXT NOT NULL,
+                account_number TEXT NOT NULL,
+                method TEXT NOT NULL CHECK(method IN ('القطيبي', 'الكريمي', 'شبكة صرافة')),
+                amount REAL NOT NULL,
+                status TEXT DEFAULT 'Pending' CHECK(status IN ('Pending', 'Approved', 'Rejected')),
+                requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                confirmed_at TIMESTAMP,
+                confirmed_by INTEGER,
+                rejection_reason TEXT,
+                FOREIGN KEY(provider_id) REFERENCES users(id),
+                FOREIGN KEY(confirmed_by) REFERENCES users(id)
+            )
+        ''')
+        
+        # إضافة عمود referred_by إذا لم يكن موجوداً
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN referred_by INTEGER")
+        except sqlite3.OperationalError:
+            # العمود موجود بالفعل
+            pass
+        
+        # إضافة أعمدة تقسيم الأرباح للمعاملات إذا لم تكن موجودة
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN provider_id INTEGER")
+            cursor.execute("ALTER TABLE transactions ADD COLUMN total_amount REAL")
+            cursor.execute("ALTER TABLE transactions ADD COLUMN provider_share REAL")
+            cursor.execute("ALTER TABLE transactions ADD COLUMN admin_share REAL")
+        except sqlite3.OperationalError:
+            # الأعمدة موجودة بالفعل
+            pass
         
         # Data insertion is handled separately to avoid conflicts
 
