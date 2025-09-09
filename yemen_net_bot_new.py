@@ -89,8 +89,7 @@ try:
     # Import permissions system
     from permissions import has_permission, check_permission_or_deny, AVAILABLE_PERMISSIONS
     
-    # Import restructured handler modules
-    from main_router import button_click_handler
+    # Import restructured handler modules removed
 except ImportError as e:
     print(f"Error importing modules: {e}")
     print("Make sure all module files are in the bot_modules directory")
@@ -220,28 +219,127 @@ async def get_pooled_db_connection():
 # button_click_handler moved to main_router.py for better organization
 # This function is now imported from main_router module
 
-# The main button_click_handler is now in main_router.py
-# All the large handler logic has been moved to separate modules for better organization
+async def button_click_handler(update: Update, context):
+    """Enhanced callback query handler with better error handling"""
+    try:
+        query = update.callback_query
+        await query.answer()
         
         # Get user with validation
-        try:
-            user = get_user(query.from_user.id)
-            if not user:
-                raise BotValidationError("User not found in database")
-        except sqlite3.Error as e:
-            logger.error(f"Database error getting user {query.from_user.id}: {e}")
-            await query.edit_message_text(db_error("استرداد بيانات المستخدم", "فشل في الاتصال بقاعدة البيانات"))
-            return
-        except BotValidationError:
+        user = get_user(query.from_user.id)
+        if not user:
             await query.edit_message_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
             return
         
-        # Update user activity (temporarily disabled to avoid errors)
-        # TODO: Re-implement update_user_activity function
-        
-        # Route to appropriate handlers
+        callback_data = query.data
         
         # Main menu
+        if callback_data == 'main_menu':
+            return await show_main_menu(update, context, user['role'])
+        
+        # Enhanced wallet
+        elif callback_data == 'enhanced_wallet':
+            return await enhanced_wallet_handler(update, context)
+        
+        # Admin panel
+        elif callback_data == 'admin_panel':
+            if user['role'] in ['admin', 'super_admin']:
+                return await admin_panel_handler(update, context)
+            else:
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية للوصول لهذه الصفحة.")
+                return
+        
+        # Admin callbacks
+        elif callback_data in ADMIN_CALLBACKS:
+            if user['role'] in ['admin', 'super_admin']:
+                return await ADMIN_CALLBACKS[callback_data](update, context)
+            else:
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+                return
+        
+        # Supplier panel
+        elif callback_data == 'supplier_panel':
+            return await supplier_panel_handler(update, context)
+        
+        # Buy cards
+        elif callback_data == 'buy_cards':
+            return await buy_cards_handler(update, context)
+        
+        # Transfer
+        elif callback_data == 'transfer_to_friend':
+            return await transfer_to_friend_handler(update, context)
+        
+        # Referral stats
+        elif callback_data == 'referral_stats':
+            return await referral_stats_handler(update, context)
+        
+        # Purchase handlers
+        elif callback_data.startswith('buy_from_network_'):
+            network_id = callback_data.split('_')[3]
+            return await show_network_categories(update, context, network_id)
+        elif callback_data.startswith('confirm_purchase_'):
+            parts = callback_data.split('_')
+            network_id = parts[2]
+            price = parts[3]
+            return await confirm_card_purchase(update, context, network_id, price)
+        elif callback_data.startswith('process_purchase_'):
+            parts = callback_data.split('_')
+            network_id = parts[2]
+            price = parts[3]
+            return await process_card_purchase(update, context, network_id, price)
+        
+        # Withdrawal handlers
+        elif callback_data == 'request_withdrawal':
+            return await request_withdrawal_handler(update, context)
+        elif callback_data == 'submit_withdrawal_request':
+            return await submit_withdrawal_request_handler(update, context)
+        elif callback_data == 'view_my_withdrawals':
+            return await view_my_withdrawals_handler(update, context)
+        elif callback_data.startswith('withdrawal_method_'):
+            method = callback_data.split('_', 2)[2]
+            return await confirm_withdrawal_request_handler(update, context, method)
+        elif callback_data.startswith('approve_withdrawal_'):
+            withdrawal_id = callback_data.split('_', 2)[2]
+            return await approve_withdrawal_handler(update, context, withdrawal_id)
+        elif callback_data.startswith('reject_withdrawal_'):
+            withdrawal_id = callback_data.split('_', 2)[2]
+            return await reject_withdrawal_handler(update, context, withdrawal_id)
+        
+        # Other essential handlers
+        elif callback_data == 'manage_networks':
+            return await manage_networks_handler(update, context)
+        elif callback_data.startswith('share_network_'):
+            network_id = callback_data.split('_')[2]
+            return await share_network_handler(update, context, network_id)
+        elif callback_data.startswith('copy_share_link_'):
+            return await copy_share_link_handler(update, context)
+        elif callback_data.startswith('copy_referral_'):
+            return await copy_referral_link_handler(update, context)
+        
+        # Other handlers will be added as needed
+        else:
+            logger.warning(f"Unhandled callback: {callback_data}")
+            await query.edit_message_text(
+                f"⚠️ **عذراً، هذه الميزة قيد التطوير**\n\nالزر: `{callback_data}`",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+                ]),
+                parse_mode='Markdown'
+            )
+            
+    except Exception as e:
+        logger.error(f"Error in button click handler: {e}")
+        try:
+            await query.edit_message_text(
+                f"{EMOJIS['error']} حدث خطأ في معالجة الطلب. يرجى المحاولة مرة أخرى.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+                ])
+            )
+        except:
+            pass
+
+# Placeholder handlers for features being implemented
         if callback_data == 'main_menu':
             return await show_main_menu(update, context, user['role'])
         
@@ -1647,6 +1745,23 @@ async def request_withdrawal_handler(update: Update, context: CallbackContext):
         
         if not user or user['role'] != 'supplier':
             await query.edit_message_text(f"{EMOJIS['error']} غير مخول لك الوصول لهذه الميزة")
+            return
+        
+        # التحقق من حالة المزود النشطة
+        if not user['is_active']:
+            await query.edit_message_text(f"{EMOJIS['error']} حسابك غير مفعل. لا يمكن طلب السحب.")
+            return
+        
+        # التحقق من وجود شبكة نشطة
+        conn_check = get_db_connection()
+        cursor_check = conn_check.cursor()
+        cursor_check.execute('SELECT COUNT(*) FROM networks WHERE supplier_id = ? AND is_active = 1', (user['id'],))
+        result_check = cursor_check.fetchone()
+        active_networks = result_check[0] if result_check else 0
+        conn_check.close()
+        
+        if active_networks == 0:
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك شبكة نشطة. لا يمكن طلب السحب.")
             return
         
         # الحصول على المبلغ القابل للسحب
@@ -6050,7 +6165,12 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
         logger.error(f"Error in process card purchase: {e}")
         
         # تنظيف حالة المعالجة في حالة الخطأ
-        context.user_data.clear()
+        context.user_data.pop('purchase_processing', None)
+        
+        # تنظيف شامل لبيانات المستخدم المؤقتة لمنع memory leaks
+        cleanup_keys = ['awaiting_card_upload', 'upload_file', 'selected_price', 'card_size', 'selected_network_id', 'withdrawal_step', 'withdrawal_name', 'withdrawal_account']
+        for key in cleanup_keys:
+            context.user_data.pop(key, None)
         
         from enhanced_error_messages import ErrorMessages
         await query.edit_message_text(

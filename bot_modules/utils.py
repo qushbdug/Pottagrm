@@ -960,11 +960,11 @@ def get_provider_withdrawable_amount(provider_id: int):
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # حساب إجمالي حصة المزود من المبيعات
+        # حساب إجمالي حصة المزود من المبيعات (70% من كل عملية)
         cursor.execute('''
-            SELECT COALESCE(SUM(provider_share), 0) as total_earnings
+            SELECT COALESCE(SUM(CASE WHEN provider_share IS NOT NULL THEN provider_share ELSE amount * 0.70 END), 0) as total_earnings
             FROM transactions 
-            WHERE provider_id = ? AND type = 'card_purchase' AND provider_share IS NOT NULL
+            WHERE to_user = ? AND type = 'card_purchase'
         ''', (provider_id,))
         
         result = cursor.fetchone()
@@ -995,12 +995,21 @@ def get_provider_withdrawable_amount(provider_id: int):
         logger.error(f"Error calculating withdrawable amount: {e}")
         return {'total_earnings': 0, 'withdrawn_amount': 0, 'available_amount': 0}
 
-def can_request_withdrawal():
-    """التحقق من إمكانية طلب السحب (فقط يوم الجمعة)"""
-    from datetime import datetime
-    today = datetime.now()
+def can_request_withdrawal(timezone_offset_hours: int = 3):
+    """التحقق من إمكانية طلب السحب (فقط يوم الجمعة) مع دعم المنطقة الزمنية"""
+    from datetime import datetime, timedelta
+    
+    # استخدام التوقيت المحلي (افتراضياً +3 ساعات للمنطقة العربية)
+    local_time = datetime.now() + timedelta(hours=timezone_offset_hours)
+    
     # 4 = الجمعة في Python (0=الاثنين)
-    return today.weekday() == 4
+    is_friday = local_time.weekday() == 4
+    
+    # إضافة تحقق من الوقت (مثلاً من 8 صباحاً إلى 8 مساءً)
+    hour = local_time.hour
+    is_business_hours = 8 <= hour <= 20
+    
+    return is_friday and is_business_hours
 
 def create_withdrawal_request(provider_id: int, provider_name: str, account_number: str, 
                             method: str, amount: float):
