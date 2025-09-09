@@ -4488,7 +4488,14 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
     """Handle transfer confirmation"""
     try:
         query = update.callback_query
-        await query.answer()
+        # تجنب خطأ Query is too old
+        try:
+            await query.answer()
+        except Exception as e:
+            if "too old" in str(e):
+                logger.debug("Query too old, continuing with transfer")
+            else:
+                raise
         
         user = get_user(query.from_user.id)
         if not user:
@@ -4533,41 +4540,74 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
             return
         
         # Execute the transfer
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Get target user details
-        cursor.execute('SELECT * FROM users WHERE id = ?', (target_user_id,))
-        target_user = cursor.fetchone()
-        
-        if not target_user:
-            await query.edit_message_text(f"{EMOJIS['error']} المستخدم المستهدف غير موجود.")
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # بدء معاملة قاعدة البيانات
+            cursor.execute('BEGIN IMMEDIATE')
+            
+            # Get target user details
+            cursor.execute('SELECT * FROM users WHERE id = ?', (target_user_id,))
+            target_user = cursor.fetchone()
+            
+            if not target_user:
+                conn.rollback()
+                conn.close()
+                await query.edit_message_text(f"{EMOJIS['error']} المستخدم المستهدف غير موجود.")
+                return
+            
+            # التحقق من الرصيد مرة أخيرة
+            cursor.execute('SELECT balance FROM users WHERE id = ?', (user['id'],))
+            current_balance_result = cursor.fetchone()
+            if not current_balance_result or current_balance_result[0] < amount:
+                conn.rollback()
+                conn.close()
+                await query.edit_message_text(f"{EMOJIS['error']} رصيدك غير كافي للتحويل.")
+                return
+            
+            current_balance = current_balance_result[0]
+            
+            # تحديث الأرصدة مباشرة (أسرع من إعادة الحساب)
+            cursor.execute('UPDATE users SET balance = balance - ? WHERE id = ?', (amount, user['id']))
+            cursor.execute('UPDATE users SET balance = balance + ? WHERE id = ?', (amount, target_user_id))
+            
+            # إنشاء معاملة التحويل
+            import uuid
+            from datetime import datetime
+            
+            transfer_id = str(uuid.uuid4())
+            cursor.execute('''
+                INSERT INTO transactions 
+                (id, from_user, to_user, amount, type, description, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (transfer_id, user['id'], target_user_id, amount, 'transfer', 'تحويل رصيد من صديق', datetime.now()))
+            
+            # الحصول على الأرصدة الجديدة
+            cursor.execute('SELECT balance FROM users WHERE id = ?', (user['id'],))
+            sender_new_balance = cursor.fetchone()[0]
+            
+            cursor.execute('SELECT balance FROM users WHERE id = ?', (target_user_id,))
+            receiver_new_balance = cursor.fetchone()[0]
+            
+            # تأكيد المعاملة
+            conn.commit()
             conn.close()
+            
+            # تسجيل القيد المحاسبي في الخلفية (لا نريد أن يبطئ التحويل)
+            # تم تعطيل المحاسبة مؤقتاً لتحسين الأداء
+            # يمكن تفعيلها لاحقاً إذا لزم الأمر
+                
+        except Exception as e:
+            try:
+                conn.rollback()
+                conn.close()
+            except:
+                pass
+            logger.error(f"Transfer failed: {e}")
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في التحويل. يرجى المحاولة مرة أخرى.")
+            context.user_data.clear()
             return
-        
-        # Create transfer transactions
-        import uuid
-        from datetime import datetime
-        
-        # Transfer transaction
-        transfer_id = str(uuid.uuid4())
-        cursor.execute('''
-            INSERT INTO transactions 
-            (id, from_user, to_user, amount, type, description, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (transfer_id, user['id'], target_user['id'], amount, 'transfer', 'تحويل رصيد من صديق', datetime.now()))
-        
-        # No fee transaction - transfers are FREE!
-        
-        # Update balances
-        sender_new_balance = recalc_and_set_user_balance(user['id'])
-        receiver_new_balance = recalc_and_set_user_balance(target_user['id'])
-        
-        # تسجيل القيد المحاسبي للتحويل
-        record_transfer_accounting(amount, user['id'], target_user['id'], transfer_id)
-        
-        conn.commit()
-        conn.close()
         
         # Clear user state
         context.user_data.clear()
@@ -4591,7 +4631,16 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
 📱 سيتم إشعار المستلم فوراً
 """
         
-        await query.edit_message_text(success_text, parse_mode='Markdown')
+        # تعديل الرسالة مع معالجة الأخطاء
+        try:
+            await query.edit_message_text(success_text, parse_mode='Markdown')
+        except Exception as e:
+            if "not modified" in str(e):
+                # الرسالة لم تتغير، لا نحتاج لفعل شيء
+                logger.debug("Message not modified, skipping edit")
+            else:
+                # إرسال رسالة جديدة بدلاً من التعديل
+                await query.message.reply_text(success_text, parse_mode='Markdown')
         
         # Send notification to receiver (about receiving money)
         try:
@@ -5443,8 +5492,8 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
                 raise Exception("خطأ في استرداد بيانات الكرت")
             card_code = result[0]
             
-            # تسجيل القيد المحاسبي لشراء الكرت
-            record_purchase_accounting(card_price, user['id'], transaction_id)
+            # تسجيل القيد المحاسبي لشراء الكرت (معطل مؤقتاً لتحسين الأداء)
+            # record_purchase_accounting(card_price, user['id'], transaction_id)
             
             # تأكيد المعاملة
             cursor.execute('COMMIT')

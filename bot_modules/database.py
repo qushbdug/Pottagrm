@@ -16,12 +16,14 @@ logger = logging.getLogger(__name__)
 def get_db_connection():
     """Get database connection with error handling"""
     try:
-        conn = sqlite3.connect(DB_PATH, timeout=30.0)
+        conn = sqlite3.connect(DB_PATH, timeout=60.0)  # زيادة timeout
         conn.execute('PRAGMA foreign_keys = ON')
         conn.execute('PRAGMA journal_mode = WAL')
-        conn.execute('PRAGMA synchronous = NORMAL')
-        conn.execute('PRAGMA cache_size = 1000')
+        conn.execute('PRAGMA synchronous = NORMAL')  # توازن بين الأمان والسرعة
+        conn.execute('PRAGMA cache_size = 2000')  # زيادة cache
         conn.execute('PRAGMA temp_store = memory')
+        conn.execute('PRAGMA busy_timeout = 30000')  # 30 ثانية انتظار عند القفل
+        conn.execute('PRAGMA wal_autocheckpoint = 1000')  # تحسين WAL
         conn.row_factory = sqlite3.Row
         return conn
     except Exception as e:
