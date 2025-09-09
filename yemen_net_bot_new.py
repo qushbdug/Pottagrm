@@ -305,7 +305,14 @@ async def button_click_handler(update: Update, context):
             withdrawal_id = callback_data.split('_', 2)[2]
             return await reject_withdrawal_handler(update, context, withdrawal_id)
         
-        # Other essential handlers
+        # Network and search handlers
+        elif callback_data == 'search_networks':
+            return await search_networks_handler(update, context)
+        elif callback_data == 'view_networks':
+            return await view_networks_handler(update, context)
+        elif callback_data.startswith('network_'):
+            network_id = callback_data.split('_')[1]
+            return await show_network_details(update, context, network_id)
         elif callback_data == 'manage_networks':
             return await manage_networks_handler(update, context)
         elif callback_data.startswith('share_network_'):
@@ -315,6 +322,152 @@ async def button_click_handler(update: Update, context):
             return await copy_share_link_handler(update, context)
         elif callback_data.startswith('copy_referral_'):
             return await copy_referral_link_handler(update, context)
+        
+        # Wallet and transaction handlers
+        elif callback_data == 'wallet_stats':
+            return await wallet_stats_handler(update, context)
+        elif callback_data == 'transaction_details':
+            return await transaction_details_handler(update, context)
+        elif callback_data == 'transfer_history':
+            return await transfer_history_handler(update, context)
+        elif callback_data.startswith('wallet_page_'):
+            return await wallet_page_handler(update, context)
+        elif callback_data == 'refresh_balance':
+            new_balance = recalc_and_set_user_balance(user['id'])
+            return await enhanced_wallet_handler(update, context)
+        elif callback_data.startswith('confirm_transfer_'):
+            parts = callback_data.split('_')
+            user_id = parts[2]
+            amount = parts[3]
+            return await confirm_user_transfer(update, context, user_id, amount)
+        
+        # Supplier features
+        elif callback_data == 'upload_cards':
+            return await upload_cards_handler(update, context)
+        elif callback_data == 'cards_reports':
+            return await cards_reports_handler(update, context)
+        elif callback_data == 'sales_stats':
+            return await sales_stats_handler(update, context)
+        elif callback_data == 'upload_history':
+            return await upload_history_handler(update, context)
+        elif callback_data == 'supplier_settings':
+            return await supplier_settings_handler(update, context)
+        elif callback_data == 'add_network':
+            return await add_network_handler(update, context)
+        
+        # Personal features
+        elif callback_data == 'personal_reports':
+            return await personal_reports_handler(update, context)
+        elif callback_data == 'my_notifications':
+            return await my_notifications_handler(update, context)
+        elif callback_data == 'promotions':
+            return await promotions_handler(update, context)
+        elif callback_data == 'help':
+            return await help_handler(update, context)
+        
+        # Account statement handlers
+        elif callback_data == 'account_statement':
+            return await account_statement_handler(update, context)
+        elif callback_data.startswith('download_'):
+            if callback_data == 'download_excel_30':
+                return await download_excel_30_handler(update, context)
+            elif callback_data == 'download_excel_90':
+                return await download_excel_90_handler(update, context)
+            elif callback_data == 'download_excel_all':
+                return await download_excel_all_handler(update, context)
+            elif callback_data == 'download_pdf_30':
+                return await download_pdf_30_handler(update, context)
+            elif callback_data == 'download_pdf_90':
+                return await download_pdf_90_handler(update, context)
+            elif callback_data == 'download_pdf_all':
+                return await download_pdf_all_handler(update, context)
+        
+        # Coupon handlers
+        elif callback_data == 'redeem_coupon':
+            return await redeem_coupon_handler(update, context)
+        elif callback_data == 'cancel_coupon':
+            return await cancel_coupon_handler(update, context)
+        
+        # Search and user handlers
+        elif callback_data == 'search_user':
+            return await search_user_handler(update, context)
+        elif callback_data.startswith('search_by_'):
+            search_type = callback_data.split('_')[2]
+            return await search_by_type_handler(update, context, search_type)
+        
+        # Transfer confirmation handlers
+        elif callback_data == 'confirm_transfer_yes':
+            return await confirm_transfer_handler(update, context, True)
+        elif callback_data == 'confirm_transfer_no':
+            return await confirm_transfer_handler(update, context, False)
+        
+        # Export system handlers
+        elif callback_data.startswith('export_'):
+            if callback_data == 'export_options':
+                return await export_options_handler(update, context)
+            elif callback_data == 'export_profits':
+                return await export_profits_handler(update, context)
+            elif callback_data == 'export_customers':
+                return await export_customers_handler(update, context)
+            elif callback_data == 'export_suppliers':
+                return await export_suppliers_handler(update, context)
+            elif callback_data == 'export_comprehensive':
+                return await export_comprehensive_handler(update, context)
+            elif callback_data == 'quick_export':
+                return await quick_export_handler(update, context)
+        
+        # Accounting search handlers
+        elif callback_data == 'accounting_search':
+            return await accounting_search_handler(update, context)
+        elif callback_data == 'quick_stats':
+            return await quick_stats_handler(update, context)
+        elif callback_data == 'quick_transaction_report':
+            return await quick_transaction_report_handler(update, context)
+        
+        # Admin management handlers
+        elif callback_data == 'admin_dashboard':
+            return await AdminManagement.get_admin_dashboard(update, context)
+        elif callback_data == 'admin_manage_admins':
+            return await AdminManagement.manage_admins(update, context)
+        elif callback_data == 'admin_analytics':
+            return await AdminManagement.get_admin_analytics(update, context)
+        elif callback_data.startswith('admin_profile_'):
+            admin_id = int(callback_data.split('_')[2])
+            return await AdminManagement.show_admin_profile(update, context, admin_id)
+        
+        # Customer management handlers
+        elif callback_data == 'customer_dashboard':
+            return await CustomerManagement.get_customer_dashboard(update, context)
+        elif callback_data == 'customer_analytics':
+            return await CustomerManagement.get_customer_analytics(update, context)
+        elif callback_data.startswith('customer_profile_'):
+            customer_id = int(callback_data.split('_')[2])
+            return await CustomerManagement.show_customer_profile(update, context, customer_id)
+        
+        # File upload handlers
+        elif callback_data.startswith('select_network_'):
+            return await process_network_selection(update, context)
+        elif callback_data.startswith('select_category_'):
+            return await process_category_selection(update, context)
+        elif callback_data.startswith('price_'):
+            return await process_price_selection(update, context)
+        elif callback_data == 'cancel_upload':
+            return await cancel_upload(update, context)
+        elif callback_data == 'confirm_upload':
+            return await confirm_upload(update, context)
+        
+        # Legacy handlers for compatibility
+        elif callback_data.startswith('activate_supplier_'):
+            supplier_id = callback_data.split('_')[2]
+            return await activate_single_supplier(update, context, supplier_id)
+        elif callback_data.startswith('amount_'):
+            amount = callback_data.split('_')[1]
+            user_id = callback_data.split('_')[2]
+            return await process_amount_selection(update, context, amount, user_id)
+        elif callback_data.startswith('quick_transfer_'):
+            amount = callback_data.split('_')[2]
+            user_id = callback_data.split('_')[3]
+            return await quick_transfer_handler(update, context, amount, user_id)
         
         # Other handlers will be added as needed
         else:
