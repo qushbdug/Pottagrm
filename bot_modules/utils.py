@@ -717,3 +717,175 @@ def get_cards_stats_by_category(supplier_id):
     stats = cursor.fetchall()
     conn.close()
     return stats
+
+def process_referral_commission(buyer_user_id: int, purchase_amount: float, transaction_id: str):
+    """معالجة عمولة الإحالة عند الشراء"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # البحث عن الشخص الذي أحال هذا المشتري
+        cursor.execute('SELECT referred_by FROM users WHERE id = ?', (buyer_user_id,))
+        result = cursor.fetchone()
+        
+        if not result or not result[0]:
+            conn.close()
+            return False  # لا يوجد محيل
+            
+        referrer_id = result[0]
+        
+        # حساب العمولة (5%)
+        commission_rate = 0.05
+        commission_amount = purchase_amount * commission_rate
+        
+        # إنشاء سجل العمولة
+        import uuid
+        commission_id = str(uuid.uuid4())
+        
+        cursor.execute('''
+            INSERT INTO referral_commissions 
+            (id, referrer_id, referred_user_id, transaction_id, purchase_amount, 
+             commission_amount, commission_rate, paid, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0, datetime('now'))
+        ''', (commission_id, referrer_id, buyer_user_id, transaction_id, 
+              purchase_amount, commission_amount, commission_rate))
+        
+        # إضافة العمولة لرصيد المحيل
+        cursor.execute('UPDATE users SET balance = balance + ? WHERE id = ?', 
+                      (commission_amount, referrer_id))
+        
+        # إنشاء معاملة العمولة
+        commission_transaction_id = str(uuid.uuid4())
+        cursor.execute('''
+            INSERT INTO transactions 
+            (id, from_user, to_user, amount, type, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+        ''', (commission_transaction_id, None, referrer_id, commission_amount, 
+              'commission', f'عمولة إحالة 5% من شراء بقيمة {purchase_amount:.2f} ريال'))
+        
+        # تحديث حالة الدفع
+        cursor.execute('UPDATE referral_commissions SET paid = 1, paid_at = datetime("now") WHERE id = ?', 
+                      (commission_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"Referral commission {commission_amount:.2f} paid to user {referrer_id} for purchase {transaction_id}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error processing referral commission: {e}")
+        try:
+            conn.close()
+        except:
+            pass
+        return False
+
+def get_referral_stats(user_id: int):
+    """الحصول على إحصائيات الإحالات والعمولات"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # عدد الإحالات
+        cursor.execute('SELECT COUNT(*) FROM users WHERE referred_by = ?', (user_id,))
+        result = cursor.fetchone()
+        total_referrals = result[0] if result else 0
+        
+        # إجمالي العمولات المكتسبة
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as commission_count,
+                COALESCE(SUM(commission_amount), 0) as total_commissions,
+                COALESCE(SUM(purchase_amount), 0) as total_referred_purchases
+            FROM referral_commissions 
+            WHERE referrer_id = ? AND paid = 1
+        ''', (user_id,))
+        
+        result = cursor.fetchone()
+        if result:
+            commission_count, total_commissions, total_referred_purchases = result
+        else:
+            commission_count, total_commissions, total_referred_purchases = 0, 0, 0
+        
+        # العمولات هذا الشهر
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as monthly_commissions,
+                COALESCE(SUM(commission_amount), 0) as monthly_commission_amount
+            FROM referral_commissions 
+            WHERE referrer_id = ? AND paid = 1 
+            AND DATE(created_at) >= DATE('now', 'start of month')
+        ''', (user_id,))
+        
+        result = cursor.fetchone()
+        if result:
+            monthly_commissions, monthly_commission_amount = result
+        else:
+            monthly_commissions, monthly_commission_amount = 0, 0
+        
+        conn.close()
+        
+        return {
+            'total_referrals': total_referrals,
+            'commission_count': commission_count,
+            'total_commissions': total_commissions,
+            'total_referred_purchases': total_referred_purchases,
+            'monthly_commissions': monthly_commissions,
+            'monthly_commission_amount': monthly_commission_amount
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting referral stats: {e}")
+        return {
+            'total_referrals': 0,
+            'commission_count': 0,
+            'total_commissions': 0,
+            'total_referred_purchases': 0,
+            'monthly_commissions': 0,
+            'monthly_commission_amount': 0
+        }
+
+def generate_supplier_share_link(network_id: str, bot_username: str = "YemenNetBot"):
+    """إنشاء رابط مشاركة للمزود لفتح شبكته مباشرة"""
+    # إنشاء deep link للشبكة
+    deep_link = f"https://t.me/{bot_username}?start=network_{network_id}"
+    return deep_link
+
+def get_network_share_info(network_id: str, supplier_id: int):
+    """الحصول على معلومات الشبكة للمشاركة"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT n.name, n.provider, n.location, n.city, 
+                   COUNT(nc.id) as total_cards,
+                   COUNT(CASE WHEN nc.is_sold = 0 THEN 1 END) as available_cards,
+                   MIN(nc.card_value) as min_price,
+                   MAX(nc.card_value) as max_price
+            FROM networks n
+            LEFT JOIN network_cards nc ON n.id = nc.network_id
+            WHERE n.id = ? AND n.supplier_id = ?
+            GROUP BY n.id
+        ''', (network_id, supplier_id))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            return {
+                'name': result[0],
+                'provider': result[1], 
+                'location': result[2],
+                'city': result[3],
+                'total_cards': result[4] or 0,
+                'available_cards': result[5] or 0,
+                'min_price': result[6] or 0,
+                'max_price': result[7] or 0
+            }
+        return None
+        
+    except Exception as e:
+        logger.error(f"Error getting network share info: {e}")
+        return None

@@ -393,6 +393,25 @@ def init_db():
             )
         ''')
 
+        # جدول عمولات الإحالات
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS referral_commissions (
+                id TEXT PRIMARY KEY,
+                referrer_id INTEGER NOT NULL,
+                referred_user_id INTEGER NOT NULL,
+                transaction_id TEXT NOT NULL,
+                purchase_amount REAL NOT NULL,
+                commission_amount REAL NOT NULL,
+                commission_rate REAL DEFAULT 0.05,
+                paid BOOLEAN DEFAULT 0,
+                paid_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(referrer_id) REFERENCES users(id),
+                FOREIGN KEY(referred_user_id) REFERENCES users(id),
+                FOREIGN KEY(transaction_id) REFERENCES transactions(id)
+            )
+        ''')
+
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS system_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -324,6 +324,9 @@ async def button_click_handler(update: Update, context):
         elif callback_data.startswith('skip_location_'):
             network_id = callback_data.split('_')[2]
             return await skip_network_location(update, context, network_id)
+        elif callback_data.startswith('share_network_'):
+            network_id = callback_data.split('_')[2]
+            return await share_network_handler(update, context, network_id)
 
 
         
@@ -545,6 +548,8 @@ async def button_click_handler(update: Update, context):
             await transaction_details_handler(update, context)
         elif callback_data == 'wallet_stats':
             await wallet_stats_handler(update, context)
+        elif callback_data == 'referral_stats':
+            await referral_stats_handler(update, context)
         
         # Enhanced supplier features
         elif callback_data == 'upload_cards':
@@ -1493,6 +1498,68 @@ async def wallet_stats_handler(update: Update, context):
         logger.error(f"Error in wallet stats handler: {e}")
         await query.edit_message_text(wallet_error("حساب إحصائيات المحفظة"))
 
+async def referral_stats_handler(update: Update, context: CallbackContext):
+    """معالج إحصائيات الإحالات والعمولات"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        if not user:
+            await query.edit_message_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
+            return
+        
+        # الحصول على إحصائيات الإحالات
+        from bot_modules.utils import get_referral_stats
+        stats = get_referral_stats(user['id'])
+        
+        # إنشاء رابط الإحالة
+        invite_code = user.get('invite_code', 'غير متوفر')
+        bot_username = context.bot.username or "YemenNetBot"
+        referral_link = f"https://t.me/{bot_username}?start=ref_{invite_code}" if invite_code != 'غير متوفر' else "غير متوفر"
+        
+        referral_text = f"""
+👥 **إحالاتي وعمولاتي** 👥
+
+👤 **{user['full_name']}**
+💳 محفظتك: **{user['wallet_number']}**
+
+🎯 **إحصائيات الإحالات:**
+👥 عدد الإحالات: **{stats['total_referrals']:,}** شخص
+💰 إجمالي العمولات: **{stats['total_commissions']:,.2f}** ريال
+🛒 إجمالي مشتريات المُحالين: **{stats['total_referred_purchases']:,.2f}** ريال
+📊 عدد العمولات: **{stats['commission_count']:,}** عمولة
+
+📅 **هذا الشهر:**
+💰 العمولات المكتسبة: **{stats['monthly_commission_amount']:,.2f}** ريال
+📈 عدد العمولات: **{stats['monthly_commissions']:,}** عمولة
+
+🎫 **رابط الإحالة الخاص بك:**
+`{referral_link}`
+
+💡 **كيف تعمل العمولات:**
+• احصل على **5%** من كل مشترى يقوم به أصدقاؤك
+• العمولة تُضاف فوراً لرصيدك عند كل عملية شراء
+• لا يوجد حد أقصى للعمولات
+• شارك رابطك واكسب المزيد!
+
+📱 **نصائح لزيادة الإحالات:**
+• شارك الرابط مع الأصدقاء والعائلة
+• انشر الرابط في مجموعات التواصل
+• اشرح فوائد المنصة للآخرين
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📋 نسخ رابط الإحالة', callback_data=f'copy_referral_{invite_code}')],
+            [InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(referral_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in referral stats handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض إحصائيات الإحالات.")
+
 # Enhanced supplier handlers
 async def upload_cards_handler(update: Update, context):
     """Handle card upload process"""
@@ -1595,8 +1662,10 @@ async def manage_networks_handler(update: Update, context):
         
         if networks:
             # إذا كانت توجد شبكة، عرض أزرار الإدارة
+            network_id = networks[0]['id']
             keyboard = [
-                [InlineKeyboardButton('📊 تفاصيل الشبكة', callback_data='network_details')],
+                [InlineKeyboardButton('📊 تفاصيل الشبكة', callback_data='network_details'),
+                 InlineKeyboardButton('🔗 مشاركة الشبكة', callback_data=f'share_network_{network_id}')],
                 [InlineKeyboardButton('📤 رفع كروت', callback_data='upload_cards')],
                 [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
             ]
@@ -1620,6 +1689,74 @@ async def manage_networks_handler(update: Update, context):
             "إدارة الشبكات",
             "لا يمكن الوصول إلى بيانات الشبكات الخاصة بك حالياً"
         ))
+
+async def share_network_handler(update: Update, context: CallbackContext, network_id: str):
+    """معالج مشاركة الشبكة"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        if not user or user['role'] != 'supplier':
+            await query.edit_message_text(f"{EMOJIS['error']} غير مخول لك الوصول لهذه الميزة")
+            return
+        
+        # الحصول على معلومات الشبكة
+        from bot_modules.utils import get_network_share_info, generate_supplier_share_link
+        
+        network_info = get_network_share_info(network_id, user['id'])
+        if not network_info:
+            await query.edit_message_text(f"{EMOJIS['error']} الشبكة غير موجودة أو لا تملك صلاحية الوصول إليها")
+            return
+        
+        # إنشاء رابط المشاركة
+        bot_username = context.bot.username or "YemenNetBot"
+        share_link = generate_supplier_share_link(network_id, bot_username)
+        
+        share_text = f"""
+🔗 **مشاركة شبكتك** 🔗
+
+📶 **{network_info['name']}**
+🏢 المزود: **{network_info['provider']}**
+🏙️ الموقع: **{network_info['location']}, {network_info['city']}**
+
+📊 **إحصائيات الشبكة:**
+💳 إجمالي الكروت: **{network_info['total_cards']:,}** كرت
+✅ الكروت المتاحة: **{network_info['available_cards']:,}** كرت
+💰 نطاق الأسعار: **{network_info['min_price']:,.0f} - {network_info['max_price']:,.0f}** ريال
+
+🎯 **رابط المشاركة:**
+`{share_link}`
+
+💡 **كيفية الاستخدام:**
+• شارك هذا الرابط مع العملاء
+• عند النقر عليه سيفتح شبكتك مباشرة
+• يمكن للعملاء الشراء فوراً من شبكتك
+• احصل على المزيد من المبيعات!
+
+📱 **طرق المشاركة:**
+• انسخ الرابط وشاركه في الواتساب
+• انشره في مجموعات التليجرام
+• ضعه في منشوراتك على وسائل التواصل
+• أرسله للعملاء مباشرة
+
+🎊 **مزايا الرابط المباشر:**
+• وصول سريع لشبكتك
+• تجربة شراء محسنة
+• زيادة في المبيعات
+• سهولة في التسويق
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📋 نسخ الرابط', callback_data=f'copy_share_link_{network_id}')],
+            [InlineKeyboardButton('🔙 العودة لإدارة الشبكات', callback_data='manage_networks'),
+             InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
+        ]
+        
+        await query.edit_message_text(share_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in share network handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إنشاء رابط المشاركة")
 
 async def cards_reports_handler(update: Update, context):
     """Handle cards reports"""
@@ -1909,8 +2046,8 @@ async def supplier_settings_handler(update: Update, context):
 ⚙️ **الإعدادات المتاحة:**
 
 🏢 **معلومات المزود:**
-• اسم الشركة: {user.get('full_name', 'غير محدد')}
-• رقم الهاتف: {user.get('phone', 'غير محدد')}
+• اسم الشركة: {user['full_name'] if user['full_name'] else 'غير محدد'}
+• رقم الهاتف: {user['phone'] if user['phone'] else 'غير محدد'}
 • البريد الإلكتروني: غير محدد
 • العنوان: غير محدد
 
@@ -5132,10 +5269,11 @@ async def show_wallet_page(update: Update, context: CallbackContext, user: dict,
              InlineKeyboardButton('🛒 شراء كروت', callback_data='buy_cards')],
             [InlineKeyboardButton('🎟️ شحن بكوبون', callback_data='redeem_coupon'),
              InlineKeyboardButton('📊 تفاصيل المعاملات', callback_data='transaction_details')],
-            [InlineKeyboardButton('🎟️ كشف الحساب', callback_data='account_statement'),
+            [InlineKeyboardButton('👥 إحالاتي وعمولاتي', callback_data='referral_stats'),
              InlineKeyboardButton('📈 إحصائيات المحفظة', callback_data='wallet_stats')],
-            [InlineKeyboardButton('🔄 تحديث الرصيد', callback_data='refresh_balance'),
-             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            [InlineKeyboardButton('🎟️ كشف الحساب', callback_data='account_statement'),
+             InlineKeyboardButton('🔄 تحديث الرصيد', callback_data='refresh_balance')],
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ])
         
         if is_callback:
@@ -5497,6 +5635,13 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             
             # تأكيد المعاملة
             cursor.execute('COMMIT')
+            
+            # معالجة عمولة الإحالة (5% للمحيل)
+            try:
+                from bot_modules.utils import process_referral_commission
+                process_referral_commission(user['id'], card_price, transaction_id)
+            except Exception as e:
+                logger.warning(f"Failed to process referral commission: {e}")
             
             # عرض نتيجة الشراء الناجح
             success_text = f"""

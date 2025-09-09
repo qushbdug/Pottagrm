@@ -21,11 +21,43 @@ async def start(update: Update, context: CallbackContext) -> int:
     """Handle /start command"""
     try:
         user = get_user(update.effective_user.id)
+        
+        # معالجة الروابط المباشرة
+        if context.args:
+            arg = context.args[0]
+            
+            # رابط الشبكة المباشر
+            if arg.startswith('network_'):
+                network_id = arg.split('_')[1]
+                if user:
+                    update_user_activity(user['id'])
+                    # توجيه المستخدم مباشرة للشبكة
+                    from yemen_net_bot_new import show_network_categories
+                    return await show_network_categories(update, context, network_id)
+                else:
+                    # إذا لم يكن مسجلاً، حفظ الشبكة للتوجيه بعد التسجيل
+                    context.user_data['redirect_to_network'] = network_id
+                    return await register_new_user(update, context)
+            
+            # رابط الإحالة
+            elif arg.startswith('ref_'):
+                invite_code = arg.split('_')[1]
+                if not user:
+                    # حفظ كود الإحالة للتسجيل
+                    context.user_data['referral_code'] = invite_code
+                    return await register_new_user(update, context)
+                else:
+                    # المستخدم مسجل بالفعل، توجيه للقائمة الرئيسية
+                    update_user_activity(user['id'])
+                    return await show_main_menu(update, context, user['role'])
+        
+        # التعامل العادي
         if user:
             update_user_activity(user['id'])
             return await show_main_menu(update, context, user['role'])
         else:
             return await register_new_user(update, context)
+            
     except Exception as e:
         logger.error(f"Error in start handler: {e}")
         await update.message.reply_text(unexpected_error("العملية المطلوبة", "النظام"))
@@ -208,15 +240,34 @@ async def choose_role(update: Update, context: CallbackContext) -> int:
                 invite_code = trial
                 break
         
+        # معالجة الإحالة
+        referrer_id = None
+        if 'referral_code' in context.user_data:
+            referral_code = context.user_data['referral_code']
+            # البحث عن المحيل
+            cursor.execute('SELECT id FROM users WHERE invite_code = ?', (referral_code,))
+            referrer_result = cursor.fetchone()
+            if referrer_result:
+                referrer_id = referrer_result[0]
+        
         # Insert new user
         cursor.execute('''
-            INSERT INTO users (telegram_id, full_name, phone, role, wallet_number, invite_code, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO users (telegram_id, full_name, phone, role, wallet_number, invite_code, is_active, referred_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ''', (update.effective_user.id, context.user_data['full_name'], 
               context.user_data['phone'], role, wallet_number, invite_code, 
-              1 if role == 'customer' else 0))  # Auto-activate customers only
+              1 if role == 'customer' else 0, referrer_id))  # Auto-activate customers only
         
         user_id = cursor.lastrowid
+        
+        # إنشاء سجل الإحالة إذا كان هناك محيل
+        if referrer_id:
+            import uuid
+            referral_id = str(uuid.uuid4())
+            cursor.execute('''
+                INSERT INTO referrals (id, referrer_id, referred_id, created_at)
+                VALUES (?, ?, ?, datetime('now'))
+            ''', (referral_id, referrer_id, user_id))
         
         # Log the registration
         log_activity(user_id, 'user_registration', f'New user registered as {role}', {
@@ -231,6 +282,7 @@ async def choose_role(update: Update, context: CallbackContext) -> int:
         # Store data before clearing
         full_name = context.user_data.get('full_name', 'المستخدم')
         phone = context.user_data.get('phone', 'غير محدد')
+        redirect_network = context.user_data.get('redirect_to_network')
         
         # Clear registration data
         context.user_data.clear()
@@ -272,7 +324,15 @@ async def choose_role(update: Update, context: CallbackContext) -> int:
 🏪 **كمزود يمكنك رفع وإدارة الشبكات والكروت**
 """
         
-        keyboard = [[InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]]
+        # إعداد الأزرار
+        if redirect_network and role == 'customer':
+            keyboard = [
+                [InlineKeyboardButton('🛒 تصفح الشبكة', callback_data=f'buy_from_network_{redirect_network}')],
+                [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+            ]
+            welcome_message += f"\n\n🔗 **تم توجيهك من رابط مباشر لشبكة معينة!**\nيمكنك تصفحها والشراء منها مباشرة."
+        else:
+            keyboard = [[InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]]
         
         await query.edit_message_text(welcome_message, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
