@@ -6,7 +6,7 @@ Advanced Permissions Management System for Yemen Net Bot
 
 import logging
 from datetime import datetime
-from bot_modules.database import get_db_connection
+from bot_modules.database import get_db_connection, get_db_context
 from bot_modules.utils import get_user, get_user_by_id
 from bot_modules.enhanced_error_messages import perm_error, db_error
 
@@ -66,19 +66,16 @@ def has_permission(admin_id: int, permission: str) -> bool:
             return True
         
         # فحص الصلاحية من قاعدة البيانات (استخدام معرف قاعدة البيانات الداخلي)
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT permission_value 
             FROM admin_permissions 
             WHERE admin_id = ? AND permission_name = ?
         ''', (user['id'], permission))
         
-        result = cursor.fetchone()
-        conn.close()
-        
-        if result:
+        result = cursor.fetchone()        if result:
             has_perm = bool(result['permission_value'])
             logger.info(f"Permission check for admin {admin_id}, permission '{permission}': {has_perm}")
             return has_perm
@@ -101,9 +98,9 @@ def create_default_permission(admin_db_id: int, permission: str) -> bool:
         permission (str): اسم الصلاحية
     """
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # الصلاحيات الافتراضية للمشرف العادي
         default_permissions = {
             'add_offers': True,
@@ -121,10 +118,7 @@ def create_default_permission(admin_db_id: int, permission: str) -> bool:
             VALUES (?, ?, ?, ?)
         ''', (admin_db_id, permission, permission_value, admin_db_id))
         
-        conn.commit()
-        conn.close()
-        
-        logger.info(f"Created default permission '{permission}' = {permission_value} for admin db_id {admin_db_id}")
+        conn.commit()        logger.info(f"Created default permission '{permission}' = {permission_value} for admin db_id {admin_db_id}")
         return permission_value
         
     except Exception as e:
@@ -157,19 +151,17 @@ def grant_permission(admin_id: int, permission: str, granted_by: int) -> bool:
             logger.warning(f"Permission grant denied: {admin_id} is not an admin")
             return False
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
         
+            cursor = conn.cursor()
         cursor.execute('''
             INSERT OR REPLACE INTO admin_permissions 
             (admin_id, permission_name, permission_value, granted_by, updated_at) 
             VALUES (?, ?, ?, ?, ?)
         ''', (admin_id, permission, True, granted_by, datetime.now()))
         
-        conn.commit()
-        conn.close()
-        
-        logger.info(f"Permission '{permission}' granted to admin {admin_id} by {granted_by}")
+        conn.commit()        logger.info(f"Permission '{permission}' granted to admin {admin_id} by {granted_by}")
         return True
         
     except Exception as e:
@@ -196,19 +188,17 @@ def revoke_permission(admin_id: int, permission: str, revoked_by: int) -> bool:
             logger.warning(f"Permission revoke denied: {revoked_by} is not a super admin")
             return False
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
         
+            cursor = conn.cursor()
         cursor.execute('''
             INSERT OR REPLACE INTO admin_permissions 
             (admin_id, permission_name, permission_value, granted_by, updated_at) 
             VALUES (?, ?, ?, ?, ?)
         ''', (admin_id, permission, False, revoked_by, datetime.now()))
         
-        conn.commit()
-        conn.close()
-        
-        logger.info(f"Permission '{permission}' revoked from admin {admin_id} by {revoked_by}")
+        conn.commit()        logger.info(f"Permission '{permission}' revoked from admin {admin_id} by {revoked_by}")
         return True
         
     except Exception as e:
@@ -235,19 +225,17 @@ def get_admin_permissions(admin_id: int) -> dict:
         if user['role'] == 'super_admin':
             return {perm: True for perm in AVAILABLE_PERMISSIONS.keys()}
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
         
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT permission_name, permission_value 
             FROM admin_permissions 
             WHERE admin_id = ?
         ''', (admin_id,))
         
-        results = cursor.fetchall()
-        conn.close()
-        
-        permissions = {}
+        results = cursor.fetchall()        permissions = {}
         
         # إضافة الصلاحيات الموجودة
         for row in results:
@@ -273,9 +261,9 @@ def get_all_admins_with_permissions() -> list:
         list: قائمة بالمشرفين وصلاحياتهم
     """
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT id, telegram_id, full_name, role, is_active 
             FROM users 
@@ -283,10 +271,7 @@ def get_all_admins_with_permissions() -> list:
             ORDER BY role DESC, full_name ASC
         ''')
         
-        admins = cursor.fetchall()
-        conn.close()
-        
-        admin_list = []
+        admins = cursor.fetchall()        admin_list = []
         for admin in admins:
             admin_data = {
                 'id': admin['id'],
@@ -400,9 +385,9 @@ def initialize_admin_permissions(admin_db_id: int) -> bool:
         bool: True if successful
     """
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # الصلاحيات الافتراضية للمشرف العادي
         default_permissions = {
             'add_offers': True,
@@ -420,10 +405,7 @@ def initialize_admin_permissions(admin_db_id: int) -> bool:
                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ''', (admin_db_id, permission, value, admin_db_id))
         
-        conn.commit()
-        conn.close()
-        
-        logger.info(f"Initialized permissions for admin DB ID: {admin_db_id}")
+        conn.commit()        logger.info(f"Initialized permissions for admin DB ID: {admin_db_id}")
         return True
         
     except Exception as e:

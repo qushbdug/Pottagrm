@@ -11,7 +11,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext
 
 from bot_modules.config import EMOJIS, USER_ROLES
-from bot_modules.database import get_db_connection
+from bot_modules.database import get_db_connection, get_db_context
 from bot_modules.utils import get_user, update_user_activity
 
 logger = logging.getLogger(__name__)
@@ -32,9 +32,9 @@ class CustomerManagement:
                 return
             
             # إحصائيات العملاء
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
+            with get_db_context() as conn:
+
+                cursor = conn.cursor()
             # إجمالي العملاء
             cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'customer'")
             total_customers = cursor.fetchone()[0]
@@ -71,11 +71,7 @@ class CustomerManagement:
             """)
             max_balance_result = cursor.fetchone()
             max_balance = max_balance_result[0] if max_balance_result[0] else 0
-            top_customer = max_balance_result[1] if max_balance_result[1] else "لا يوجد"
-            
-            conn.close()
-            
-            dashboard_text = f"""
+            top_customer = max_balance_result[1] if max_balance_result[1] else "لا يوجد"            dashboard_text = f"""
 👥 **لوحة إدارة العملاء** 👥
 
 📊 **إحصائيات شاملة:**
@@ -164,9 +160,9 @@ class CustomerManagement:
     async def get_customer_details(customer_id: int):
         """الحصول على تفاصيل العميل"""
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
+            with get_db_context() as conn:
+
+                cursor = conn.cursor()
             # معلومات العميل الأساسية
             cursor.execute("""
                 SELECT id, telegram_id, full_name, phone, balance, wallet_number, 
@@ -199,11 +195,7 @@ class CustomerManagement:
                 ORDER BY created_at DESC LIMIT 5
             """, (customer_id, customer_id))
             
-            recent_activities = cursor.fetchall()
-            
-            conn.close()
-            
-            return {
+            recent_activities = cursor.fetchall()            return {
                 'customer': customer,
                 'sent_stats': sent_stats,
                 'received_stats': received_stats,
@@ -307,9 +299,10 @@ class CustomerManagement:
             query = update.callback_query
             await query.answer()
             
-            conn = get_db_connection()
-            cursor = conn.cursor()
+            with get_db_context() as conn:
+
             
+                cursor = conn.cursor()
             # تحليل نشاط العملاء
             cursor.execute("""
                 SELECT 
@@ -343,11 +336,7 @@ class CustomerManagement:
                     COUNT(CASE WHEN balance > 1000 THEN 1 END) as high_balance
                 FROM users WHERE role = 'customer'
             """)
-            balance_distribution = cursor.fetchone()
-            
-            conn.close()
-            
-            analytics_text = f"""
+            balance_distribution = cursor.fetchone()            analytics_text = f"""
 📈 **تحليلات العملاء المتقدمة** 📈
 
 👥 **نشاط العملاء:**
@@ -401,9 +390,10 @@ class CustomerManagement:
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
                 return
             
-            conn = get_db_connection()
-            cursor = conn.cursor()
+            with get_db_context() as conn:
+
             
+                cursor = conn.cursor()
             # الحصول على قائمة العملاء
             cursor.execute('''
                 SELECT id, full_name, phone, balance, is_active, created_at,
@@ -414,10 +404,7 @@ class CustomerManagement:
                 LIMIT 20
             ''')
             
-            customers = cursor.fetchall()
-            conn.close()
-            
-            list_text = f"""
+            customers = cursor.fetchall()            list_text = f"""
 📋 **قائمة العملاء** 📋
 
 👑 **المشرف:** {user['full_name']}
@@ -466,9 +453,10 @@ class CustomerManagement:
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
                 return
             
-            conn = get_db_connection()
-            cursor = conn.cursor()
+            with get_db_context() as conn:
+
             
+                cursor = conn.cursor()
             # إحصائيات شاملة للعملاء
             cursor.execute('''
                 SELECT 
@@ -493,10 +481,7 @@ class CustomerManagement:
                 LIMIT 5
             ''')
             
-            top_active = cursor.fetchall()
-            conn.close()
-            
-            reports_text = f"""
+            top_active = cursor.fetchall()            reports_text = f"""
 📊 **تقارير العملاء المفصلة** 📊
 
 👑 **المشرف:** {user['full_name']}
@@ -545,9 +530,10 @@ class CustomerManagement:
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
                 return
             
-            conn = get_db_connection()
-            cursor = conn.cursor()
+            with get_db_context() as conn:
+
             
+                cursor = conn.cursor()
             # العملاء حسب الرصيد
             cursor.execute('''
                 SELECT full_name, phone, balance, wallet_number
@@ -557,10 +543,7 @@ class CustomerManagement:
                 LIMIT 15
             ''')
             
-            customers_balance = cursor.fetchall()
-            conn.close()
-            
-            balance_text = f"""
+            customers_balance = cursor.fetchall()            balance_text = f"""
 💰 **إدارة أرصدة العملاء** 💰
 
 👑 **المشرف:** {user['full_name']}
@@ -713,9 +696,10 @@ class CustomerManagement:
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
                 return
             
-            conn = get_db_connection()
-            cursor = conn.cursor()
+            with get_db_context() as conn:
+
             
+                cursor = conn.cursor()
             # أفضل العملاء للحوافز
             cursor.execute('''
                 SELECT u.full_name, u.phone, u.balance,
@@ -730,10 +714,7 @@ class CustomerManagement:
                 LIMIT 10
             ''')
             
-            top_customers = cursor.fetchall()
-            conn.close()
-            
-            incentives_text = f"""
+            top_customers = cursor.fetchall()            incentives_text = f"""
 🎁 **حوافز العملاء** 🎁
 
 👑 **المشرف:** {user['full_name']}
