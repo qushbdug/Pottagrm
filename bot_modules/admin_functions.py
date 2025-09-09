@@ -2824,29 +2824,55 @@ async def download_statements_handler(update: Update, context: CallbackContext):
             await query.edit_message_text(f"{EMOJIS['error']} هذه الميزة مقتصرة على الإدارة.")
             return
         
+        # حساب الإحصائيات للعرض
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # حساب أرباح المشرف الأعلى
+        cursor.execute("SELECT COALESCE(SUM(admin_share), 0) FROM transactions WHERE admin_share IS NOT NULL")
+        result = cursor.fetchone()
+        admin_earnings = result[0] if result else 0
+        
+        # عدد المزودين النشطين
+        cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'supplier' AND is_active = 1")
+        result = cursor.fetchone()
+        active_suppliers = result[0] if result else 0
+        
+        # عدد العملاء النشطين
+        cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'customer' AND is_active = 1")
+        result = cursor.fetchone()
+        active_customers = result[0] if result else 0
+        
+        conn.close()
+        
         statements_text = f"""
 📄 **تنزيل كشوف الحسابات** 📄
 
 👑 **المشرف:** {user['full_name']}
 
+📊 **إحصائيات سريعة:**
+💰 إجمالي الأرباح المحصلة: **{admin_earnings:,.2f}** ريال (حصة الإدارة 30%)
+🏪 عدد المزودين النشطين: **{active_suppliers}** مزود
+👥 عدد العملاء النشطين: **{active_customers}** عميل
+
 📋 **الخيارات المتاحة:**
 
 🎯 **كشوف العملاء:**
-• جميع العملاء النشطين
+• تنزيل كشوف جميع العملاء
 • العملاء ذوي الأرصدة العالية
-• العملاء الجدد
+• العملاء الجدد (آخر 30 يوم)
 
 🏪 **كشوف المزودين:**
-• جميع المزودين النشطين
-• أداء المزودين
-• عمولات المزودين
+• تنزيل كشوف جميع المزودين
+• تقرير أرباح المزودين (70%)
+• أداء المبيعات حسب المزود
 
 📊 **التقارير الإجمالية:**
-• تقرير شامل لجميع المستخدمين
-• تقرير المعاملات الكبيرة
-• تقرير الحركة المالية
+• تقرير شامل لجميع المعاملات
+• تقرير تقسيم الأرباح (70%-30%)
+• تقرير طلبات السحب
 
-💡 **ملاحظة:** هذه الميزة قيد التطوير
+✅ **جميع التقارير تشمل النظام المحاسبي الجديد**
 """
         
         keyboard = [

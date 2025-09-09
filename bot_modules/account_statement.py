@@ -122,7 +122,8 @@ class AccountStatementGenerator:
                                WHEN from_user = ? THEN 'outgoing'
                                WHEN to_user = ? THEN 'incoming'
                                ELSE 'unknown'
-                           END as direction
+                           END as direction,
+                           provider_share, admin_share, total_amount
                     FROM transactions 
                     WHERE (from_user = ? OR to_user = ?) 
                     AND created_at >= datetime('now', '-' || ? || ' days')
@@ -135,7 +136,8 @@ class AccountStatementGenerator:
                                WHEN from_user = ? THEN 'outgoing'
                                WHEN to_user = ? THEN 'incoming'
                                ELSE 'unknown'
-                           END as direction
+                           END as direction,
+                           provider_share, admin_share, total_amount
                     FROM transactions 
                     WHERE from_user = ? OR to_user = ?
                     ORDER BY created_at DESC
@@ -189,10 +191,14 @@ class AccountStatementGenerator:
         ws['A7'] = "تاريخ الإنشاء:"
         ws['B7'] = datetime.now().strftime('%Y-%m-%d %H:%M')
         
-        # إحصائيات المعاملات
+        # إحصائيات المعاملات (مع دعم الحقول الجديدة)
         incoming_total = sum(t[2] for t in transactions if t[5] == 'incoming')
         outgoing_total = sum(t[2] for t in transactions if t[5] == 'outgoing')
         net_total = incoming_total - outgoing_total
+        
+        # إحصائيات الأرباح (للمزودين)
+        provider_earnings = sum(t[6] for t in transactions if len(t) > 6 and t[6])
+        admin_earnings = sum(t[7] for t in transactions if len(t) > 7 and t[7])
         
         ws['D3'] = "إجمالي الوارد:"
         ws['E3'] = f"+{incoming_total:,.2f} ريال"
@@ -203,8 +209,16 @@ class AccountStatementGenerator:
         ws['D6'] = "عدد المعاملات:"
         ws['E6'] = f"{len(transactions)} معاملة"
         
+        # إحصائيات الأرباح (إذا كان مزود)
+        if provider_earnings > 0:
+            ws['D7'] = "أرباح المزود (70%):"
+            ws['E7'] = f"{provider_earnings:,.2f} ريال"
+        if admin_earnings > 0:
+            ws['D8'] = "حصة الإدارة (30%):"
+            ws['E8'] = f"{admin_earnings:,.2f} ريال"
+        
         # عناوين الجدول
-        headers = ['التاريخ', 'الاتجاه', 'نوع المعاملة', 'المبلغ', 'الوصف']
+        headers = ['التاريخ', 'الاتجاه', 'نوع المعاملة', 'المبلغ', 'الوصف', 'حصة المزود', 'حصة الإدارة']
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=9, column=col, value=header)
             cell.font = header_font
@@ -237,15 +251,21 @@ class AccountStatementGenerator:
                 direction_text = "💼 غير محدد"
                 amount_text = f"{transaction[2]:,.2f}"
             
+            # الحصول على بيانات الأرباح إذا متوفرة
+            provider_share = transaction[6] if len(transaction) > 6 and transaction[6] else ""
+            admin_share = transaction[7] if len(transaction) > 7 and transaction[7] else ""
+            
             ws.cell(row=row, column=1, value=transaction[4][:16]).border = border  # التاريخ
             ws.cell(row=row, column=2, value=direction_text).border = border  # الاتجاه
             ws.cell(row=row, column=3, value=transaction_types.get(transaction[1], transaction[1])).border = border  # النوع
             ws.cell(row=row, column=4, value=amount_text).border = border  # المبلغ مع الإشارة
             ws.cell(row=row, column=5, value=transaction[3] or '').border = border  # الوصف
+            ws.cell(row=row, column=6, value=f"{provider_share:,.2f}" if provider_share else "").border = border  # حصة المزود
+            ws.cell(row=row, column=7, value=f"{admin_share:,.2f}" if admin_share else "").border = border  # حصة الإدارة
         
-        # تنسيق عرض الأعمدة
-        for col in range(1, 6):
-            ws.column_dimensions[get_column_letter(col)].width = 20
+        # تنسيق عرض الأعمدة (تحديث لـ 7 أعمدة)
+        for col in range(1, 8):
+            ws.column_dimensions[get_column_letter(col)].width = 18
         
         # حفظ في ذاكرة
         excel_buffer = io.BytesIO()
@@ -279,9 +299,13 @@ class AccountStatementGenerator:
         story.append(title)
         story.append(Spacer(1, 12))
         
-        # حساب الإحصائيات
+        # حساب الإحصائيات (مع دعم الحقول الجديدة)
         incoming_total = sum(t[2] for t in transactions if t[5] == 'incoming')
         outgoing_total = sum(t[2] for t in transactions if t[5] == 'outgoing')
+        
+        # إحصائيات الأرباح
+        provider_earnings = sum(t[6] for t in transactions if len(t) > 6 and t[6])
+        admin_earnings = sum(t[7] for t in transactions if len(t) > 7 and t[7])
         
         # معلومات المستخدم (نص بسيط بدون أيقونات)
         user_info = f"""
@@ -294,7 +318,9 @@ class AccountStatementGenerator:
         <b>Total Incoming:</b> +{incoming_total:,.2f} YER<br/>
         <b>Total Outgoing:</b> -{outgoing_total:,.2f} YER<br/>
         <b>Net Movement:</b> {incoming_total - outgoing_total:+,.2f} YER<br/>
-        <b>Total Transactions:</b> {len(transactions)}
+        <b>Total Transactions:</b> {len(transactions)}<br/>
+        {f"<b>Provider Earnings (70%):</b> {provider_earnings:,.2f} YER<br/>" if provider_earnings > 0 else ""}
+        {f"<b>Admin Share (30%):</b> {admin_earnings:,.2f} YER<br/>" if admin_earnings > 0 else ""}
         """
         
         user_para = Paragraph(user_info, arabic_style)
@@ -304,7 +330,7 @@ class AccountStatementGenerator:
         # جدول المعاملات (نص بسيط بدون أيقونات)
         if transactions:
             # عناوين الجدول (بالإنجليزية لتجنب مشاكل العرض)
-            data = [['Date', 'Direction', 'Type', 'Amount', 'Description']]
+            data = [['Date', 'Direction', 'Type', 'Amount', 'Description', 'Provider', 'Admin']]
             
             transaction_types = {
                 'purchase': 'Purchase',
@@ -330,12 +356,18 @@ class AccountStatementGenerator:
                     direction_text = "N/A"
                     amount_text = f"{transaction[2]:,.2f}"
                 
+                # الحصول على بيانات الأرباح
+                provider_share = transaction[6] if len(transaction) > 6 and transaction[6] else ""
+                admin_share = transaction[7] if len(transaction) > 7 and transaction[7] else ""
+                
                 data.append([
                     transaction[4][:16],  # created_at
                     direction_text,  # الاتجاه
                     transaction_types.get(transaction[1], transaction[1]),  # type
                     amount_text + " YER",  # amount مع العملة
-                    (transaction[3] or '')[:25]  # description
+                    (transaction[3] or '')[:25],  # description
+                    f"{provider_share:,.2f}" if provider_share else "",  # حصة المزود
+                    f"{admin_share:,.2f}" if admin_share else ""  # حصة الإدارة
                 ])
             
             table = Table(data)

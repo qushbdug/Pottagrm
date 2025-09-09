@@ -368,6 +368,10 @@ async def button_click_handler(update: Update, context):
         # Account statement handlers
         elif callback_data == 'account_statement':
             return await account_statement_handler(update, context)
+        elif callback_data == 'download_statements':
+            # معالج تنزيل كشوف الحسابات للمشرف
+            from bot_modules.admin_functions import download_statements_handler
+            return await download_statements_handler(update, context)
         elif callback_data.startswith('download_'):
             if callback_data == 'download_excel_30':
                 return await download_excel_30_handler(update, context)
@@ -2586,14 +2590,13 @@ async def sales_stats_handler(update: Update, context):
         result = cursor.fetchone()
         daily_sales, daily_revenue = result if result else (0, 0)
         
-        # أفضل الشبكات مبيعاً (تقديري)
+        # أفضل الشبكات مبيعاً (محدث للنظام الجديد)
         cursor.execute('''
             SELECT n.name, n.provider, COUNT(t.id) as sales_count, SUM(t.amount) as network_revenue
             FROM transactions t
-            LEFT JOIN cards c ON t.description LIKE '%' || c.code || '%'
-            LEFT JOIN card_categories cc ON c.category_id = cc.id
-            LEFT JOIN networks n ON cc.network_id = n.id
-            WHERE t.type = 'card_purchase' AND n.id IS NOT NULL
+            JOIN users u ON t.to_user = u.id
+            JOIN networks n ON u.id = n.supplier_id
+            WHERE t.type = 'card_purchase'
             GROUP BY n.id, n.name, n.provider
             ORDER BY sales_count DESC
             LIMIT 5
