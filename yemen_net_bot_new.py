@@ -391,6 +391,9 @@ async def button_click_handler(update: Update, context):
         # Search and user handlers
         elif callback_data == 'search_user':
             return await search_user_handler(update, context)
+        elif callback_data.startswith('select_user_'):
+            user_id = callback_data.split('_')[2]
+            return await select_user_for_transfer(update, context, user_id)
         elif callback_data.startswith('search_by_'):
             search_type = callback_data.split('_')[2]
             return await search_by_type_handler(update, context, search_type)
@@ -469,16 +472,149 @@ async def button_click_handler(update: Update, context):
             user_id = callback_data.split('_')[3]
             return await quick_transfer_handler(update, context, amount, user_id)
         
-        # Other handlers will be added as needed
-        else:
-            logger.warning(f"Unhandled callback: {callback_data}")
+        # Additional missing handlers
+        elif callback_data.startswith('create_quick_coupon_'):
+            if user['role'] != 'super_admin':
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+                return
+            amount = int(callback_data.split('_')[-1])
+            return await create_quick_coupon_handler(update, context, amount)
+        elif callback_data == 'coupons_stats':
+            if user['role'] != 'super_admin':
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+                return
+            return await coupons_stats_handler(update, context)
+        elif callback_data == 'list_coupons':
+            if user['role'] != 'super_admin':
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+                return
+            return await list_coupons_handler(update, context)
+        
+        # Extended admin management
+        elif callback_data == 'admin_permissions':
+            return await AdminManagementExtended.show_permissions_dashboard(update, context)
+        elif callback_data.startswith('permission_details_'):
+            permission = callback_data.split('_')[2]
+            return await AdminManagementExtended.show_permission_details(update, context, permission)
+        elif callback_data.startswith('assign_permission_'):
+            permission = callback_data.split('_')[2]
+            return await AdminManagementExtended.assign_permission_handler(update, context, permission)
+        elif callback_data.startswith('revoke_permission_'):
+            permission = callback_data.split('_')[2]
+            return await AdminManagementExtended.revoke_permission_handler(update, context, permission)
+        elif callback_data.startswith('edit_admin_permissions_'):
+            admin_id = int(callback_data.split('_')[3])
+            return await AdminManagementExtended.edit_admin_permissions(update, context, admin_id)
+        elif callback_data.startswith('toggle_permission_'):
+            parts = callback_data.split('_')
+            admin_id = int(parts[2])
+            permission = parts[3]
+            return await AdminManagementExtended.toggle_admin_permission(update, context, admin_id, permission)
+        
+        # Customer management extended
+        elif callback_data.startswith('customer_edit_'):
+            customer_id = int(callback_data.split('_')[2])
+            return await CustomerManagement.edit_customer_handler(update, context, customer_id)
+        elif callback_data.startswith('customer_toggle_'):
+            customer_id = int(callback_data.split('_')[2])
+            return await CustomerManagement.toggle_customer_handler(update, context, customer_id)
+        elif callback_data == 'customer_add':
+            return await CustomerManagement.add_customer_handler(update, context)
+        elif callback_data.startswith('customer_delete_'):
+            customer_id = int(callback_data.split('_')[2])
+            return await CustomerManagement.delete_customer_handler(update, context, customer_id)
+        elif callback_data.startswith('confirm_delete_customer_'):
+            customer_id = int(callback_data.split('_')[3])
+            return await CustomerManagement.confirm_delete_customer_handler(update, context, customer_id)
+        
+        # Admin management extended
+        elif callback_data.startswith('admin_view_'):
+            admin_id = int(callback_data.split('_')[2])
+            return await AdminManagement.view_admin_handler(update, context, admin_id)
+        elif callback_data.startswith('admin_edit_'):
+            admin_id = int(callback_data.split('_')[2])
+            return await AdminManagement.edit_admin_handler(update, context, admin_id)
+        elif callback_data.startswith('admin_delete_'):
+            admin_id = int(callback_data.split('_')[2])
+            return await AdminManagement.delete_admin_handler(update, context, admin_id)
+        elif callback_data.startswith('admin_toggle_'):
+            admin_id = int(callback_data.split('_')[2])
+            return await AdminManagement.toggle_admin_handler(update, context, admin_id)
+        elif callback_data.startswith('confirm_delete_admin_'):
+            admin_id = int(callback_data.split('_')[3])
+            return await AdminManagement.confirm_delete_admin_handler(update, context, admin_id)
+        elif callback_data == 'admin_add_admin':
+            return await AdminManagement.add_admin_handler(update, context)
+        
+        # Additional utility handlers
+        elif callback_data == 'current_page':
+            # زر رقم الصفحة الحالية - لا يفعل شيء
+            await query.answer("📄 أنت في هذه الصفحة حالياً", show_alert=False)
+            return
+        elif callback_data == 'mark_all_read':
+            # تحديد جميع الإشعارات كمقروءة
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute('UPDATE smart_notifications SET is_read = 1 WHERE user_id = ?', (user['id'],))
+                conn.commit()
+                conn.close()
+                await query.answer("✅ تم تحديد جميع الإشعارات كمقروءة", show_alert=True)
+            except Exception as e:
+                logger.error(f"Error marking notifications as read: {e}")
+                await query.answer("❌ حدث خطأ في تحديث الإشعارات")
+            return
+        elif callback_data in ['contact_admin', 'contact_support']:
             await query.edit_message_text(
-                f"⚠️ **عذراً، هذه الميزة قيد التطوير**\n\nالزر: `{callback_data}`",
+                f"""
+📞 **التواصل مع الدعم** 📞
+
+💡 **طرق التواصل:**
+• تواصل مع المشرف عبر البوت
+• أرسل رسالة تتضمن استفسارك
+• ستحصل على رد سريع
+
+📱 **أوقات الدعم:**
+• متاح 24/7 للاستفسارات العاجلة
+• رد سريع خلال ساعات العمل
+""",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
                 ]),
                 parse_mode='Markdown'
             )
+            return
+        
+        # Fallback for truly unhandled callbacks
+        else:
+            logger.warning(f"Unhandled callback: {callback_data}")
+            
+            # بدلاً من رسالة "قيد التطوير"، نعيد المستخدم للقائمة المناسبة
+            if user['role'] == 'supplier':
+                await query.edit_message_text(
+                    f"🔄 **تم توجيهك للوحة المزود**",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')],
+                        [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+                    ])
+                )
+            elif user['role'] in ['admin', 'super_admin']:
+                await query.edit_message_text(
+                    f"🔄 **تم توجيهك للوحة الإدارة**",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton('👑 لوحة الإدارة', callback_data='admin_panel')],
+                        [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+                    ])
+                )
+            else:
+                await query.edit_message_text(
+                    f"🔄 **تم توجيهك للقائمة الرئيسية**",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet')],
+                        [InlineKeyboardButton('🛒 شراء كروت', callback_data='buy_cards')],
+                        [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+                    ])
+                )
             
     except Exception as e:
         logger.error(f"Error in button click handler: {e}")
