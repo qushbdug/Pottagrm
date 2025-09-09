@@ -13,7 +13,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext
 
 from bot_modules.config import EMOJIS, USER_ROLES, PERMISSIONS
-from bot_modules.database import get_db_connection
+from bot_modules.database import get_db_connection, get_db_context
 from bot_modules.utils import get_user, update_user_activity
 from bot_modules.permissions import (
     AVAILABLE_PERMISSIONS, 
@@ -159,9 +159,9 @@ class AdminManagementExtended:
     async def perform_admin_search(search_term: str, search_type: str, update: Update, context: CallbackContext):
         """تنفيذ البحث عن المشرفين"""
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
+            with get_db_context() as conn:
+
+                cursor = conn.cursor()
             if search_type == 'by_id':
                 # البحث بالمعرف
                 try:
@@ -188,11 +188,7 @@ class AdminManagementExtended:
                     )
                     ORDER BY full_name
                 ''', (phone_clean, f"+{phone_clean}", f"%{phone_clean}", f"%{phone_clean[-9:]}"))
-                results = cursor.fetchall()
-            
-            conn.close()
-            
-            if not results:
+                results = cursor.fetchall()            if not results:
                 no_results_text = f"""
 ❌ **لا توجد نتائج** ❌
 
@@ -324,9 +320,9 @@ class AdminManagementExtended:
                 return
             
             # الحصول على آخر العمليات
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
+            with get_db_context() as conn:
+
+                cursor = conn.cursor()
             cursor.execute('''
                 SELECT 
                     aml.*,
@@ -350,10 +346,7 @@ class AdminManagementExtended:
                 ORDER BY count DESC
             ''')
             
-            stats = cursor.fetchall()
-            conn.close()
-            
-            log_text = f"""
+            stats = cursor.fetchall()            log_text = f"""
 📋 **سجل إدارة المشرفين** 📋
 
 📊 **إحصائيات آخر 7 أيام:**
@@ -430,9 +423,9 @@ class AdminManagementExtended:
                 return
             
             # الحصول على الإعدادات الحالية
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
+            with get_db_context() as conn:
+
+                cursor = conn.cursor()
             cursor.execute('SELECT * FROM admin_system_settings ORDER BY setting_key')
             settings = cursor.fetchall()
             
@@ -441,11 +434,7 @@ class AdminManagementExtended:
             total_admins = cursor.fetchone()[0]
             
             cursor.execute('SELECT COUNT(*) FROM users WHERE role IN ("admin", "super_admin") AND is_active = 1')
-            active_admins = cursor.fetchone()[0]
-            
-            conn.close()
-            
-            settings_text = f"""
+            active_admins = cursor.fetchone()[0]            settings_text = f"""
 ⚙️ **إعدادات إدارة المشرفين** ⚙️
 
 📊 **معلومات النظام:**
@@ -519,9 +508,9 @@ class AdminManagementExtended:
                 return
             
             # تحديث الإعداد
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
+            with get_db_context() as conn:
+
+                cursor = conn.cursor()
             cursor.execute('''
                 UPDATE admin_system_settings 
                 SET setting_value = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP 
@@ -532,10 +521,7 @@ class AdminManagementExtended:
             cursor.execute('SELECT description FROM admin_system_settings WHERE setting_key = ?', (setting_key,))
             setting_description = cursor.fetchone()['description']
             
-            conn.commit()
-            conn.close()
-            
-            # رسالة التأكيد
+            conn.commit()            # رسالة التأكيد
             status = "تم تفعيل" if new_value.lower() == 'true' else "تم تعطيل"
             
             await query.answer(f"✅ {status} {setting_description} بنجاح!", show_alert=True)
@@ -560,9 +546,9 @@ class AdminManagementExtended:
                 return
             
             # جمع بيانات التقارير
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
+            with get_db_context() as conn:
+
+                cursor = conn.cursor()
             # إحصائيات عامة
             cursor.execute('''
                 SELECT 
@@ -603,11 +589,7 @@ class AdminManagementExtended:
                 ORDER BY count DESC
             ''')
             
-            actions_stats = cursor.fetchall()
-            
-            conn.close()
-            
-            reports_text = f"""
+            actions_stats = cursor.fetchall()            reports_text = f"""
 📊 **تقارير المشرفين** 📊
 
 📈 **إحصائيات عامة:**

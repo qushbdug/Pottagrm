@@ -10,7 +10,7 @@ from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext
 from bot_modules.config import *
-from bot_modules.database import get_db_connection
+from bot_modules.database import get_db_connection, get_db_context
 from bot_modules.utils import *
 from bot_modules.enhanced_error_messages import ErrorMessages, perm_error, db_error, unexpected_error, menu_error, wallet_error, coupon_error
 from bot_modules.export_system import (
@@ -44,9 +44,9 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
     """Show super admin control panel"""
     try:
         # Get platform statistics
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # Basic stats
         cursor.execute('SELECT COUNT(*) FROM users')
         total_users = cursor.fetchone()[0]
@@ -62,11 +62,7 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
         pending_suppliers = cursor.fetchone()[0]
         
         cursor.execute('SELECT COUNT(*) FROM transactions')
-        total_transactions = cursor.fetchone()[0]
-        
-        conn.close()
-        
-        panel_text = f"""
+        total_transactions = cursor.fetchone()[0]        panel_text = f"""
 👑 **لوحة المشرف الأعلى** 👑
 
 {EMOJIS['user']} مرحباً **{user['full_name']}**
@@ -164,16 +160,14 @@ async def process_balance_issue(update: Update, context: CallbackContext):
             return
         
         # Find target user
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('SELECT * FROM users WHERE wallet_number = ?', (wallet_number,))
         target_user = cursor.fetchone()
         
         if not target_user:
-            await update.message.reply_text(f"{EMOJIS['error']} لم يتم العثور على مستخدم بهذا الرقم: {wallet_number}")
-            conn.close()
-            return
+            await update.message.reply_text(f"{EMOJIS['error']} لم يتم العثور على مستخدم بهذا الرقم: {wallet_number}")            return
         
         # Create transfer transactions
         transaction_id = str(uuid.uuid4())
@@ -315,9 +309,9 @@ async def activate_suppliers_handler(update: Update, context: CallbackContext):
             return
         
         # Get pending suppliers
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT * FROM users 
             WHERE role = 'supplier' AND is_active = 0
@@ -325,10 +319,7 @@ async def activate_suppliers_handler(update: Update, context: CallbackContext):
             LIMIT 10
         ''')
         
-        pending_suppliers = cursor.fetchall()
-        conn.close()
-        
-        if not pending_suppliers:
+        pending_suppliers = cursor.fetchall()        if not pending_suppliers:
             text = f"""
 ✅ **لا توجد طلبات تفعيل مزودين**
 
@@ -392,9 +383,10 @@ async def activate_single_supplier(update: Update, context: CallbackContext, sup
             await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
             return
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
         
+            cursor = conn.cursor()
         # Get supplier details
         cursor.execute('SELECT * FROM users WHERE id = ? AND role = "supplier"', (supplier_id,))
         supplier = cursor.fetchone()
@@ -414,10 +406,7 @@ async def activate_single_supplier(update: Update, context: CallbackContext, sup
             'supplier_phone': supplier['phone']
         })
         
-        conn.commit()
-        conn.close()
-        
-        # Send notification to supplier
+        conn.commit()        # Send notification to supplier
         send_smart_notification(
             supplier_id,
             'account_activated',
@@ -460,9 +449,10 @@ async def activate_all_suppliers(update: Update, context: CallbackContext):
             await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
             return
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
         
+            cursor = conn.cursor()
         # Get all pending suppliers
         cursor.execute('SELECT * FROM users WHERE role = "supplier" AND is_active = 0')
         pending_suppliers = cursor.fetchall()
@@ -479,10 +469,7 @@ async def activate_all_suppliers(update: Update, context: CallbackContext):
         supplier_names = [s['full_name'] for s in pending_suppliers]
         log_system_action(user['id'], 'mass_supplier_activation', f'Activated {activated_count} suppliers: {", ".join(supplier_names)}')
         
-        conn.commit()
-        conn.close()
-        
-        # Send notifications to all activated suppliers
+        conn.commit()        # Send notifications to all activated suppliers
         for supplier in pending_suppliers:
             send_smart_notification(
                 supplier['id'],
@@ -531,9 +518,9 @@ async def platform_management_handler(update: Update, context: CallbackContext):
             return
         
         # Get platform statistics
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # Get various statistics
         stats_queries = [
             ('SELECT COUNT(*) as count FROM users WHERE role = "customer"', 'customers'),
@@ -548,11 +535,7 @@ async def platform_management_handler(update: Update, context: CallbackContext):
         for query_sql, key in stats_queries:
             cursor.execute(query_sql)
             result = cursor.fetchone()
-            stats[key] = result['count'] if 'count' in result.keys() else (result['total'] or 0)
-        
-        conn.close()
-        
-        management_text = f"""
+            stats[key] = result['count'] if 'count' in result.keys() else (result['total'] or 0)        management_text = f"""
 🏛️ **إدارة المنصة** 🏛️
 
 📊 **إحصائيات سريعة:**
@@ -702,9 +685,9 @@ async def executive_reports_handler(update: Update, context: CallbackContext):
             return
         
         # الحصول على البيانات التنفيذية الشاملة
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # تقرير النمو والأداء العام
         cursor.execute('''
             SELECT 
@@ -772,11 +755,7 @@ async def executive_reports_handler(update: Update, context: CallbackContext):
             ORDER BY u.balance DESC, total_amount DESC
             LIMIT 5
         ''')
-        top_performers = cursor.fetchall()
-        
-        conn.close()
-        
-        # حساب المعدلات والنسب المهمة (مع حماية ضد القسمة على صفر)
+        top_performers = cursor.fetchall()        # حساب المعدلات والنسب المهمة (مع حماية ضد القسمة على صفر)
         try:
             growth_rate_daily = (growth_stats[0] / max(growth_stats[3] - growth_stats[0], 1) * 100) if growth_stats[3] > 0 else 0
             growth_rate_weekly = (growth_stats[1] / max(growth_stats[3] - growth_stats[1], 1) * 100) if growth_stats[3] > 0 else 0
@@ -891,9 +870,9 @@ async def manage_admins_handler(update, context):
             return
         
         # Get admin statistics
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) as total_admins FROM users WHERE role = 'admin'")
         total_admins = cursor.fetchone()['total_admins']
         
@@ -911,11 +890,7 @@ async def manage_admins_handler(update, context):
             ORDER BY u.last_activity_at DESC 
             LIMIT 5
         ''')
-        recent_activities = cursor.fetchall()
-        
-        conn.close()
-        
-        text = f"""
+        recent_activities = cursor.fetchall()        text = f"""
 👑 **إدارة المشرفين** 👑
 
 📊 **إحصائيات المشرفين:**
@@ -963,9 +938,9 @@ async def dashboard_handler(update, context):
             return
         
         # Get comprehensive dashboard data
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # Users statistics
         cursor.execute('SELECT COUNT(*) FROM users')
         total_users = cursor.fetchone()[0]
@@ -996,11 +971,7 @@ async def dashboard_handler(update, context):
         active_networks = cursor.fetchone()[0]
         
         cursor.execute("SELECT COUNT(*) FROM networks WHERE is_approved = 0")
-        pending_networks = cursor.fetchone()[0]
-        
-        conn.close()
-        
-        text = f"""
+        pending_networks = cursor.fetchone()[0]        text = f"""
 📈 **لوحة المعلومات الرئيسية** 📈
 
 👥 **إحصائيات المستخدمين:**
@@ -1126,9 +1097,9 @@ async def process_recharge_cards_issue(update: Update, context: CallbackContext)
             return
         
         # Create recharge cards
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         created_cards = []
         for i in range(quantity):
             card_code = generate_card_code()
@@ -1148,10 +1119,7 @@ async def process_recharge_cards_issue(update: Update, context: CallbackContext)
                 'price': price
             })
         
-        conn.commit()
-        conn.close()
-        
-        # Clear user state
+        conn.commit()        # Clear user state
         context.user_data.pop('awaiting_card_issue', None)
         
         # Send confirmation
@@ -1193,9 +1161,9 @@ async def admin_wallet_handler(update: Update, context: CallbackContext):
             return
         
         # Get some statistics
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # Get total money created
         cursor.execute('SELECT SUM(amount) FROM transactions WHERE type = "money_creation" AND to_user = ?', (user['id'],))
         total_created = cursor.fetchone()[0] or 0
@@ -1206,11 +1174,7 @@ async def admin_wallet_handler(update: Update, context: CallbackContext):
         
         # Get number of users
         cursor.execute('SELECT COUNT(*) FROM users WHERE role != "super_admin"')
-        total_users = cursor.fetchone()[0] or 0
-        
-        conn.close()
-        
-        text = f"""
+        total_users = cursor.fetchone()[0] or 0        text = f"""
 💰 **إدارة الأرصدة** 💰
 
 👑 **المشرف الأعلى:** {user['full_name']}
@@ -1307,14 +1271,11 @@ async def process_broadcast_message(update: Update, context: CallbackContext):
             return
         
         # Get all active users
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('SELECT telegram_id, full_name FROM users WHERE is_active = 1')
-        active_users = cursor.fetchall()
-        conn.close()
-        
-        # Prepare broadcast message
+        active_users = cursor.fetchall()        # Prepare broadcast message
         from datetime import datetime
         broadcast_text = f"""
 📢 **رسالة من إدارة البوت** 📢
@@ -1476,9 +1437,9 @@ async def dashboard_handler(update: Update, context: CallbackContext):
             return
         
         # Get comprehensive dashboard statistics
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # Users statistics
         cursor.execute('SELECT COUNT(*) FROM users')
         total_users = cursor.fetchone()[0]
@@ -1541,11 +1502,7 @@ async def dashboard_handler(update: Update, context: CallbackContext):
             FROM users 
             WHERE created_at >= datetime('now', '-24 hours')
         ''')
-        new_users_today = cursor.fetchone()[0]
-        
-        conn.close()
-        
-        # Calculate percentages
+        new_users_today = cursor.fetchone()[0]        # Calculate percentages
         active_percentage = (active_users / total_users * 100) if total_users > 0 else 0
         
         dashboard_text = f"""
@@ -1613,9 +1570,9 @@ async def manage_admins_handler(update: Update, context: CallbackContext):
             return
         
         # Get comprehensive admin statistics
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # إحصائيات المشرفين المفصلة
         cursor.execute('''
             SELECT 
@@ -1651,11 +1608,7 @@ async def manage_admins_handler(update: Update, context: CallbackContext):
             ORDER BY created_at DESC 
             LIMIT 3
         ''')
-        recent_admins = cursor.fetchall()
-        
-        conn.close()
-        
-        text = f"""
+        recent_admins = cursor.fetchall()        text = f"""
 👑 **إدارة المشرفين المتقدمة** 👑
 
 {EMOJIS['admin']} مرحباً **{user['full_name']}**
@@ -1716,9 +1669,9 @@ async def manage_users_handler(update: Update, context: CallbackContext):
             return
         
         # Get comprehensive user statistics
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # User counts by role
         cursor.execute('SELECT role, COUNT(*) FROM users GROUP BY role')
         role_stats = dict(cursor.fetchall())
@@ -1760,11 +1713,7 @@ async def manage_users_handler(update: Update, context: CallbackContext):
             SELECT COUNT(*) FROM users 
             WHERE updated_at >= datetime('now', '-24 hours')
         ''')
-        recent_activity = cursor.fetchone()[0]
-        
-        conn.close()
-        
-        total_users = sum(role_stats.values())
+        recent_activity = cursor.fetchone()[0]        total_users = sum(role_stats.values())
         
         text = f"""
 👥 **إدارة المستخدمين المتقدمة** 👥
@@ -1862,9 +1811,9 @@ async def platform_management_handler(update, context):
     await query.answer()
     
     # Get current system settings
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    with get_db_context() as conn:
+
+        cursor = conn.cursor()
     # Get platform statistics
     cursor.execute('SELECT COUNT(*) as total_users FROM users')
     total_users = cursor.fetchone()['total_users']
@@ -1876,11 +1825,7 @@ async def platform_management_handler(update, context):
     total_networks = cursor.fetchone()['total_networks']
     
     cursor.execute('SELECT SUM(amount) as total_transactions FROM transactions')
-    total_transactions = cursor.fetchone()['total_transactions'] or 0
-    
-    conn.close()
-    
-    text = f"""
+    total_transactions = cursor.fetchone()['total_transactions'] or 0    text = f"""
 🏛️ **إدارة المنصة** 🏛️
 
 📊 **إحصائيات سريعة:**
@@ -2325,9 +2270,10 @@ async def users_top_handler(update, context):
         query = update.callback_query
         await query.answer()
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
         
+            cursor = conn.cursor()
         # Top users by balance
         cursor.execute('''
             SELECT full_name, balance, role 
@@ -2348,11 +2294,7 @@ async def users_top_handler(update, context):
             ORDER BY transaction_count DESC
             LIMIT 5
         ''')
-        most_active = cursor.fetchall()
-        
-        conn.close()
-        
-        text = f"""
+        most_active = cursor.fetchall()        text = f"""
 ⭐ **أفضل المستخدمين** ⭐
 
 💰 **أعلى أرصدة:**
@@ -2398,9 +2340,9 @@ async def commission_management_handler(update: Update, context: CallbackContext
             return
         
         # الحصول على العمولات الحالية
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT id, name, percentage, fixed_amount, role, is_active 
             FROM commissions 
@@ -2417,11 +2359,7 @@ async def commission_management_handler(update: Update, context: CallbackContext
                 SUM(CASE WHEN role = 'system' AND is_active = 1 THEN fixed_amount ELSE 0 END) as system_fees
             FROM commissions
         ''')
-        commission_stats = cursor.fetchone()
-        
-        conn.close()
-        
-        text = f"""
+        commission_stats = cursor.fetchone()        text = f"""
 💰 **إدارة العمولات المتقدمة** 💰
 
 {EMOJIS['admin']} مرحباً **{user['full_name']}**
@@ -2479,18 +2417,15 @@ async def edit_commission_handler(update: Update, context: CallbackContext):
             return
         
         # الحصول على قائمة العمولات
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT id, name, percentage, fixed_amount, role, is_active 
             FROM commissions 
             ORDER BY role, name
         ''')
-        commissions = cursor.fetchall()
-        conn.close()
-        
-        text = f"""
+        commissions = cursor.fetchall()        text = f"""
 ✏️ **تعديل العمولات** ✏️
 
 {EMOJIS['admin']} اختر العمولة المراد تعديلها:
@@ -2540,18 +2475,15 @@ async def edit_specific_commission(update: Update, context: CallbackContext, com
             return
         
         # الحصول على بيانات العمولة
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT id, name, percentage, fixed_amount, role, is_active 
             FROM commissions 
             WHERE id = ?
         ''', (commission_id,))
-        commission = cursor.fetchone()
-        conn.close()
-        
-        if not commission:
+        commission = cursor.fetchone()        if not commission:
             await query.edit_message_text("❌ لم يتم العثور على العمولة المحددة.")
             return
         
@@ -3124,9 +3056,9 @@ async def accounting_transactions_handler(update: Update, context: CallbackConte
             return
 
         # جلب إحصائيات المعاملات
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # معاملات اليوم
         cursor.execute("""
             SELECT COUNT(*), SUM(amount) 
@@ -3167,11 +3099,7 @@ async def accounting_transactions_handler(update: Update, context: CallbackConte
             ORDER BY t.created_at DESC
             LIMIT 5
         """)
-        recent_transactions = cursor.fetchall()
-        
-        conn.close()
-        
-        transactions_text = f"""
+        recent_transactions = cursor.fetchall()        transactions_text = f"""
 💸 **تقارير المعاملات** 💸
 
 📊 **إحصائيات سريعة:**
@@ -3253,9 +3181,10 @@ async def accounting_profits_handler(update: Update, context: CallbackContext):
             await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user['role'] if user else "غير مسجل"))
             return
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+
+            cursor = conn.cursor()
         # أرباح اليوم من المبيعات
         cursor.execute("""
             SELECT COUNT(*), SUM(amount * 0.1) as commission
@@ -3302,11 +3231,7 @@ async def accounting_profits_handler(update: Update, context: CallbackContext):
             ORDER BY revenue DESC
             LIMIT 5
         """)
-        top_suppliers_today = cursor.fetchall()
-        
-        conn.close()
-        
-        profits_text = f"""
+        top_suppliers_today = cursor.fetchall()        profits_text = f"""
 📈 **تقارير الأرباح** 📈
 
 💰 **أرباح المنصة (عمولة 10%):**
@@ -3400,9 +3325,10 @@ async def accounting_suppliers_handler(update: Update, context: CallbackContext)
             await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user['role'] if user else "غير مسجل"))
             return
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+
+            cursor = conn.cursor()
         # إحصائيات المزودين العامة
         cursor.execute("""
             SELECT COUNT(*) as total_suppliers
@@ -3447,11 +3373,7 @@ async def accounting_suppliers_handler(update: Update, context: CallbackContext)
         """)
         networks_stats = cursor.fetchone()
         total_networks = networks_stats[0] if networks_stats[0] else 0
-        active_networks = networks_stats[1] if networks_stats[1] else 0
-        
-        conn.close()
-        
-        suppliers_text = f"""
+        active_networks = networks_stats[1] if networks_stats[1] else 0        suppliers_text = f"""
 🏪 **تقارير المزودين** 🏪
 
 📊 **نظرة عامة:**
@@ -3531,9 +3453,10 @@ async def accounting_customers_handler(update: Update, context: CallbackContext)
             await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user['role'] if user else "غير مسجل"))
             return
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+
+            cursor = conn.cursor()
         # إحصائيات العملاء العامة
         cursor.execute("""
             SELECT COUNT(*) as total_customers,
@@ -3579,11 +3502,7 @@ async def accounting_customers_handler(update: Update, context: CallbackContext)
             WHERE role = 'customer' 
             AND DATE(created_at) >= DATE('now', '-7 days')
         """)
-        new_customers_week = cursor.fetchone()[0] or 0
-        
-        conn.close()
-        
-        customers_text = f"""
+        new_customers_week = cursor.fetchone()[0] or 0        customers_text = f"""
 👥 **تقارير العملاء** 👥
 
 📊 **نظرة عامة:**
@@ -3665,9 +3584,10 @@ async def accounting_analytics_handler(update: Update, context: CallbackContext)
             await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user['role'] if user else "غير مسجل"))
             return
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+
+            cursor = conn.cursor()
         # تحليل الاتجاهات الشهرية
         cursor.execute("""
             SELECT 
@@ -3711,11 +3631,7 @@ async def accounting_analytics_handler(update: Update, context: CallbackContext)
             ORDER BY sales_count DESC
             LIMIT 5
         """)
-        popular_cards = cursor.fetchall()
-        
-        conn.close()
-        
-        analytics_text = f"""
+        popular_cards = cursor.fetchall()        analytics_text = f"""
 📊 **التحليلات المتقدمة** 📊
 
 📈 **اتجاهات المبيعات (آخر 6 أشهر):**
@@ -3887,9 +3803,10 @@ async def transactions_detailed_handler(update: Update, context: CallbackContext
             await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user['role'] if user else "غير مسجل"))
             return
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+
+            cursor = conn.cursor()
         # تقرير مفصل آخر 20 معاملة
         cursor.execute("""
             SELECT t.id, t.type, t.amount, t.description, 
@@ -3899,11 +3816,7 @@ async def transactions_detailed_handler(update: Update, context: CallbackContext
             ORDER BY t.created_at DESC
             LIMIT 20
         """)
-        detailed_transactions = cursor.fetchall()
-        
-        conn.close()
-        
-        detailed_text = """
+        detailed_transactions = cursor.fetchall()        detailed_text = """
 📊 **تقرير المعاملات المفصل** 📊
 
 🔍 **آخر 20 معاملة:**
@@ -3971,9 +3884,10 @@ async def transactions_purchases_handler(update: Update, context: CallbackContex
             await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user['role'] if user else "غير مسجل"))
             return
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+
+            cursor = conn.cursor()
         # معاملات الشراء
         cursor.execute("""
             SELECT COUNT(*), SUM(amount), AVG(amount)
@@ -3995,11 +3909,7 @@ async def transactions_purchases_handler(update: Update, context: CallbackContex
             ORDER BY t.created_at DESC
             LIMIT 10
         """)
-        recent_purchases = cursor.fetchall()
-        
-        conn.close()
-        
-        purchases_text = f"""
+        recent_purchases = cursor.fetchall()        purchases_text = f"""
 💳 **تقارير معاملات الشراء** 💳
 
 📊 **إحصائيات آخر 30 يوم:**
@@ -4057,9 +3967,10 @@ async def transactions_transfers_handler(update: Update, context: CallbackContex
             await query.edit_message_text(perm_error("مشرف أو مشرف أعلى", user['role'] if user else "غير مسجل"))
             return
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+
+            cursor = conn.cursor()
         # معاملات التحويل
         cursor.execute("""
             SELECT COUNT(*), SUM(amount), AVG(amount)
@@ -4081,11 +3992,7 @@ async def transactions_transfers_handler(update: Update, context: CallbackContex
             ORDER BY t.created_at DESC
             LIMIT 10
         """)
-        recent_transfers = cursor.fetchall()
-        
-        conn.close()
-        
-        transfers_text = f"""
+        recent_transfers = cursor.fetchall()        transfers_text = f"""
 💰 **تقارير معاملات التحويل** 💰
 
 📊 **إحصائيات آخر 30 يوم:**
@@ -4392,13 +4299,12 @@ async def create_quick_coupon_handler(update: Update, context: CallbackContext, 
             trial_code = 'A' + ''.join(random.choices(string.digits, k=8))
             
             # التحقق من عدم وجود الكود مسبقاً
-            conn = get_db_connection()
-            cursor = conn.cursor()
+            with get_db_context() as conn:
+
+                cursor = conn.cursor()
             cursor.execute('SELECT 1 FROM coupons WHERE coupon_code = ?', (trial_code,))
             if not cursor.fetchone():
-                coupon_code = trial_code
-                conn.close()
-                break
+                coupon_code = trial_code                break
             conn.close()
         
         if not coupon_code:
@@ -4406,9 +4312,9 @@ async def create_quick_coupon_handler(update: Update, context: CallbackContext, 
             return
         
         # إدراج الكوبون في قاعدة البيانات
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # إنشاء جدول الكوبونات إذا لم يكن موجوداً
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS coupons (
@@ -4435,10 +4341,7 @@ async def create_quick_coupon_handler(update: Update, context: CallbackContext, 
             VALUES (?, ?, ?, ?, ?)
         ''', (coupon_code, amount, user['id'], expiry_date.isoformat(), f'كوبون سريع {amount} ريال'))
         
-        conn.commit()
-        conn.close()
-        
-        success_text = f"""
+        conn.commit()        success_text = f"""
 ✅ **تم إنشاء الكوبون بنجاح!** ✅
 
 🎟️ **كود الكوبون:** `{coupon_code}`
@@ -4473,9 +4376,10 @@ async def coupons_stats_handler(update: Update, context: CallbackContext):
             await query.edit_message_text("❌ ليس لديك صلاحية لهذه العملية.")
             return
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
         
+            cursor = conn.cursor()
         # إحصائيات الكوبونات
         cursor.execute('SELECT COUNT(*) FROM coupons')
         total_coupons = cursor.fetchone()[0]
@@ -4490,11 +4394,7 @@ async def coupons_stats_handler(update: Update, context: CallbackContext):
         total_value = cursor.fetchone()[0]
         
         cursor.execute('SELECT COALESCE(SUM(amount), 0) FROM coupons WHERE is_used = 1')
-        used_value = cursor.fetchone()[0]
-        
-        conn.close()
-        
-        stats_text = f"""
+        used_value = cursor.fetchone()[0]        stats_text = f"""
 📊 **إحصائيات الكوبونات** 📊
 
 🎟️ **إجمالي الكوبونات:** {total_coupons:,}
@@ -4531,19 +4431,17 @@ async def list_coupons_handler(update: Update, context: CallbackContext):
             await query.edit_message_text("❌ ليس لديك صلاحية لهذه العملية.")
             return
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
         
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT coupon_code, amount, is_used, created_at, used_at
             FROM coupons 
             ORDER BY created_at DESC 
             LIMIT 10
         ''')
-        coupons = cursor.fetchall()
-        conn.close()
-        
-        if not coupons:
+        coupons = cursor.fetchall()        if not coupons:
             list_text = """
 📋 **قائمة الكوبونات** 📋
 

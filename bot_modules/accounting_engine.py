@@ -8,7 +8,7 @@ import logging
 import uuid
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
-from bot_modules.database import get_db_connection
+from bot_modules.database import get_db_connection, get_db_context
 from bot_modules.config import (
     ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY, ACCOUNT_TYPE_EQUITY,
     ACCOUNT_TYPE_REVENUE, ACCOUNT_TYPE_EXPENSE, ACCOUNT_CODE_ISSUANCE_EXPENSE,
@@ -56,9 +56,9 @@ class AccountingEngine:
     def create_journal_entry(description: str, created_by: int, reference_type: str = None, reference_id: str = None) -> str:
         """إنشاء قيد محاسبي جديد"""
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
+            with get_db_context() as conn:
+
+                cursor = conn.cursor()
             entry_id = str(uuid.uuid4())
             
             cursor.execute('''
@@ -66,10 +66,7 @@ class AccountingEngine:
                 VALUES (?, ?, ?, ?)
             ''', (entry_id, description, datetime.now(), created_by))
             
-            conn.commit()
-            conn.close()
-            
-            logger.info(f"Created journal entry: {entry_id} - {description}")
+            conn.commit()            logger.info(f"Created journal entry: {entry_id} - {description}")
             return entry_id
             
         except Exception as e:
@@ -81,17 +78,15 @@ class AccountingEngine:
                         user_id: int = None, ref_type: str = None, ref_id: str = None):
         """إضافة بند إلى القيد المحاسبي"""
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
+            with get_db_context() as conn:
+
+                cursor = conn.cursor()
             # البحث عن الحساب في chart_of_accounts (الجدول الرئيسي)
             cursor.execute('SELECT id FROM chart_of_accounts WHERE account_code = ?', (account_code,))
             account = cursor.fetchone()
             
             if not account:
-                logger.error(f"Account not found in chart_of_accounts: {account_code}")
-                conn.close()
-                return False
+                logger.error(f"Account not found in chart_of_accounts: {account_code}")                return False
             
             account_id = account['id']
             
@@ -186,9 +181,9 @@ class AccountingEngine:
     def get_account_balance(account_code: str) -> float:
         """الحصول على رصيد حساب محاسبي"""
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
+            with get_db_context() as conn:
+
+                cursor = conn.cursor()
             cursor.execute('''
                 SELECT 
                     COALESCE(SUM(debit_amount), 0) - COALESCE(SUM(credit_amount), 0) as balance
@@ -198,10 +193,7 @@ class AccountingEngine:
             ''', (account_code,))
             
             result = cursor.fetchone()
-            balance = result[0] if result else 0
-            
-            conn.close()
-            return balance
+            balance = result[0] if result else 0            return balance
             
         except Exception as e:
             logger.error(f"Error getting account balance: {e}")
@@ -211,9 +203,9 @@ class AccountingEngine:
     def get_trial_balance() -> List[Dict]:
         """الحصول على ميزان المراجعة"""
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
+            with get_db_context() as conn:
+
+                cursor = conn.cursor()
             cursor.execute('''
                 SELECT 
                     coa.account_code,
@@ -229,10 +221,7 @@ class AccountingEngine:
                 ORDER BY coa.account_code
             ''')
             
-            accounts = cursor.fetchall()
-            conn.close()
-            
-            return [dict(account) for account in accounts]
+            accounts = cursor.fetchall()            return [dict(account) for account in accounts]
             
         except Exception as e:
             logger.error(f"Error getting trial balance: {e}")
@@ -242,9 +231,9 @@ class AccountingEngine:
     def verify_balance_integrity():
         """التحقق من سلامة الميزان"""
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
+            with get_db_context() as conn:
+
+                cursor = conn.cursor()
             # إجمالي المدين والدائن
             cursor.execute('''
                 SELECT 
@@ -255,11 +244,7 @@ class AccountingEngine:
             
             result = cursor.fetchone()
             total_debit = result[0] if result else 0
-            total_credit = result[1] if result else 0
-            
-            conn.close()
-            
-            difference = abs(total_debit - total_credit)
+            total_credit = result[1] if result else 0            difference = abs(total_debit - total_credit)
             is_balanced = difference < 0.01  # تسامح صغير للأخطاء العشرية
             
             return {
@@ -277,9 +262,9 @@ class AccountingEngine:
     def backfill_missing_entries():
         """ملء القيود المحاسبية المفقودة للمعاملات السابقة"""
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
+            with get_db_context() as conn:
+
+                cursor = conn.cursor()
             # الحصول على المعاملات التي لا توجد لها قيود محاسبية
             cursor.execute('''
                 SELECT t.id, t.type, t.amount, t.from_user, t.to_user, t.description, t.created_at
@@ -289,10 +274,7 @@ class AccountingEngine:
                 ORDER BY t.created_at
             ''')
             
-            missing_transactions = cursor.fetchall()
-            conn.close()
-            
-            success_count = 0
+            missing_transactions = cursor.fetchall()            success_count = 0
             
             for transaction in missing_transactions:
                 trans_id, trans_type, amount, from_user, to_user, desc, created_at = transaction

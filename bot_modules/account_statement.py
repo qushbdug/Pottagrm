@@ -34,7 +34,7 @@ try:
 except ImportError:
     EXCEL_AVAILABLE = False
 
-from bot_modules.database import get_db_connection
+from bot_modules.database import get_db_connection, get_db_context
 from bot_modules.utils import get_user
 from bot_modules.config import EMOJIS, USER_ROLES
 from bot_modules.enhanced_error_messages import ErrorMessages
@@ -112,9 +112,9 @@ class AccountStatementGenerator:
     def get_user_transactions(user_id: int, days: Optional[int] = None):
         """الحصول على معاملات المستخدم"""
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
+            with get_db_context() as conn:
+
+                cursor = conn.cursor()
             if days:
                 cursor.execute('''
                     SELECT id, type, amount, description, created_at, 
@@ -141,9 +141,7 @@ class AccountStatementGenerator:
                     ORDER BY created_at DESC
                 ''', (user_id, user_id, user_id, user_id))
             
-            transactions = cursor.fetchall()
-            conn.close()
-            return transactions
+            transactions = cursor.fetchall()            return transactions
             
         except Exception as e:
             logger.error(f"Error getting user transactions: {e}")

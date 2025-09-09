@@ -30,7 +30,7 @@ from telegram.ext import (
 try:
     # Import configuration and database
     from config import *
-    from database import init_db, get_db_connection
+    from database import init_db, get_db_connection, get_db_context
     
     # Import utilities
     from utils import (
@@ -830,9 +830,9 @@ async def my_notifications_handler(update: Update, context):
         user = get_user(query.from_user.id)
         
         # Get recent notifications
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT * FROM smart_notifications 
             WHERE user_id = ? 
@@ -849,7 +849,6 @@ async def my_notifications_handler(update: Update, context):
         ''', (user['id'],))
         
         unread_count = cursor.fetchone()['unread_count']
-        conn.close()
         
         notif_text = f"""
 🔔 **إشعاراتي وتنبيهاتي** 🔔
@@ -891,9 +890,9 @@ async def buy_cards_handler(update: Update, context):
         user = get_user(query.from_user.id)
         
         # الحصول على الشبكات المتاحة
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT n.id, n.name, n.provider, n.location, COUNT(cc.id) as categories_count,
                    MIN(cc.price) as min_price, MAX(cc.price) as max_price
@@ -905,7 +904,6 @@ async def buy_cards_handler(update: Update, context):
             ORDER BY n.name
         ''')
         networks = cursor.fetchall()
-        conn.close()
         
         buy_text = f"""
 🛒 **شراء كروت الإنترنت** 🛒
@@ -1012,9 +1010,9 @@ async def supplier_panel_handler(update: Update, context):
         supplier_code = get_or_create_supplier_code(user['id'])
         
         # Get statistics
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # Count networks
         cursor.execute('SELECT COUNT(*) as count FROM networks WHERE supplier_id = ?', (user['id'],))
         networks_count = cursor.fetchone()['count']
@@ -1030,8 +1028,6 @@ async def supplier_panel_handler(update: Update, context):
         # Recent uploads
         cursor.execute('SELECT COUNT(*) as count FROM card_upload_batches WHERE supplier_id = ?', (user['id'],))
         recent_uploads = cursor.fetchone()['count']
-        
-        conn.close()
         
         # تحديد حالة الشبكة
         network_status = "✅ متاحة" if networks_count == 0 else "📶 مُنشأة"
@@ -1082,9 +1078,9 @@ async def view_networks_handler(update: Update, context):
         query = update.callback_query
         
         # الحصول على الشبكات المتاحة من قاعدة البيانات
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT n.id, n.name, n.provider, n.location, n.created_at,
                    COUNT(cc.id) as categories_count,
@@ -1098,7 +1094,6 @@ async def view_networks_handler(update: Update, context):
             ORDER BY n.created_at DESC
         ''')
         networks = cursor.fetchall()
-        conn.close()
         
         networks_text = f"""
 📶 **الشبكات المتاحة ({len(networks)} شبكة)** 📶
@@ -1187,9 +1182,9 @@ async def my_sent_ratings_handler(update: Update, context):
         user = get_user(query.from_user.id)
         
         # الحصول على مشتريات المستخدم للتقييم
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # البحث عن الشبكات التي اشترى منها المستخدم
         cursor.execute('''
             SELECT DISTINCT n.id, n.name, n.provider, n.location, 
@@ -1214,8 +1209,6 @@ async def my_sent_ratings_handler(update: Update, context):
             WHERE to_user = ? AND type = 'card_purchase'
         ''', (user['id'],))
         total_purchases, total_amount = cursor.fetchone()
-        
-        conn.close()
         
         ratings_text = f"""
 📝 **تقييماتي والمراجعات** 📝
@@ -1274,9 +1267,9 @@ async def transaction_details_handler(update: Update, context):
         user = get_user(query.from_user.id)
         
         # الحصول على معاملات المستخدم
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # آخر المعاملات
         cursor.execute('''
             SELECT id, from_user, to_user, amount, type, description, created_at
@@ -1299,8 +1292,6 @@ async def transaction_details_handler(update: Update, context):
         ''', (user['id'], user['id'], user['id'], user['id'], user['id'], user['id']))
         stats = cursor.fetchone()
         sent_count, received_count, sent_amount, received_amount = stats
-        
-        conn.close()
         
         details_text = f"""
 📊 **تفاصيل المعاملات** 📊
@@ -1384,9 +1375,9 @@ async def wallet_stats_handler(update: Update, context):
         user = get_user(query.from_user.id)
         
         # الحصول على إحصائيات المحفظة التفصيلية
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # إحصائيات هذا الشهر
         cursor.execute('''
             SELECT 
@@ -1421,8 +1412,6 @@ async def wallet_stats_handler(update: Update, context):
             LIMIT 3
         ''', (user['id'], user['id']))
         top_transaction_types = cursor.fetchall()
-        
-        conn.close()
         
         sent_month, received_month, spent_month, earned_month = monthly_stats
         weekly_transactions, weekly_change = weekly_stats
@@ -1538,11 +1527,11 @@ async def manage_networks_handler(update: Update, context):
         user = get_user(query.from_user.id)
         
         # Get user's networks
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('SELECT * FROM networks WHERE supplier_id = ? ORDER BY id DESC', (user['id'],))
         networks = cursor.fetchall()
-        conn.close()
         
         networks_text = f"""
 📶 **إدارة الشبكات** 📶
@@ -1614,9 +1603,10 @@ async def cards_reports_handler(update: Update, context):
         # Get cards statistics
         stats_by_category = get_cards_stats_by_category(user['id'])
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
         
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT 
                 COUNT(*) as total_cards,
@@ -1629,7 +1619,6 @@ async def cards_reports_handler(update: Update, context):
         ''', (user['id'],))
         
         stats = cursor.fetchone()
-        conn.close()
         
         reports_text = f"""
 📊 **تقارير الكروت المفصلة** 📊
@@ -1674,9 +1663,9 @@ async def sales_stats_handler(update: Update, context):
         query = update.callback_query
         
         # الحصول على إحصائيات المبيعات الفعلية
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # إجمالي المبيعات
         cursor.execute('''
             SELECT 
@@ -1722,8 +1711,6 @@ async def sales_stats_handler(update: Update, context):
             LIMIT 5
         ''')
         top_networks = cursor.fetchall()
-        
-        conn.close()
         
         # حساب المتوسطات
         avg_daily = monthly_revenue / 30 if monthly_revenue else 0
@@ -1781,8 +1768,9 @@ async def upload_history_handler(update: Update, context):
         user = get_user(query.from_user.id)
         
         # Get upload history
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT 
                 cb.*, n.name as network_name 
@@ -1794,7 +1782,6 @@ async def upload_history_handler(update: Update, context):
         ''', (user['id'],))
         
         uploads = cursor.fetchall()
-        conn.close()
         
         history_text = f"""
 📋 **سجل رفع الكروت** 📋
@@ -1838,9 +1825,9 @@ async def supplier_settings_handler(update: Update, context):
         supplier_code = get_or_create_supplier_code(user['id'])
         
         # الحصول على معلومات المزود التفصيلية
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # إحصائيات المزود
         cursor.execute('''
             SELECT COUNT(*) FROM networks WHERE created_by = ? AND is_active = 1
@@ -1862,8 +1849,6 @@ async def supplier_settings_handler(update: Update, context):
             WHERE n.created_by = ? AND c.is_sold = 1
         ''', (user['id'],))
         sold_cards = cursor.fetchone()[0] or 0
-        
-        conn.close()
         
                 # تحديد نوع الحساب
         role_names = {
@@ -2464,11 +2449,11 @@ async def show_final_confirmation(update: Update, context: CallbackContext):
         
         # الحصول على شبكة المستخدم (في النظام الجديد كل مزود له شبكة واحدة)
         user = get_user(update.message.from_user.id)
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('SELECT id, name FROM networks WHERE supplier_id = ? AND is_active = 1', (user['id'],))
         network = cursor.fetchone()
-        conn.close()
         
         if not network:
             await update.message.reply_text("""
@@ -2560,8 +2545,9 @@ async def confirm_simplified_upload(update: Update, context: CallbackContext):
         batch_id = str(uuid.uuid4())
         
         # تسجيل عملية الرفع في قاعدة البيانات
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO card_upload_batches (id, supplier_id, network_id, filename, total_cards, 
                                         successful_cards, failed_cards, upload_status, created_at)
@@ -2569,15 +2555,15 @@ async def confirm_simplified_upload(update: Update, context: CallbackContext):
         ''', (batch_id, user['id'], network_id, upload_data['filename'], 
               len(upload_data['valid_cards']), 0, 0, 'processing'))
         conn.commit()
-        conn.close()
         
         # معالجة الكروت مع السعر والحجم
         successful_count = 0
         failed_count = 0
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
         
+            cursor = conn.cursor()
         for card_number in upload_data['valid_cards']:
             try:
                 # التحقق من عدم وجود الكرت مسبقاً
@@ -2609,7 +2595,6 @@ async def confirm_simplified_upload(update: Update, context: CallbackContext):
         ''', (successful_count, failed_count, 'completed', batch_id))
         
         conn.commit()
-        conn.close()
         
         # مسح بيانات العملية
         context.user_data.clear()
@@ -2668,11 +2653,11 @@ async def process_network_selection(update: Update, context: CallbackContext):
             return
         
         # Get network info
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('SELECT name FROM networks WHERE id = ? AND supplier_id = ?', (network_id, user['id']))
         network = cursor.fetchone()
-        conn.close()
         
         if not network:
             await query.edit_message_text("❌ شبكة غير صحيحة.")
@@ -2744,11 +2729,11 @@ async def process_category_selection(update: Update, context: CallbackContext):
         context.user_data['selected_category'] = selected_category
         
         # Get network info
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('SELECT name FROM networks WHERE id = ?', (network_id,))
         network = cursor.fetchone()
-        conn.close()
         
         # Preview file content (first few lines)
         content = upload_data['content']
@@ -2821,16 +2806,16 @@ async def confirm_upload(update: Update, context: CallbackContext):
         import uuid
         batch_id = str(uuid.uuid4())
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
         
+            cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO card_upload_batches (id, supplier_id, network_id, filename, upload_status)
             VALUES (?, ?, ?, ?, 'processing')
         ''', (batch_id, user['id'], network_id, upload_data['filename']))
         
         conn.commit()
-        conn.close()
         
         # Process cards
         successful, failed, errors = process_uploaded_cards(
@@ -2987,8 +2972,9 @@ async def network_details_handler(update: Update, context: CallbackContext):
         user = get_user(query.from_user.id)
         
         # Get detailed network info
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT n.*, COUNT(nc.id) as card_count
             FROM networks n
@@ -2997,7 +2983,6 @@ async def network_details_handler(update: Update, context: CallbackContext):
             GROUP BY n.id
         ''', (user['id'],))
         networks = cursor.fetchall()
-        conn.close()
         
         details_text = f"""
 📊 **تفاصيل الشبكات المفصلة** 📊
@@ -3214,9 +3199,9 @@ async def sales_reports_handler(update: Update, context: CallbackContext):
         query = update.callback_query
         
         # الحصول على تقارير المبيعات الفعلية
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # مبيعات اليوم
         cursor.execute('''
             SELECT COUNT(*), COALESCE(SUM(amount), 0)
@@ -3251,8 +3236,6 @@ async def sales_reports_handler(update: Update, context: CallbackContext):
             LIMIT 3
         ''')
         top_hours = cursor.fetchall()
-        
-        conn.close()
         
         reports_text = f"""
 📈 **تقارير المبيعات التفصيلية** 📈
@@ -3323,11 +3306,11 @@ async def add_network_handler(update: Update, context: CallbackContext):
 """
         else:
             # التحقق من أن المزود لا يملك شبكة بالفعل
-            conn = get_db_connection()
-            cursor = conn.cursor()
+            with get_db_context() as conn:
+
+                cursor = conn.cursor()
             cursor.execute('SELECT COUNT(*) FROM networks WHERE supplier_id = ?', (user['id'],))
             existing_networks = cursor.fetchone()[0]
-            conn.close()
             
             if existing_networks > 0:
                 add_text = """
@@ -3382,9 +3365,9 @@ async def promotion_details_handler(update: Update, context: CallbackContext):
         query = update.callback_query
         
         # الحصول على العروض المتاحة
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # البحث عن العروض النشطة (افتراضياً من الشبكات ذات الأسعار المنخفضة)
         cursor.execute('''
             SELECT n.name, n.provider, n.location, 
@@ -3405,8 +3388,6 @@ async def promotion_details_handler(update: Update, context: CallbackContext):
             SELECT COUNT(*) FROM coupons WHERE is_used = 0
         ''')
         available_coupons = cursor.fetchone()[0] or 0
-        
-        conn.close()
         
         promo_text = f"""
 🎁 **العروض والخصومات المتاحة** 🎁
@@ -3476,9 +3457,9 @@ async def show_network_details(update: Update, context: CallbackContext, network
         query = update.callback_query
         
         # الحصول على تفاصيل الشبكة
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT n.id, n.name, n.provider, n.location, n.description, n.created_at,
                    COUNT(DISTINCT nc.card_value) as categories_count,
@@ -3511,8 +3492,6 @@ async def show_network_details(update: Update, context: CallbackContext, network
             ORDER BY nc.card_value ASC
         ''', (network_id,))
         categories = cursor.fetchall()
-        
-        conn.close()
         
         location_text = f"📍 {location}" if location else "📍 غير محدد"
         price_range = f"{min_price:,.0f} - {max_price:,.0f}" if min_price and max_price and min_price != max_price else f"{min_price:,.0f}" if min_price else "غير محدد"
@@ -3565,9 +3544,9 @@ async def legacy_search_networks_handler(update: Update, context: CallbackContex
         query = update.callback_query
         
         # الحصول على جميع الشبكات للبحث
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT n.id, n.name, n.provider, n.location,
                    COUNT(cc.id) as categories_count,
@@ -3581,7 +3560,6 @@ async def legacy_search_networks_handler(update: Update, context: CallbackContex
             ORDER BY available_cards DESC, n.created_at DESC
         ''')
         networks = cursor.fetchall()
-        conn.close()
         
         search_text = f"""
 🔍 **البحث في الشبكات** 🔍
@@ -3682,9 +3660,9 @@ async def personal_reports_handler(update: Update, context: CallbackContext):
         user = get_user(query.from_user.id)
         
         # الحصول على إحصائيات المستخدم
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # إحصائيات المعاملات
         cursor.execute('''
             SELECT 
@@ -3712,8 +3690,6 @@ async def personal_reports_handler(update: Update, context: CallbackContext):
         
         monthly_stats = cursor.fetchone()
         monthly_trans, monthly_amount = monthly_stats
-        
-        conn.close()
         
         reports_text = f"""
 📊 **تقاريري الشخصية** 📊
@@ -3765,9 +3741,9 @@ async def promotions_handler(update: Update, context: CallbackContext):
         user = get_user(query.from_user.id)
         
         # الحصول على العروض المتاحة
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # البحث عن أفضل العروض (أقل الأسعار)
         cursor.execute('''
             SELECT n.name, n.provider, n.location, MIN(cc.price) as best_price, COUNT(cc.id) as categories
@@ -3784,8 +3760,6 @@ async def promotions_handler(update: Update, context: CallbackContext):
         # الكوبونات المتاحة
         cursor.execute('SELECT COUNT(*) FROM coupons WHERE is_used = 0')
         available_coupons = cursor.fetchone()[0] or 0
-        
-        conn.close()
         
         promotions_text = f"""
 🎁 **العروض والخصومات** 🎁
@@ -3848,9 +3822,9 @@ async def my_notifications_handler(update: Update, context: CallbackContext):
         user = get_user(query.from_user.id)
         
         # الحصول على آخر المعاملات كإشعارات
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT type, amount, description, created_at
             FROM transactions 
@@ -3860,7 +3834,6 @@ async def my_notifications_handler(update: Update, context: CallbackContext):
         ''', (user['id'], user['id']))
         
         recent_transactions = cursor.fetchall()
-        conn.close()
         
         notifications_text = f"""
 🔔 **إشعاراتي** 🔔
@@ -3995,9 +3968,9 @@ async def transfer_history_handler(update: Update, context: CallbackContext):
         user = get_user(query.from_user.id)
         
         # الحصول على آخر التحويلات
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT from_user, to_user, amount, description, created_at
             FROM transactions 
@@ -4007,7 +3980,6 @@ async def transfer_history_handler(update: Update, context: CallbackContext):
         ''', (user['id'], user['id']))
         
         transfers = cursor.fetchall()
-        conn.close()
         
         history_text = f"""
 📋 **سجل التحويلات** 📋
@@ -4125,9 +4097,9 @@ async def view_full_profile_handler(update: Update, context: CallbackContext):
             return
         
         # الحصول على إحصائيات مفصلة للمستخدم
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # إحصائيات المعاملات
         cursor.execute('SELECT COUNT(*) FROM transactions WHERE user_id = ?', (user['id'],))
         total_transactions = cursor.fetchone()[0]
@@ -4153,8 +4125,6 @@ async def view_full_profile_handler(update: Update, context: CallbackContext):
             LIMIT 5
         ''', (user['id'],))
         recent_activities = cursor.fetchall()
-        
-        conn.close()
         
         # تنسيق النشاطات الأخيرة
         activities_text = ""
@@ -4325,9 +4295,9 @@ async def account_status_handler(update: Update, context: CallbackContext):
         user = get_user(query.from_user.id)
         
         # الحصول على إحصائيات الحساب
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # آخر نشاط
         cursor.execute('''
             SELECT MAX(created_at) FROM transactions WHERE from_user = ? OR to_user = ?
@@ -4339,8 +4309,6 @@ async def account_status_handler(update: Update, context: CallbackContext):
             SELECT COUNT(*) FROM transactions WHERE from_user = ? OR to_user = ?
         ''', (user['id'], user['id']))
         total_transactions = cursor.fetchone()[0] or 0
-        
-        conn.close()
         
         # تحديد مستوى النشاط
         if total_transactions >= 50:
@@ -4506,16 +4474,15 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
             return
         
         # Execute the transfer
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # Get target user details
         cursor.execute('SELECT * FROM users WHERE id = ?', (target_user_id,))
         target_user = cursor.fetchone()
         
         if not target_user:
             await query.edit_message_text(f"{EMOJIS['error']} المستخدم المستهدف غير موجود.")
-            conn.close()
             return
         
         # Create transfer transactions
@@ -4819,9 +4786,9 @@ async def process_supplier_network_creation(update: Update, context: CallbackCon
             description = context.user_data.get('network_description')
             
             try:
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                
+                with get_db_context() as conn:
+
+                    cursor = conn.cursor()
                 # إدراج مع supplier_id المطلوب
                 cursor.execute('''
                     INSERT INTO networks (supplier_id, name, city, provider, description, location, created_by, is_active, is_approved, created_at)
@@ -4830,7 +4797,6 @@ async def process_supplier_network_creation(update: Update, context: CallbackCon
                 
                 network_id = cursor.lastrowid
                 conn.commit()
-                conn.close()
                 context.user_data.clear()
                 
                 await update.message.reply_text(
@@ -4894,9 +4860,9 @@ async def show_wallet_page(update: Update, context: CallbackContext, user: dict,
         TRANSACTIONS_PER_PAGE = 4  # 4 معاملات لكل صفحة
         
         # الحصول على جميع المعاملات مع إحصائيات التصفح
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # إجمالي عدد المعاملات
         cursor.execute('''
             SELECT COUNT(*) FROM transactions 
@@ -4936,8 +4902,6 @@ async def show_wallet_page(update: Update, context: CallbackContext, user: dict,
         
         stats = cursor.fetchone()
         total_count, sent_amount, received_amount = stats
-        
-        conn.close()
         
         # حساب التقييم
         rating_data = calculate_user_rating(user['id'])
@@ -5109,11 +5073,11 @@ async def confirm_user_transfer(update: Update, context: CallbackContext, user_i
     """تأكيد التحويل للمستخدم - معالج مفقود"""
     try:
         # Get target user info
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('SELECT * FROM users WHERE id = ?', (int(user_id),))
         target_user = cursor.fetchone()
-        conn.close()
         
         if not target_user:
             query = update.callback_query
@@ -5160,9 +5124,9 @@ async def show_network_categories(update: Update, context: CallbackContext, netw
             return
         
         # الحصول على معلومات الشبكة
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('SELECT name, provider FROM networks WHERE id = ? AND is_active = 1', (network_id,))
         network = cursor.fetchone()
         
@@ -5186,8 +5150,6 @@ async def show_network_categories(update: Update, context: CallbackContext, netw
             ORDER BY nc.card_value ASC
         ''', (network_id,))
         categories = cursor.fetchall()
-        
-        conn.close()
         
         categories_text = f"""
 🛒 **شراء كروت من {network_name}** 🛒
@@ -5250,9 +5212,9 @@ async def confirm_card_purchase(update: Update, context: CallbackContext, networ
             return
         
         # الحصول على معلومات الشبكة
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('SELECT name, provider FROM networks WHERE id = ? AND is_active = 1', (network_id,))
         network = cursor.fetchone()
         
@@ -5269,8 +5231,6 @@ async def confirm_card_purchase(update: Update, context: CallbackContext, networ
             WHERE network_id = ? AND card_value = ? AND is_sold = 0
         ''', (network_id, card_price))
         available_count = cursor.fetchone()[0]
-        
-        conn.close()
         
         if available_count == 0:
             await query.edit_message_text(
@@ -5347,9 +5307,9 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
         context.user_data['purchase_processing'] = True
         
         # الحصول على معلومات الشبكة
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # بدء معاملة قاعدة البيانات
         cursor.execute('BEGIN TRANSACTION')
         
@@ -5513,7 +5473,6 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             raise e
             
         finally:
-            conn.close()
             
     except Exception as e:
         logger.error(f"Error in process card purchase: {e}")

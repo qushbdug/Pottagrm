@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext
 
-from bot_modules.database import get_db_connection
+from bot_modules.database import get_db_connection, get_db_context
 from bot_modules.utils import get_user
 from bot_modules.config import EMOJIS
 
@@ -86,9 +86,10 @@ class AccountingSearch:
                 await query.edit_message_text(f"{EMOJIS['error']} هذه الميزة مقتصرة على الإدارة.")
                 return
             
-            conn = get_db_connection()
-            cursor = conn.cursor()
+            with get_db_context() as conn:
+
             
+                cursor = conn.cursor()
             # إحصائيات اليوم
             cursor.execute('''
                 SELECT type, COUNT(*), SUM(amount)
@@ -109,11 +110,7 @@ class AccountingSearch:
             
             # إجمالي المعاملات
             cursor.execute('SELECT COUNT(*), SUM(amount) FROM transactions')
-            total_stats = cursor.fetchone()
-            
-            conn.close()
-            
-            stats_text = f"""
+            total_stats = cursor.fetchone()            stats_text = f"""
 📊 **إحصائيات المعاملات السريعة** 📊
 
 📅 **معاملات اليوم:**
@@ -173,9 +170,10 @@ class AccountingSearch:
                 await query.edit_message_text(f"{EMOJIS['error']} هذه الميزة مقتصرة على الإدارة.")
                 return
             
-            conn = get_db_connection()
-            cursor = conn.cursor()
+            with get_db_context() as conn:
+
             
+                cursor = conn.cursor()
             # آخر 10 معاملات
             cursor.execute('''
                 SELECT t.id, t.type, t.amount, t.description, t.created_at,
@@ -187,10 +185,7 @@ class AccountingSearch:
                 LIMIT 10
             ''')
             
-            recent_transactions = cursor.fetchall()
-            conn.close()
-            
-            report_text = f"""
+            recent_transactions = cursor.fetchall()            report_text = f"""
 📋 **تقرير المعاملات السريع** 📋
 
 ⏰ **آخر 10 معاملات:**

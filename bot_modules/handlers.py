@@ -139,12 +139,11 @@ async def get_phone(update: Update, context: CallbackContext) -> int:
             return GET_PHONE
         
         # Check if phone already exists
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('SELECT id FROM users WHERE phone = ?', (phone,))
-        if cursor.fetchone():
-            conn.close()
-            await update.message.reply_text(f"{EMOJIS['error']} رقم الهاتف مسجل مسبقاً.")
+        if cursor.fetchone():            await update.message.reply_text(f"{EMOJIS['error']} رقم الهاتف مسجل مسبقاً.")
             return GET_PHONE
         conn.close()
         
@@ -183,9 +182,9 @@ async def choose_role(update: Update, context: CallbackContext) -> int:
         role = query.data.split('_')[1]  # Extract role from callback_data
         
         # Create user account
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # Generate unique wallet number
         wallet_number = None
         for _ in range(50):
@@ -225,10 +224,7 @@ async def choose_role(update: Update, context: CallbackContext) -> int:
             'wallet_number': wallet_number
         })
         
-        conn.commit()
-        conn.close()
-        
-        # Store data before clearing
+        conn.commit()        # Store data before clearing
         full_name = context.user_data.get('full_name', 'المستخدم')
         phone = context.user_data.get('phone', 'غير محدد')
         
@@ -387,9 +383,9 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
         update_user_activity(user['id'])
         
         # Get recent transactions
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT t.*, u.full_name as related_user
             FROM transactions t
@@ -416,10 +412,7 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
             WHERE user_id = ?
         ''', (user['id'],))
         
-        summary = cursor.fetchone()
-        conn.close()
-        
-        # Handle None values safely
+        summary = cursor.fetchone()        # Handle None values safely
         total_credits = summary['total_credits'] or 0.0
         total_debits = summary['total_debits'] or 0.0
         total_transactions = summary['total_transactions'] or 0
@@ -731,10 +724,10 @@ async def process_balance_send(update: Update, context: CallbackContext):
             return
         
         # Find target user
-        from bot_modules.database import get_db_connection
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        from bot_modules.database import get_db_connection, get_db_context
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('SELECT * FROM users WHERE wallet_number = ?', (target_wallet,))
         target_user = cursor.fetchone()
         
@@ -748,9 +741,7 @@ async def process_balance_send(update: Update, context: CallbackContext):
 • صحة رقم المحفظة
 • أن الرقم يتكون من 9 أرقام
 • أن الرقم يبدأ بـ 79
-""", parse_mode='Markdown')
-            conn.close()
-            return
+""", parse_mode='Markdown')            return
         
         if target_user['id'] == user['id']:
             await update.message.reply_text(f"{EMOJIS['error']} لا يمكنك إرسال رصيد لنفسك!")
@@ -884,10 +875,10 @@ async def process_transfer_step1(update: Update, context: CallbackContext):
         search_input = update.message.text.strip()
         
         # Find target user by phone or wallet number
-        from bot_modules.database import get_db_connection
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        from bot_modules.database import get_db_connection, get_db_context
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # Search by wallet number first, then by phone
         cursor.execute('SELECT * FROM users WHERE wallet_number = ? OR phone = ?', (search_input, search_input))
         target_user = cursor.fetchone()
@@ -904,9 +895,7 @@ async def process_transfer_step1(update: Update, context: CallbackContext):
 • أن الرقم مكتوب بالطريقة الصحيحة
 
 📝 جرب مرة أخرى أو اكتب /cancel للإلغاء
-""", parse_mode='Markdown')
-            conn.close()
-            return
+""", parse_mode='Markdown')            return
         
         if target_user['id'] == user['id']:
             await update.message.reply_text(f"{EMOJIS['error']} لا يمكنك إرسال رصيد لنفسك!")
@@ -1064,17 +1053,15 @@ async def process_simple_admin_send(update: Update, context: CallbackContext):
             return
         
         # Find target user
-        from bot_modules.database import get_db_connection
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        from bot_modules.database import get_db_connection, get_db_context
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('SELECT * FROM users WHERE wallet_number = ?', (wallet_number,))
         target_user = cursor.fetchone()
         
         if not target_user:
-            await update.message.reply_text(f"❌ لم يتم العثور على محفظة: {wallet_number}")
-            conn.close()
-            return
+            await update.message.reply_text(f"❌ لم يتم العثور على محفظة: {wallet_number}")            return
         
         # Transfer money
         import uuid
@@ -1168,17 +1155,15 @@ async def process_simple_transfer(update: Update, context: CallbackContext):
             return
         
         # Find target user
-        from bot_modules.database import get_db_connection
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        from bot_modules.database import get_db_connection, get_db_context
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('SELECT * FROM users WHERE wallet_number = ?', (wallet_number,))
         target_user = cursor.fetchone()
         
         if not target_user:
-            await update.message.reply_text(f"❌ لم يتم العثور على محفظة: {wallet_number}")
-            conn.close()
-            return
+            await update.message.reply_text(f"❌ لم يتم العثور على محفظة: {wallet_number}")            return
         
         if target_user['id'] == user['id']:
             await update.message.reply_text("❌ لا يمكنك إرسال رصيد لنفسك!")
@@ -1335,8 +1320,9 @@ async def personal_reports_handler(update: Update, context: CallbackContext):
             else:
                 await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
             return
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT 
                 COUNT(*) as total_transactions,
@@ -1351,9 +1337,7 @@ async def personal_reports_handler(update: Update, context: CallbackContext):
             WHERE from_user = ? OR to_user = ?
             ORDER BY created_at DESC LIMIT 5
         ''', (user['id'], user['id']))
-        recent = cursor.fetchall()
-        conn.close()
-        total_in = (summary['total_in'] or 0)
+        recent = cursor.fetchall()        total_in = (summary['total_in'] or 0)
         total_out = (summary['total_out'] or 0)
         net = total_in - total_out
         text = f"""
@@ -1578,9 +1562,10 @@ async def process_user_search(update: Update, context: CallbackContext, search_t
         search_text = search_text.strip()
         search_results = []
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
         
+            cursor = conn.cursor()
         if search_text.startswith('الاسم '):
             # البحث بالاسم
             name = search_text[5:].strip()
@@ -1633,10 +1618,7 @@ async def process_user_search(update: Update, context: CallbackContext, search_t
                 LIMIT 10
             """, (f"%{search_text}%", f"%{search_text}%", f"%{search_text}%", f"%{search_text}%", user['id']))
 
-        search_results = cursor.fetchall()
-        conn.close()
-
-        if not search_results:
+        search_results = cursor.fetchall()        if not search_results:
             await update.message.reply_text(
                 f"❌ **لم يتم العثور على نتائج**\n\n"
                 f"🔍 تم البحث عن: `{search_text}`\n"
@@ -1799,9 +1781,10 @@ async def show_network_details(update: Update, context: CallbackContext, network
             await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
             return
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+
+            cursor = conn.cursor()
         # الحصول على بيانات الشبكة
         cursor.execute('SELECT * FROM networks WHERE id = ? AND is_active = 1', (network_id,))
         network = cursor.fetchone()
@@ -1818,10 +1801,7 @@ async def show_network_details(update: Update, context: CallbackContext, network
             ORDER BY price
         ''', (network_id,))
         
-        categories = cursor.fetchall()
-        conn.close()
-        
-        # تنسيق معلومات الشبكة
+        categories = cursor.fetchall()        # تنسيق معلومات الشبكة
         text = f"""
 🏢 **{network[1]}** - {network[2]}
 
@@ -1899,9 +1879,10 @@ async def show_mobile_networks(update: Update, context: CallbackContext):
             await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
             return
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+
+            cursor = conn.cursor()
         # البحث عن شبكات المحمول
         cursor.execute('''
             SELECT 
@@ -1924,10 +1905,7 @@ async def show_mobile_networks(update: Update, context: CallbackContext):
             ORDER BY n.name
         ''')
         
-        networks = cursor.fetchall()
-        conn.close()
-        
-        text = f"""
+        networks = cursor.fetchall()        text = f"""
 📱 **شبكات المحمول** 📱
 
 👤 **{user['full_name']}**
@@ -1986,9 +1964,10 @@ async def show_home_networks(update: Update, context: CallbackContext):
             await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
             return
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+
+            cursor = conn.cursor()
         # البحث عن شبكات الإنترنت المنزلي
         cursor.execute('''
             SELECT 
@@ -2011,10 +1990,7 @@ async def show_home_networks(update: Update, context: CallbackContext):
             ORDER BY n.name
         ''')
         
-        networks = cursor.fetchall()
-        conn.close()
-        
-        text = f"""
+        networks = cursor.fetchall()        text = f"""
 🏠 **إنترنت منزلي** 🏠
 
 👤 **{user['full_name']}**
@@ -2249,9 +2225,10 @@ async def process_card_purchase(update: Update, context: CallbackContext, catego
             await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
             return
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
         
+            cursor = conn.cursor()
         # الحصول على بيانات فئة الكرت
         cursor.execute('''
             SELECT cc.*, n.name as network_name
@@ -2318,11 +2295,7 @@ async def process_card_purchase(update: Update, context: CallbackContext, catego
             confirmation_text,
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
-        )
-        
-        conn.close()
-        
-    except Exception as e:
+        )    except Exception as e:
         logger.error(f"Error in process card purchase: {e}")
         await update.callback_query.edit_message_text("❌ حدث خطأ في معالجة الشراء")
 
@@ -2395,9 +2368,10 @@ async def supplier_manage_networks(update: Update, context: CallbackContext):
             await update.callback_query.edit_message_text("❌ هذه الميزة متاحة للمزودين فقط")
             return
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
         
+            cursor = conn.cursor()
         # الحصول على شبكات المزود
         cursor.execute('''
             SELECT id, name, description, location, is_active, created_at
@@ -2419,11 +2393,7 @@ async def supplier_manage_networks(update: Update, context: CallbackContext):
         
         sales_data = cursor.fetchone()
         total_sold = sales_data[0] if sales_data else 0
-        total_revenue = sales_data[1] if sales_data else 0.0
-        
-        conn.close()
-        
-        text = f"""
+        total_revenue = sales_data[1] if sales_data else 0.0        text = f"""
 🏪 **إدارة شبكاتي** 🏪
 
 👤 المزود: **{user['full_name']}**
@@ -2566,9 +2536,10 @@ async def process_network_creation(update: Update, context: CallbackContext, net
             await update.message.reply_text("❌ اسم الشبكة طويل جداً. الحد الأقصى 50 حرف")
             return
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
         
+            cursor = conn.cursor()
         # التحقق من عدم تكرار الاسم
         cursor.execute('SELECT id FROM networks WHERE name = ?', (network_name,))
         if cursor.fetchone():
@@ -2583,10 +2554,7 @@ async def process_network_creation(update: Update, context: CallbackContext, net
         
         network_id = cursor.lastrowid
         
-        conn.commit()
-        conn.close()
-        
-        # طلب وصف الشبكة
+        conn.commit()        # طلب وصف الشبكة
         text = f"""
 ✅ **تم إنشاء الشبكة بنجاح!** ✅
 
@@ -2652,9 +2620,10 @@ async def process_network_description(update: Update, context: CallbackContext, 
             await update.message.reply_text("❌ الوصف طويل جداً. الحد الأقصى 100 حرف")
             return
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
         
+            cursor = conn.cursor()
         # تحديث وصف الشبكة
         cursor.execute('''
             UPDATE networks 
@@ -2662,10 +2631,7 @@ async def process_network_description(update: Update, context: CallbackContext, 
             WHERE id = ? AND created_by = ?
         ''', (description, network_id, user['id']))
         
-        conn.commit()
-        conn.close()
-        
-        # طلب الموقع
+        conn.commit()        # طلب الموقع
         text = f"""
 ✅ **تم تحديث وصف الشبكة بنجاح!** ✅
 
@@ -2744,9 +2710,10 @@ async def process_network_location(update: Update, context: CallbackContext, loc
             await update.message.reply_text("❌ الموقع طويل جداً. الحد الأقصى 50 حرف")
             return
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
         
+            cursor = conn.cursor()
         # تحديث موقع الشبكة
         cursor.execute('''
             UPDATE networks 
@@ -2754,10 +2721,7 @@ async def process_network_location(update: Update, context: CallbackContext, loc
             WHERE id = ? AND created_by = ?
         ''', (location, network_id, user['id']))
         
-        conn.commit()
-        conn.close()
-        
-        # عرض خيارات إضافة فئات الكروت
+        conn.commit()        # عرض خيارات إضافة فئات الكروت
         text = f"""
 ✅ **تم تحديث موقع الشبكة بنجاح!** ✅
 
@@ -2914,9 +2878,10 @@ async def process_network_search(update: Update, context: CallbackContext, searc
             await update.message.reply_text("❌ كلمة البحث قصيرة جداً. أدخل على الأقل حرفين")
             return
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with get_db_context() as conn:
+
         
+            cursor = conn.cursor()
         # البحث في الشبكات
         cursor.execute('''
             SELECT 
@@ -2944,10 +2909,7 @@ async def process_network_search(update: Update, context: CallbackContext, searc
             f"%{search_term}%", f"%{search_term}%"
         ))
         
-        search_results = cursor.fetchall()
-        conn.close()
-        
-        if not search_results:
+        search_results = cursor.fetchall()        if not search_results:
             text = f"""
 ❌ **لم يتم العثور على نتائج** ❌
 
@@ -3145,9 +3107,9 @@ async def process_coupon_redemption(update: Update, context: CallbackContext):
         )
         
         # البحث عن الكوبون في قاعدة البيانات
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT id, amount, is_used, used_by, expiry_date, description
             FROM coupons 
@@ -3156,9 +3118,7 @@ async def process_coupon_redemption(update: Update, context: CallbackContext):
         
         coupon = cursor.fetchone()
         
-        if not coupon:
-            conn.close()
-            await update.message.reply_text(
+        if not coupon:            await update.message.reply_text(
                 "❌ **كوبون غير صحيح** ❌\n\n"
                 "🔍 **رقم الكوبون غير موجود**\n\n"
                 "💡 **تأكد من:**\n"
@@ -3421,19 +3381,16 @@ async def process_supplier_network_creation(update: Update, context: CallbackCon
             description = context.user_data.get('network_description')
             
             try:
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                
+                with get_db_context() as conn:
+
+                    cursor = conn.cursor()
                 cursor.execute('''
                     INSERT INTO networks (supplier_id, name, city, provider, description, location, created_by, is_active, is_approved, created_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, CURRENT_TIMESTAMP)
                 ''', (user['id'], network_name, text, provider, description, text, user['id']))
                 
                 network_id = cursor.lastrowid
-                conn.commit()
-                conn.close()
-                
-                context.user_data.clear()
+                conn.commit()                context.user_data.clear()
                 
                 await update.message.reply_text(
                     f"✅ **تم إنشاء الشبكة بنجاح!**\n\n🌐 **{network_name}**\n👤 {provider}\n📍 {text}\n🆔 معرف: #{network_id}",

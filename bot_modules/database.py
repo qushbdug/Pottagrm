@@ -8,32 +8,192 @@ import logging
 import sqlite3
 import uuid
 import random
+import threading
+import time
 from datetime import datetime
 from bot_modules.config import *
 
 logger = logging.getLogger(__name__)
 
 def get_db_connection():
-    """Get database connection with error handling"""
+    """Get database connection with error handling and optimized settings"""
     try:
-        conn = sqlite3.connect(DB_PATH, timeout=30.0)
-        conn.execute('PRAGMA foreign_keys = ON')
+        conn = sqlite3.connect(DB_PATH, timeout=60.0, check_same_thread=False)
+        # Enable WAL mode for better concurrency
         conn.execute('PRAGMA journal_mode = WAL')
+        # Set synchronous to NORMAL for better performance while maintaining safety
         conn.execute('PRAGMA synchronous = NORMAL')
-        conn.execute('PRAGMA cache_size = 1000')
+        # Enable foreign keys
+        conn.execute('PRAGMA foreign_keys = ON')
+        # Optimize cache and temp storage
+        conn.execute('PRAGMA cache_size = 2000')
         conn.execute('PRAGMA temp_store = memory')
+        # Set busy timeout to handle concurrent access
+        conn.execute('PRAGMA busy_timeout = 30000')  # 30 seconds
+        # Enable shared cache for better memory usage
+        conn.execute('PRAGMA cache_shared = ON')
         conn.row_factory = sqlite3.Row
         return conn
     except Exception as e:
         logger.error(f"Database connection error: {e}")
         raise
 
+class DatabaseContextManager:
+    """Context manager for database connections to ensure proper cleanup"""
+    def __init__(self):
+        self.conn = None
+        
+    def __enter__(self):
+        self.conn = get_db_connection()
+        return self.conn
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.conn:
+            if exc_type is None:
+                try:
+                    self.conn.commit()
+                except Exception as e:
+                    logger.error(f"Error committing transaction: {e}")
+                    self.conn.rollback()
+            else:
+                self.conn.rollback()
+            self.conn.close()
+
+def get_db_context():
+    """Get database context manager for safe connection handling"""
+    return DatabaseContextManager()
+
+class DatabaseConnectionPool:
+    """Simple connection pool to manage database connections efficiently"""
+    def __init__(self, max_connections=10):
+        self.max_connections = max_connections
+        self.connections = []
+        self.in_use = set()
+        self.lock = threading.Lock()
+        
+    def get_connection(self):
+        """Get a connection from the pool"""
+        with self.lock:
+            # Try to get an existing free connection
+            for conn in self.connections:
+                if conn not in self.in_use:
+                    self.in_use.add(conn)
+                    return conn
+            
+            # Create new connection if under limit
+            if len(self.connections) < self.max_connections:
+                conn = get_db_connection()
+                self.connections.append(conn)
+                self.in_use.add(conn)
+                return conn
+            
+            # Wait for a connection to become available
+            return self._wait_for_connection()
+    
+    def _wait_for_connection(self):
+        """Wait for a connection to become available"""
+        for _ in range(30):  # Wait up to 3 seconds
+            time.sleep(0.1)
+            with self.lock:
+                for conn in self.connections:
+                    if conn not in self.in_use:
+                        self.in_use.add(conn)
+                        return conn
+        
+        # If still no connection available, create a temporary one
+        logger.warning("Connection pool exhausted, creating temporary connection")
+        return get_db_connection()
+    
+    def return_connection(self, conn):
+        """Return a connection to the pool"""
+        with self.lock:
+            if conn in self.in_use:
+                self.in_use.remove(conn)
+    
+    def close_all(self):
+        """Close all connections in the pool"""
+        with self.lock:
+            for conn in self.connections:
+                try:
+                    conn.close()
+                except:
+                    pass
+            self.connections.clear()
+            self.in_use.clear()
+
+# Global connection pool instance
+_connection_pool = DatabaseConnectionPool()
+
+class PooledDatabaseContextManager:
+    """Context manager using connection pool"""
+    def __init__(self):
+        self.conn = None
+        
+    def __enter__(self):
+        self.conn = _connection_pool.get_connection()
+        return self.conn
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.conn:
+            if exc_type is None:
+                try:
+                    self.conn.commit()
+                except Exception as e:
+                    logger.error(f"Error committing transaction: {e}")
+                    self.conn.rollback()
+            else:
+                self.conn.rollback()
+            _connection_pool.return_connection(self.conn)
+
+def get_pooled_db_context():
+    """Get pooled database context manager for better performance"""
+    return PooledDatabaseContextManager()
+
+def execute_with_retry(operation_func, max_retries=3, delay=0.1):
+    """Execute database operation with retry logic for handling locks"""
+    for attempt in range(max_retries):
+        try:
+            return operation_func()
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e).lower() and attempt < max_retries - 1:
+                logger.warning(f"Database locked, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                time.sleep(delay)
+                delay *= 2  # Exponential backoff
+                continue
+            else:
+                raise
+        except Exception as e:
+            logger.error(f"Database operation failed: {e}")
+            raise
+    
+    raise sqlite3.OperationalError("Database operation failed after maximum retries")
+
+def safe_execute(cursor, query, params=None, fetch_one=False, fetch_all=False):
+    """Safely execute a database query with proper error handling"""
+    try:
+        if params:
+            cursor.execute(query, params)
+        else:
+            cursor.execute(query)
+        
+        if fetch_one:
+            return cursor.fetchone()
+        elif fetch_all:
+            return cursor.fetchall()
+        else:
+            return cursor.rowcount
+    except sqlite3.Error as e:
+        logger.error(f"Database query error: {e}")
+        logger.error(f"Query: {query}")
+        logger.error(f"Params: {params}")
+        raise
+
 def init_db():
     """Initialize database with all required tables"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_db_context() as conn:
+        cursor = conn.cursor()
 
-    try:
+        try:
         # Users table with enhanced fields
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
@@ -781,12 +941,8 @@ def init_db():
         
         # Data insertion is handled separately to avoid conflicts
 
-        conn.commit()
-        logger.info("Database initialized successfully")
-        
-    except Exception as e:
-        logger.error(f"Database initialization error: {e}")
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+            logger.info("Database initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Database initialization error: {e}")
+            raise

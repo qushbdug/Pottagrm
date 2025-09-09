@@ -20,7 +20,7 @@ try:
 except ImportError:
     EXCEL_AVAILABLE = False
 
-from bot_modules.database import get_db_connection
+from bot_modules.database import get_db_connection, get_db_context
 from bot_modules.utils import get_user
 from bot_modules.config import EMOJIS
 
@@ -209,9 +209,9 @@ class ExportSystem:
         ws['B4'] = datetime.now().strftime('%Y-%m-%d %H:%M')
         
         # الحصول على البيانات
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # استعلام الأرباح
         if start_date:
             cursor.execute('''
@@ -265,11 +265,7 @@ class ExportSystem:
         # الإجمالي
         summary_row = len(profits_data) + 8
         ws.cell(row=summary_row, column=1, value="الإجمالي").font = Font(bold=True)
-        ws.cell(row=summary_row, column=2, value=f"{total_revenue:,.2f} ريال").font = Font(bold=True)
-        
-        conn.close()
-        
-        # تنسيق الأعمدة
+        ws.cell(row=summary_row, column=2, value=f"{total_revenue:,.2f} ريال").font = Font(bold=True)        # تنسيق الأعمدة
         for col in range(1, 5):
             ws.column_dimensions[get_column_letter(col)].width = 20
         
@@ -371,9 +367,9 @@ class ExportSystem:
         ws['B3'] = period_name
         
         # الحصول على بيانات العملاء
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         if start_date:
             cursor.execute('''
                 SELECT u.full_name, u.phone, u.balance, u.created_at,
@@ -397,10 +393,7 @@ class ExportSystem:
                 ORDER BY purchases DESC, u.balance DESC
             ''')
         
-        customers = cursor.fetchall()
-        conn.close()
-        
-        # عناوين الجدول
+        customers = cursor.fetchall()        # عناوين الجدول
         headers = ['اسم العميل', 'رقم الهاتف', 'الرصيد الحالي', 'تاريخ التسجيل', 'عدد المعاملات', 'إجمالي المشتريات']
         for col, header in enumerate(headers, 1):
             ws.cell(row=5, column=col, value=header).font = Font(bold=True)
@@ -441,9 +434,9 @@ class ExportSystem:
         ws['B3'] = period_name
         
         # الحصول على بيانات المزودين
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         if start_date:
             cursor.execute('''
                 SELECT u.full_name, u.phone, u.balance, u.created_at,
@@ -467,10 +460,7 @@ class ExportSystem:
                 ORDER BY revenue DESC, u.balance DESC
             ''')
         
-        suppliers = cursor.fetchall()
-        conn.close()
-        
-        # عناوين الجدول
+        suppliers = cursor.fetchall()        # عناوين الجدول
         headers = ['اسم المزود', 'رقم الهاتف', 'الرصيد الحالي', 'تاريخ التسجيل', 'عدد المبيعات', 'إجمالي الإيرادات']
         for col, header in enumerate(headers, 1):
             ws.cell(row=5, column=col, value=header).font = Font(bold=True)
@@ -514,9 +504,9 @@ class ExportSystem:
         ws_summary['B4'] = datetime.now().strftime('%Y-%m-%d %H:%M')
         
         # الحصول على الإحصائيات الشاملة
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # إحصائيات المستخدمين
         cursor.execute('SELECT role, COUNT(*), SUM(balance) FROM users GROUP BY role')
         user_stats = cursor.fetchall()
@@ -526,11 +516,7 @@ class ExportSystem:
             cursor.execute('SELECT type, COUNT(*), SUM(amount) FROM transactions WHERE created_at >= ? GROUP BY type', (start_date,))
         else:
             cursor.execute('SELECT type, COUNT(*), SUM(amount) FROM transactions GROUP BY type')
-        transaction_stats = cursor.fetchall()
-        
-        conn.close()
-        
-        # كتابة الإحصائيات
+        transaction_stats = cursor.fetchall()        # كتابة الإحصائيات
         ws_summary['A6'] = "إحصائيات المستخدمين:"
         ws_summary['A6'].font = Font(bold=True)
         

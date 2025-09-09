@@ -13,7 +13,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext
 
 from bot_modules.config import EMOJIS, USER_ROLES, PERMISSIONS
-from bot_modules.database import get_db_connection
+from bot_modules.database import get_db_connection, get_db_context
 from bot_modules.utils import get_user, get_user_by_id, update_user_activity
 from bot_modules.permissions import (
     AVAILABLE_PERMISSIONS, 
@@ -44,9 +44,9 @@ class AdminManagement:
                 return
             
             # إحصائيات المشرفين
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
+            with get_db_context() as conn:
+
+                cursor = conn.cursor()
             # عدد المشرفين
             cursor.execute("SELECT COUNT(*) FROM users WHERE role IN ('admin', 'super_admin')")
             total_admins = cursor.fetchone()[0]
@@ -83,11 +83,7 @@ class AdminManagement:
                 ORDER BY a.created_at DESC
                 LIMIT 5
             """)
-            recent_activities = cursor.fetchall()
-            
-            conn.close()
-            
-            dashboard_text = f"""
+            recent_activities = cursor.fetchall()            dashboard_text = f"""
 👑 **لوحة إدارة المشرفين** 👑
 
 📊 **إحصائيات شاملة:**
@@ -141,9 +137,10 @@ class AdminManagement:
             query = update.callback_query
             await query.answer()
             
-            conn = get_db_connection()
-            cursor = conn.cursor()
+            with get_db_context() as conn:
+
             
+                cursor = conn.cursor()
             # قائمة المشرفين
             cursor.execute("""
                 SELECT id, full_name, phone, role, is_active, created_at, last_activity
@@ -157,10 +154,7 @@ class AdminManagement:
                     last_activity DESC
             """)
             
-            admins = cursor.fetchall()
-            conn.close()
-            
-            if not admins:
+            admins = cursor.fetchall()            if not admins:
                 await query.edit_message_text(
                     "👑 **لا يوجد مشرفين في النظام**",
                     reply_markup=InlineKeyboardMarkup([
@@ -237,9 +231,10 @@ class AdminManagement:
             query = update.callback_query
             await query.answer()
             
-            conn = get_db_connection()
-            cursor = conn.cursor()
+            with get_db_context() as conn:
+
             
+                cursor = conn.cursor()
             # معلومات المشرف
             cursor.execute("""
                 SELECT id, telegram_id, full_name, phone, role, is_active, 
@@ -281,11 +276,7 @@ class AdminManagement:
                 SELECT permission_name FROM user_permissions 
                 WHERE user_id = ?
             """, (admin_id,))
-            permissions = [row[0] for row in cursor.fetchall()]
-            
-            conn.close()
-            
-            # إعداد المعلومات
+            permissions = [row[0] for row in cursor.fetchall()]            # إعداد المعلومات
             role_emoji = "👑" if admin['role'] == 'super_admin' else "🛡️"
             status_emoji = "🟢" if admin['is_active'] else "🔴"
             
@@ -348,9 +339,10 @@ class AdminManagement:
             query = update.callback_query
             await query.answer()
             
-            conn = get_db_connection()
-            cursor = conn.cursor()
+            with get_db_context() as conn:
+
             
+                cursor = conn.cursor()
             # تحليل نشاط المشرفين
             cursor.execute("""
                 SELECT 
@@ -390,11 +382,7 @@ class AdminManagement:
                 GROUP BY DATE(created_at)
                 ORDER BY date DESC
             """)
-            daily_activities = cursor.fetchall()
-            
-            conn.close()
-            
-            analytics_text = """
+            daily_activities = cursor.fetchall()            analytics_text = """
 📈 **تحليلات المشرفين المتقدمة** 📈
 
 👥 **أداء المشرفين:**
@@ -670,9 +658,9 @@ class AdminManagement:
                         action_details: str = None, ip_address: str = None):
         """تسجيل عمليات إدارة المشرفين"""
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
+            with get_db_context() as conn:
+
+                cursor = conn.cursor()
             cursor.execute('''
                 INSERT INTO admin_management_logs 
                 (action_type, target_admin_id, performed_by, old_data, new_data, action_details, ip_address)
@@ -687,9 +675,7 @@ class AdminManagement:
                 ip_address
             ))
             
-            conn.commit()
-            conn.close()
-            logger.info(f"Admin action logged: {action_type} on admin {target_admin_id} by {performed_by}")
+            conn.commit()            logger.info(f"Admin action logged: {action_type} on admin {target_admin_id} by {performed_by}")
             
         except Exception as e:
             logger.error(f"Error logging admin action: {e}")
@@ -844,19 +830,16 @@ class AdminManagement:
             elif search_type == 'phone':
                 # البحث برقم الهاتف
                 phone_clean = search_value.strip().replace(' ', '').replace('-', '').replace('+', '')
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                
+                with get_db_context() as conn:
+
+                    cursor = conn.cursor()
                 cursor.execute('''
                     SELECT * FROM users 
                     WHERE phone = ? OR phone = ? OR phone LIKE ? OR phone LIKE ?
                     LIMIT 1
                 ''', (phone_clean, f"+{phone_clean}", f"%{phone_clean}", f"%{phone_clean[-9:]}"))
                 
-                user_row = cursor.fetchone()
-                conn.close()
-                
-                if user_row:
+                user_row = cursor.fetchone()                if user_row:
                     # تحويل Row إلى dict
                     target_user = dict(user_row)
             
@@ -1018,9 +1001,9 @@ class AdminManagement:
                 return
             
             # تحديث دور المستخدم في قاعدة البيانات
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
+            with get_db_context() as conn:
+
+                cursor = conn.cursor()
             # حفظ البيانات القديمة للسجل
             old_data = {
                 'role': target_user['role'],
@@ -1058,11 +1041,7 @@ class AdminManagement:
                 old_data=old_data,
                 new_data=new_data,
                 action_details=f"User promoted from {old_data['role']} to {new_role}"
-            )
-            
-            conn.close()
-            
-            # رسالة النجاح
+            )            # رسالة النجاح
             role_name = "مشرف أعلى" if new_role == 'super_admin' else "مشرف عادي"
             
             success_text = f"""
@@ -1174,9 +1153,9 @@ class AdminManagement:
                 return
             
             # تنفيذ عملية الحذف
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
+            with get_db_context() as conn:
+
+                cursor = conn.cursor()
             # حفظ البيانات القديمة للسجل
             old_data = {
                 'role': target_admin['role'],
@@ -1206,11 +1185,7 @@ class AdminManagement:
                 old_data=old_data,
                 new_data={'role': 'customer', 'permissions': {}},
                 action_details=f"Admin {target_admin['full_name']} demoted to customer"
-            )
-            
-            conn.close()
-            
-            success_text = f"""
+            )            success_text = f"""
 ✅ **تم حذف المشرف بنجاح** ✅
 
 👤 **المستخدم السابق:**

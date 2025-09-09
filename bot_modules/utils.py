@@ -11,7 +11,7 @@ import json
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Tuple, Any
 from bot_modules.config import *
-from bot_modules.database import get_db_connection
+from bot_modules.database import get_db_connection, get_db_context, get_pooled_db_context, execute_with_retry, safe_execute
 
 logger = logging.getLogger(__name__)
 
@@ -66,13 +66,13 @@ def decrypt_data(encrypted_data: str) -> str:
 # User management utilities
 def get_user(telegram_id: int):
     """Get user by telegram ID"""
+    def _get_user():
+        with get_pooled_db_context() as conn:
+            cursor = conn.cursor()
+            return safe_execute(cursor, 'SELECT * FROM users WHERE telegram_id = ?', (telegram_id,), fetch_one=True)
+    
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM users WHERE telegram_id = ?', (telegram_id,))
-        user = cursor.fetchone()
-        conn.close()
-        return user
+        return execute_with_retry(_get_user)
     except Exception as e:
         logger.error(f"Error getting user: {e}")
         return None
@@ -80,12 +80,11 @@ def get_user(telegram_id: int):
 def get_user_by_id(user_id: int):
     """Get user by internal database ID"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
-        user = cursor.fetchone()
-        conn.close()
-        return user
+        with get_db_context() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
+            user = cursor.fetchone()
+            return user
     except Exception as e:
         logger.error(f"Error getting user by ID: {e}")
         return None
@@ -93,45 +92,38 @@ def get_user_by_id(user_id: int):
 def update_user_activity(user_id: int):
     """Update user's last activity timestamp"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('UPDATE users SET last_activity = ? WHERE id = ?', 
-                      (datetime.now(), user_id))
-        conn.commit()
-        conn.close()
+        with get_db_context() as conn:
+            cursor = conn.cursor()
+            cursor.execute('UPDATE users SET last_activity = ? WHERE id = ?', 
+                          (datetime.now(), user_id))
     except Exception as e:
         logger.error(f"Error updating user activity: {e}")
 
 def log_system_action(user_id: int, action: str, details: str):
     """Log system action for audit trail"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO system_logs (user_id, action, details) 
-            VALUES (?, ?, ?)
-        ''', (user_id, action, details))
-        conn.commit()
-        conn.close()
+        with get_db_context() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO system_logs (user_id, action, details) 
+                VALUES (?, ?, ?)
+            ''', (user_id, action, details))
     except Exception as e:
         logger.error(f"Error logging system action: {e}")
 
 def log_activity(user_id: int, activity_type: str, description: str, metadata: dict = None):
     """Log user activity for enhanced tracking"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        activity_id = str(uuid.uuid4())
-        metadata_json = json.dumps(metadata) if metadata else None
-        
-        cursor.execute('''
-            INSERT INTO activity_logs (id, user_id, activity_type, description, metadata)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (activity_id, user_id, activity_type, description, metadata_json))
-        
-        conn.commit()
-        conn.close()
+        with get_db_context() as conn:
+            cursor = conn.cursor()
+            
+            activity_id = str(uuid.uuid4())
+            metadata_json = json.dumps(metadata) if metadata else None
+            
+            cursor.execute('''
+                INSERT INTO activity_logs (id, user_id, activity_type, description, metadata)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (activity_id, user_id, activity_type, description, metadata_json))
     except Exception as e:
         # Silently fail for logging to avoid disrupting user experience
         logger.error(f"Error logging activity: {e}")
@@ -143,9 +135,9 @@ def create_wallet_transaction(user_id: int, transaction_type: str, amount: float
                             metadata: dict = None) -> str:
     """Create a wallet transaction record"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         transaction_id = str(uuid.uuid4())
         metadata_json = json.dumps(metadata) if metadata else None
         
@@ -157,9 +149,7 @@ def create_wallet_transaction(user_id: int, transaction_type: str, amount: float
         ''', (transaction_id, user_id, transaction_type, amount, balance_before, 
               balance_after, reference_id, description, metadata_json))
         
-        conn.commit()
-        conn.close()
-        return transaction_id
+        conn.commit()        return transaction_id
     except Exception as e:
         logger.error(f"Error creating wallet transaction: {e}")
         return None
@@ -169,9 +159,9 @@ def send_smart_notification(user_id: int, notification_type: str, title: str,
                           metadata: dict = None) -> str:
     """Send a smart notification to a user"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # Check user notification preferences
         cursor.execute('''
             SELECT * FROM notification_preferences WHERE user_id = ?
@@ -195,9 +185,7 @@ def send_smart_notification(user_id: int, notification_type: str, title: str,
         ''', (notification_id, user_id, notification_type, title, message, 
               priority, metadata_json))
         
-        conn.commit()
-        conn.close()
-        return notification_id
+        conn.commit()        return notification_id
     except Exception as e:
         logger.error(f"Error sending smart notification: {e}")
         return None
@@ -205,9 +193,9 @@ def send_smart_notification(user_id: int, notification_type: str, title: str,
 def calculate_user_rating(user_id: int) -> Dict:
     """Calculate and update user rating summary"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT rating, COUNT(*) as count FROM ratings 
             WHERE rated_user_id = ? AND is_visible = 1
@@ -235,10 +223,7 @@ def calculate_user_rating(user_id: int) -> Dict:
               rating_counts[2], rating_counts[3], rating_counts[4], 
               rating_counts[5], datetime.now()))
         
-        conn.commit()
-        conn.close()
-        
-        return {
+        conn.commit()        return {
             'total_ratings': total_ratings,
             'average_rating': round(average_rating, 2),
             'rating_distribution': rating_counts
@@ -251,18 +236,16 @@ def calculate_user_rating(user_id: int) -> Dict:
 def get_user_permissions(user_id: int) -> List[str]:
     """Get user permissions list"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         cursor.execute('''
             SELECT permission_name FROM user_permissions
             WHERE user_id = ? AND is_active = 1
             AND (expires_at IS NULL OR expires_at > ?)
         ''', (user_id, datetime.now()))
         
-        permissions = [row[0] for row in cursor.fetchall()]
-        conn.close()
-        return permissions
+        permissions = [row[0] for row in cursor.fetchall()]        return permissions
     except Exception as e:
         logger.error(f"Error getting user permissions: {e}")
         return []
@@ -275,18 +258,16 @@ def has_permission(user_id: int, permission: str) -> bool:
 def grant_user_permission(user_id: int, permission: str, granted_by: int, expires_at: datetime = None) -> bool:
     """Grant a permission to a user"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         # Check if permission already exists
         cursor.execute('''
             SELECT id FROM user_permissions
             WHERE user_id = ? AND permission_name = ? AND is_active = 1
         ''', (user_id, permission))
         
-        if cursor.fetchone():
-            conn.close()
-            return False  # Permission already exists
+        if cursor.fetchone():            return False  # Permission already exists
         
         cursor.execute('''
             INSERT INTO user_permissions (user_id, permission_name, granted_by, expires_at)
@@ -327,9 +308,9 @@ def create_transaction(from_user: int, to_user: int, amount: float,
                       description: str = None, commission_amount: float = 0.0):
     """Create a transaction record"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         transaction_id = str(uuid.uuid4())
         
         cursor.execute('''
@@ -339,71 +320,47 @@ def create_transaction(from_user: int, to_user: int, amount: float,
         ''', (transaction_id, from_user, to_user, amount, transaction_type, 
               reference_id, description, commission_amount))
         
-        conn.commit()
-        conn.close()
-        return transaction_id
+        conn.commit()        return transaction_id
     except Exception as e:
         logger.error(f"Error creating transaction: {e}")
         return None
 
 def recalc_and_set_user_balance(user_id: int):
     """Recalculate and update user balance"""
-    import time
-    max_retries = 3
-    retry_delay = 0.1
-    
-    for attempt in range(max_retries):
-        try:
-            conn = get_db_connection()
+    def _recalc_balance():
+        with get_pooled_db_context() as conn:
             cursor = conn.cursor()
             
-            # Calculate balance from transactions (no status check as it may not exist)
-            cursor.execute('''
+            # Calculate balance from transactions
+            result = safe_execute(cursor, '''
                 SELECT 
                     COALESCE(SUM(CASE WHEN to_user = ? THEN amount ELSE 0 END), 0) as credits,
                     COALESCE(SUM(CASE WHEN from_user = ? THEN amount ELSE 0 END), 0) as debits
                 FROM transactions 
                 WHERE to_user = ? OR from_user = ?
-            ''', (user_id, user_id, user_id, user_id))
+            ''', (user_id, user_id, user_id, user_id), fetch_one=True)
             
-            result = cursor.fetchone()
-            credits = result[0] if result[0] else 0
-            debits = result[1] if result[1] else 0
+            credits = result[0] if result and result[0] else 0
+            debits = result[1] if result and result[1] else 0
             new_balance = credits - debits
             
             # Update user balance
-            cursor.execute('UPDATE users SET balance = ? WHERE id = ?', (new_balance, user_id))
+            safe_execute(cursor, 'UPDATE users SET balance = ? WHERE id = ?', (new_balance, user_id))
             
-            conn.commit()
-            conn.close()
             return new_balance
-            
-        except Exception as e:
-            try:
-                if 'conn' in locals():
-                    conn.close()
-            except:
-                pass
-                
-            if "database is locked" in str(e).lower() and attempt < max_retries - 1:
-                # Reduce logging noise and use shorter delays
-                time.sleep(retry_delay)
-                retry_delay = min(retry_delay * 1.5, 0.5)  # Cap at 0.5 seconds
-                continue
-            else:
-                # Only log final failure, not individual retries
-                if attempt == max_retries - 1:
-                    logger.debug(f"Balance calculation skipped for user {user_id} (database busy)")
-                return 0
     
-    return 0
+    try:
+        return execute_with_retry(_recalc_balance)
+    except Exception as e:
+        logger.debug(f"Balance calculation skipped for user {user_id} (database busy)")
+        return 0
 
 def update_inventory_stock(network_id: str, category_id: int, change: int) -> bool:
     """Update inventory stock count"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
+        with get_db_context() as conn:
+
+            cursor = conn.cursor()
         inventory_id = f"{network_id}_{category_id}"
         
         cursor.execute('''
@@ -418,9 +375,7 @@ def update_inventory_stock(network_id: str, category_id: int, change: int) -> bo
             WHERE id = ?
         ''', (change, datetime.now(), inventory_id))
         
-        conn.commit()
-        conn.close()
-        return True
+        conn.commit()        return True
     except Exception as e:
         logger.error(f"Error updating inventory: {e}")
         return False
@@ -439,18 +394,16 @@ def is_admin(user_id: int) -> bool:
 def generate_supplier_code():
     """Generate a unique 6-digit supplier code starting with 80"""
     import random
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    with get_db_context() as conn:
+
+        cursor = conn.cursor()
     for _ in range(100):  # Try up to 100 times
         # Generate 6-digit code starting with 80
         code = '80' + ''.join(str(random.randint(0, 9)) for _ in range(4))
         
         # Check if code already exists
         cursor.execute('SELECT 1 FROM supplier_codes WHERE supplier_code = ?', (code,))
-        if not cursor.fetchone():
-            conn.close()
-            return code
+        if not cursor.fetchone():            return code
     
     conn.close()
     # If all attempts fail, use timestamp-based approach
@@ -459,16 +412,14 @@ def generate_supplier_code():
 
 def get_or_create_supplier_code(supplier_id):
     """Get existing supplier code or create new one"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    with get_db_context() as conn:
+
+        cursor = conn.cursor()
     # Check if supplier already has a code
     cursor.execute('SELECT supplier_code FROM supplier_codes WHERE supplier_id = ?', (supplier_id,))
     result = cursor.fetchone()
     
-    if result:
-        conn.close()
-        return result['supplier_code']
+    if result:        return result['supplier_code']
     
     # Create new code
     code = generate_supplier_code()
@@ -503,9 +454,10 @@ def process_uploaded_cards(file_content, supplier_id, network_id, batch_id, sele
     """Process uploaded cards from text or Excel file with category support"""
     import io
     
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with get_db_context() as conn:
+
     
+        cursor = conn.cursor()
     successful_cards = 0
     failed_cards = 0
     errors = []
@@ -611,16 +563,13 @@ def process_uploaded_cards(file_content, supplier_id, network_id, batch_id, sele
         conn.commit()
         raise
     
-    finally:
-        conn.close()
-    
-    return successful_cards, failed_cards, errors
+    finally:    return successful_cards, failed_cards, errors
 
 def search_networks(search_term, user_id=None):
     """Search networks by name or supplier code"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    with get_db_context() as conn:
+
+        cursor = conn.cursor()
     # Search by network name or supplier code
     if user_id:
         # Search user's own networks
@@ -646,15 +595,13 @@ def search_networks(search_term, user_id=None):
             ORDER BY n.name
         ''', (f'%{search_term}%', f'%{search_term}%'))
     
-    results = cursor.fetchall()
-    conn.close()
-    return results
+    results = cursor.fetchall()    return results
 
 def search_cards_by_category(supplier_id, category=None, network_id=None):
     """Search cards by category and network"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    with get_db_context() as conn:
+
+        cursor = conn.cursor()
     query = '''
         SELECT 
             nc.*, 
@@ -679,25 +626,21 @@ def search_cards_by_category(supplier_id, category=None, network_id=None):
     query += ' ORDER BY nc.card_category, nc.id'
     
     cursor.execute(query, params)
-    results = cursor.fetchall()
-    conn.close()
-    return results
+    results = cursor.fetchall()    return results
 
 def get_card_categories():
     """Get all available card categories"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    with get_db_context() as conn:
+
+        cursor = conn.cursor()
     cursor.execute('SELECT * FROM card_categories_ref WHERE is_active = 1 ORDER BY display_order')
-    categories = cursor.fetchall()
-    conn.close()
-    return categories
+    categories = cursor.fetchall()    return categories
 
 def get_cards_stats_by_category(supplier_id):
     """Get card statistics grouped by category"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    with get_db_context() as conn:
+
+        cursor = conn.cursor()
     cursor.execute('''
         SELECT 
             nc.card_category,
@@ -714,6 +657,4 @@ def get_cards_stats_by_category(supplier_id):
         ORDER BY nc.card_category
     ''', (supplier_id,))
     
-    stats = cursor.fetchall()
-    conn.close()
-    return stats
+    stats = cursor.fetchall()    return stats
