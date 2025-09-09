@@ -193,7 +193,6 @@ def init_db():
     with get_db_context() as conn:
         cursor = conn.cursor()
 
-        try:
         # Users table with enhanced fields
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
@@ -940,9 +939,4 @@ def init_db():
             logger.warning(f"Error initializing admin system settings: {e}")
         
         # Data insertion is handled separately to avoid conflicts
-
-            logger.info("Database initialized successfully")
-            
-        except Exception as e:
-            logger.error(f"Database initialization error: {e}")
-            raise
+        logger.info("Database initialized successfully")

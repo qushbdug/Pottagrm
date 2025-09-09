@@ -149,7 +149,7 @@ def create_wallet_transaction(user_id: int, transaction_type: str, amount: float
         ''', (transaction_id, user_id, transaction_type, amount, balance_before, 
               balance_after, reference_id, description, metadata_json))
         
-        conn.commit()        return transaction_id
+        return transaction_id
     except Exception as e:
         logger.error(f"Error creating wallet transaction: {e}")
         return None
@@ -185,7 +185,7 @@ def send_smart_notification(user_id: int, notification_type: str, title: str,
         ''', (notification_id, user_id, notification_type, title, message, 
               priority, metadata_json))
         
-        conn.commit()        return notification_id
+        return notification_id
     except Exception as e:
         logger.error(f"Error sending smart notification: {e}")
         return None
@@ -223,7 +223,7 @@ def calculate_user_rating(user_id: int) -> Dict:
               rating_counts[2], rating_counts[3], rating_counts[4], 
               rating_counts[5], datetime.now()))
         
-        conn.commit()        return {
+        return {
             'total_ratings': total_ratings,
             'average_rating': round(average_rating, 2),
             'rating_distribution': rating_counts
@@ -245,7 +245,8 @@ def get_user_permissions(user_id: int) -> List[str]:
             AND (expires_at IS NULL OR expires_at > ?)
         ''', (user_id, datetime.now()))
         
-        permissions = [row[0] for row in cursor.fetchall()]        return permissions
+        permissions = [row[0] for row in cursor.fetchall()]
+        return permissions
     except Exception as e:
         logger.error(f"Error getting user permissions: {e}")
         return []
@@ -267,7 +268,8 @@ def grant_user_permission(user_id: int, permission: str, granted_by: int, expire
             WHERE user_id = ? AND permission_name = ? AND is_active = 1
         ''', (user_id, permission))
         
-        if cursor.fetchone():            return False  # Permission already exists
+        if cursor.fetchone():
+            return False  # Permission already exists
         
         cursor.execute('''
             INSERT INTO user_permissions (user_id, permission_name, granted_by, expires_at)
@@ -320,7 +322,7 @@ def create_transaction(from_user: int, to_user: int, amount: float,
         ''', (transaction_id, from_user, to_user, amount, transaction_type, 
               reference_id, description, commission_amount))
         
-        conn.commit()        return transaction_id
+        return transaction_id
     except Exception as e:
         logger.error(f"Error creating transaction: {e}")
         return None
@@ -375,7 +377,7 @@ def update_inventory_stock(network_id: str, category_id: int, change: int) -> bo
             WHERE id = ?
         ''', (change, datetime.now(), inventory_id))
         
-        conn.commit()        return True
+        return True
     except Exception as e:
         logger.error(f"Error updating inventory: {e}")
         return False
@@ -403,7 +405,8 @@ def generate_supplier_code():
         
         # Check if code already exists
         cursor.execute('SELECT 1 FROM supplier_codes WHERE supplier_code = ?', (code,))
-        if not cursor.fetchone():            return code
+        if not cursor.fetchone():
+            return code
     
     conn.close()
     # If all attempts fail, use timestamp-based approach
@@ -419,7 +422,8 @@ def get_or_create_supplier_code(supplier_id):
     cursor.execute('SELECT supplier_code FROM supplier_codes WHERE supplier_id = ?', (supplier_id,))
     result = cursor.fetchone()
     
-    if result:        return result['supplier_code']
+    if result:
+        return result['supplier_code']
     
     # Create new code
     code = generate_supplier_code()
@@ -563,7 +567,10 @@ def process_uploaded_cards(file_content, supplier_id, network_id, batch_id, sele
         conn.commit()
         raise
     
-    finally:    return successful_cards, failed_cards, errors
+    finally:
+        pass
+    
+    return successful_cards, failed_cards, errors
 
 def search_networks(search_term, user_id=None):
     """Search networks by name or supplier code"""
@@ -595,7 +602,8 @@ def search_networks(search_term, user_id=None):
             ORDER BY n.name
         ''', (f'%{search_term}%', f'%{search_term}%'))
     
-    results = cursor.fetchall()    return results
+    results = cursor.fetchall()
+    return results
 
 def search_cards_by_category(supplier_id, category=None, network_id=None):
     """Search cards by category and network"""
@@ -626,7 +634,8 @@ def search_cards_by_category(supplier_id, category=None, network_id=None):
     query += ' ORDER BY nc.card_category, nc.id'
     
     cursor.execute(query, params)
-    results = cursor.fetchall()    return results
+    results = cursor.fetchall()
+    return results
 
 def get_card_categories():
     """Get all available card categories"""
@@ -634,7 +643,8 @@ def get_card_categories():
 
         cursor = conn.cursor()
     cursor.execute('SELECT * FROM card_categories_ref WHERE is_active = 1 ORDER BY display_order')
-    categories = cursor.fetchall()    return categories
+    categories = cursor.fetchall()
+    return categories
 
 def get_cards_stats_by_category(supplier_id):
     """Get card statistics grouped by category"""
@@ -657,4 +667,5 @@ def get_cards_stats_by_category(supplier_id):
         ORDER BY nc.card_category
     ''', (supplier_id,))
     
-    stats = cursor.fetchall()    return stats
+    stats = cursor.fetchall()
+    return stats

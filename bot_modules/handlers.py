@@ -143,7 +143,8 @@ async def get_phone(update: Update, context: CallbackContext) -> int:
 
             cursor = conn.cursor()
         cursor.execute('SELECT id FROM users WHERE phone = ?', (phone,))
-        if cursor.fetchone():            await update.message.reply_text(f"{EMOJIS['error']} رقم الهاتف مسجل مسبقاً.")
+        if cursor.fetchone():
+            await update.message.reply_text(f"{EMOJIS['error']} رقم الهاتف مسجل مسبقاً.")
             return GET_PHONE
         conn.close()
         

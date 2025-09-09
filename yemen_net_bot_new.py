@@ -5473,6 +5473,7 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             raise e
             
         finally:
+            pass
             
     except Exception as e:
         logger.error(f"Error in process card purchase: {e}")

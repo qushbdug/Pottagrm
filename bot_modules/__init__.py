@@ -11,8 +11,8 @@ __license__ = "MIT"
 from bot_modules.config import *
 from bot_modules.database import init_db, get_db_connection
 from bot_modules.utils import *
-from bot_modules.handlers import *
-from bot_modules.admin_functions import *
+# from bot_modules.handlers import *
+# from bot_modules.admin_functions import *
 
 __all__ = [
     'BOT_TOKEN', 'EMOJIS', 'USER_ROLES', 'PERMISSIONS',
