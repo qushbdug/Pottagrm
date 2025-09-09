@@ -37,7 +37,8 @@ class CustomerManagement:
             
             # إجمالي العملاء
             cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'customer'")
-            total_customers = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            total_customers = result[0] if result else 0
             
             # العملاء النشطين (تفاعلوا خلال آخر 30 يوم)
             cursor.execute("""
@@ -45,7 +46,8 @@ class CustomerManagement:
                 WHERE role = 'customer' 
                 AND last_activity >= datetime('now', '-30 days')
             """)
-            active_customers = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            active_customers = result[0] if result else 0
             
             # العملاء الجدد (آخر 7 أيام)
             cursor.execute("""
@@ -53,7 +55,8 @@ class CustomerManagement:
                 WHERE role = 'customer' 
                 AND created_at >= datetime('now', '-7 days')
             """)
-            new_customers = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            new_customers = result[0] if result else 0
             
             # إجمالي المعاملات
             cursor.execute("""

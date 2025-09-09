@@ -49,20 +49,24 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
         
         # Basic stats
         cursor.execute('SELECT COUNT(*) FROM users')
-        total_users = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        total_users = result[0] if result else 0
         
         cursor.execute('SELECT COUNT(*) FROM users WHERE is_active = 1')
-        active_users = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        active_users = result[0] if result else 0
         
         cursor.execute('SELECT SUM(balance) FROM users')
-        result = cursor.fetchone()[0]
-        total_balance = result if result is not None else 0
+        result = cursor.fetchone()
+        total_balance = result[0] if result and result[0] is not None else 0
         
         cursor.execute('SELECT COUNT(*) FROM users WHERE role = "supplier" AND is_active = 0')
-        pending_suppliers = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        pending_suppliers = result[0] if result else 0
         
         cursor.execute('SELECT COUNT(*) FROM transactions')
-        total_transactions = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        total_transactions = result[0] if result else 0
         
         conn.close()
         
@@ -895,13 +899,16 @@ async def manage_admins_handler(update, context):
         cursor = conn.cursor()
         
         cursor.execute("SELECT COUNT(*) as total_admins FROM users WHERE role = 'admin'")
-        total_admins = cursor.fetchone()['total_admins']
+        result = cursor.fetchone()
+        total_admins = result['total_admins'] if result else 0
         
         cursor.execute("SELECT COUNT(*) as active_admins FROM users WHERE role = 'admin' AND is_active = 1")
-        active_admins = cursor.fetchone()['active_admins']
+        result = cursor.fetchone()
+        active_admins = result['active_admins'] if result else 0
         
         cursor.execute("SELECT COUNT(*) as super_admins FROM users WHERE role = 'super_admin'")
-        super_admins = cursor.fetchone()['super_admins']
+        result = cursor.fetchone()
+        super_admins = result['super_admins'] if result else 0
         
         # Get recent admin activities
         cursor.execute('''
@@ -968,35 +975,42 @@ async def dashboard_handler(update, context):
         
         # Users statistics
         cursor.execute('SELECT COUNT(*) FROM users')
-        total_users = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        total_users = result[0] if result else 0
         
         cursor.execute("SELECT COUNT(*) FROM users WHERE is_active = 1")
-        active_users = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        active_users = result[0] if result else 0
         
         cursor.execute("SELECT COUNT(*) FROM users WHERE date(created_at) = date('now')")
-        new_users_today = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        new_users_today = result[0] if result else 0
         
         # Financial statistics
         cursor.execute('SELECT SUM(amount) FROM transactions')
-        result = cursor.fetchone()[0]
-        total_transactions = result if result is not None else 0
+        result = cursor.fetchone()
+        total_transactions = result[0] if result and result[0] is not None else 0
         
         cursor.execute('SELECT SUM(balance) FROM users')
-        result = cursor.fetchone()[0]
-        total_balances = result if result is not None else 0
+        result = cursor.fetchone()
+        total_balances = result[0] if result and result[0] is not None else 0
         
         cursor.execute("SELECT COUNT(*) FROM transactions WHERE date(created_at) = date('now')")
-        transactions_today = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        transactions_today = result[0] if result else 0
         
         # Networks statistics
         cursor.execute('SELECT COUNT(*) FROM networks')
-        total_networks = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        total_networks = result[0] if result else 0
         
         cursor.execute("SELECT COUNT(*) FROM networks WHERE is_active = 1")
-        active_networks = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        active_networks = result[0] if result else 0
         
         cursor.execute("SELECT COUNT(*) FROM networks WHERE is_approved = 0")
-        pending_networks = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        pending_networks = result[0] if result else 0
         
         conn.close()
         
@@ -1198,15 +1212,18 @@ async def admin_wallet_handler(update: Update, context: CallbackContext):
         
         # Get total money created
         cursor.execute('SELECT SUM(amount) FROM transactions WHERE type = "money_creation" AND to_user = ?', (user['id'],))
-        total_created = cursor.fetchone()[0] or 0
+        result = cursor.fetchone()
+        total_created = result[0] if result and result[0] is not None else 0
         
         # Get total sent to users
         cursor.execute('SELECT SUM(amount) FROM transactions WHERE type = "admin_transfer" AND from_user = ?', (user['id'],))
-        total_sent = cursor.fetchone()[0] or 0
+        result = cursor.fetchone()
+        total_sent = result[0] if result and result[0] is not None else 0
         
         # Get number of users
         cursor.execute('SELECT COUNT(*) FROM users WHERE role != "super_admin"')
-        total_users = cursor.fetchone()[0] or 0
+        result = cursor.fetchone()
+        total_users = result[0] if result else 0
         
         conn.close()
         

@@ -49,7 +49,8 @@ class AdminManagement:
             
             # عدد المشرفين
             cursor.execute("SELECT COUNT(*) FROM users WHERE role IN ('admin', 'super_admin')")
-            total_admins = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            total_admins = result[0] if result else 0
             
             # المشرفين النشطين (آخر 7 أيام)
             cursor.execute("""
@@ -57,22 +58,26 @@ class AdminManagement:
                 WHERE role IN ('admin', 'super_admin') 
                 AND last_activity >= datetime('now', '-7 days')
             """)
-            active_admins = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            active_admins = result[0] if result else 0
             
             # المشرفين حسب النوع
             cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'")
-            regular_admins = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            regular_admins = result[0] if result else 0
             
             cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'super_admin'")
-            super_admins = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            super_admins = result[0] if result else 0
             
             # نشاطات المشرفين اليوم
             cursor.execute("""
-                SELECT COUNT(*) FROM activity_logs 
+                SELECT COUNT(*) FROM activity_logs
                 WHERE user_id IN (SELECT id FROM users WHERE role IN ('admin', 'super_admin'))
                 AND DATE(created_at) = DATE('now')
             """)
-            today_activities = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            today_activities = result[0] if result else 0
             
             # آخر النشاطات
             cursor.execute("""
@@ -258,13 +263,15 @@ class AdminManagement:
                 SELECT COUNT(*) FROM activity_logs 
                 WHERE user_id = ? AND created_at >= datetime('now', '-30 days')
             """, (admin_id,))
-            monthly_activities = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            monthly_activities = result[0] if result else 0
             
             cursor.execute("""
                 SELECT COUNT(*) FROM activity_logs 
                 WHERE user_id = ? AND DATE(created_at) = DATE('now')
             """, (admin_id,))
-            daily_activities = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            daily_activities = result[0] if result else 0
             
             # آخر النشاطات
             cursor.execute("""

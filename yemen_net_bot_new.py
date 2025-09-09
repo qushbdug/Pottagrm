@@ -848,7 +848,8 @@ async def my_notifications_handler(update: Update, context):
             WHERE user_id = ? AND is_read = 0
         ''', (user['id'],))
         
-        unread_count = cursor.fetchone()['unread_count']
+        result = cursor.fetchone()
+        unread_count = result['unread_count'] if result else 0
         conn.close()
         
         notif_text = f"""
@@ -1017,19 +1018,23 @@ async def supplier_panel_handler(update: Update, context):
         
         # Count networks
         cursor.execute('SELECT COUNT(*) as count FROM networks WHERE supplier_id = ?', (user['id'],))
-        networks_count = cursor.fetchone()['count']
+        result = cursor.fetchone()
+        networks_count = result['count'] if result else 0
         
         # Count active cards
         cursor.execute('SELECT COUNT(*) as count FROM network_cards WHERE supplier_id = ? AND is_sold = 0', (user['id'],))
-        active_cards = cursor.fetchone()['count']
+        result = cursor.fetchone()
+        active_cards = result['count'] if result else 0
         
         # Count sold cards
         cursor.execute('SELECT COUNT(*) as count FROM network_cards WHERE supplier_id = ? AND is_sold = 1', (user['id'],))
-        sold_cards = cursor.fetchone()['count']
+        result = cursor.fetchone()
+        sold_cards = result['count'] if result else 0
         
         # Recent uploads
         cursor.execute('SELECT COUNT(*) as count FROM card_upload_batches WHERE supplier_id = ?', (user['id'],))
-        recent_uploads = cursor.fetchone()['count']
+        result = cursor.fetchone()
+        recent_uploads = result['count'] if result else 0
         
         conn.close()
         
@@ -1213,7 +1218,8 @@ async def my_sent_ratings_handler(update: Update, context):
             FROM transactions 
             WHERE to_user = ? AND type = 'card_purchase'
         ''', (user['id'],))
-        total_purchases, total_amount = cursor.fetchone()
+        result = cursor.fetchone()
+        total_purchases, total_amount = result if result else (0, 0)
         
         conn.close()
         
@@ -1298,7 +1304,10 @@ async def transaction_details_handler(update: Update, context):
             WHERE from_user = ? OR to_user = ?
         ''', (user['id'], user['id'], user['id'], user['id'], user['id'], user['id']))
         stats = cursor.fetchone()
-        sent_count, received_count, sent_amount, received_amount = stats
+        if stats:
+            sent_count, received_count, sent_amount, received_amount = stats
+        else:
+            sent_count, received_count, sent_amount, received_amount = 0, 0, 0, 0
         
         conn.close()
         
@@ -1424,8 +1433,15 @@ async def wallet_stats_handler(update: Update, context):
         
         conn.close()
         
-        sent_month, received_month, spent_month, earned_month = monthly_stats
-        weekly_transactions, weekly_change = weekly_stats
+        if monthly_stats:
+            sent_month, received_month, spent_month, earned_month = monthly_stats
+        else:
+            sent_month, received_month, spent_month, earned_month = 0, 0, 0, 0
+        
+        if weekly_stats:
+            weekly_transactions, weekly_change = weekly_stats
+        else:
+            weekly_transactions, weekly_change = 0, 0
         
         # حساب متوسط الإنفاق اليومي
         daily_avg = spent_month / 30 if spent_month else 0
@@ -1629,6 +1645,8 @@ async def cards_reports_handler(update: Update, context):
         ''', (user['id'],))
         
         stats = cursor.fetchone()
+        if not stats:
+            stats = (0, 0, 0, 0, 0, 0)
         conn.close()
         
         reports_text = f"""
@@ -1685,7 +1703,8 @@ async def sales_stats_handler(update: Update, context):
             FROM transactions 
             WHERE type = 'card_purchase'
         ''')
-        total_sales, total_revenue = cursor.fetchone()
+        result = cursor.fetchone()
+        total_sales, total_revenue = result if result else (0, 0)
         
         # مبيعات هذا الشهر
         cursor.execute('''
@@ -1696,7 +1715,8 @@ async def sales_stats_handler(update: Update, context):
             WHERE type = 'card_purchase' 
             AND DATE(created_at) >= DATE('now', 'start of month')
         ''')
-        monthly_sales, monthly_revenue = cursor.fetchone()
+        result = cursor.fetchone()
+        monthly_sales, monthly_revenue = result if result else (0, 0)
         
         # مبيعات اليوم
         cursor.execute('''
@@ -1707,7 +1727,8 @@ async def sales_stats_handler(update: Update, context):
             WHERE type = 'card_purchase' 
             AND DATE(created_at) = DATE('now')
         ''')
-        daily_sales, daily_revenue = cursor.fetchone()
+        result = cursor.fetchone()
+        daily_sales, daily_revenue = result if result else (0, 0)
         
         # أفضل الشبكات مبيعاً (تقديري)
         cursor.execute('''
@@ -3698,7 +3719,10 @@ async def personal_reports_handler(update: Update, context: CallbackContext):
         ''', (user['id'], user['id'], user['id'], user['id'], user['id'], user['id']))
         
         stats = cursor.fetchone()
-        total_trans, sent_amount, received_amount, sent_count, received_count = stats
+        if stats:
+            total_trans, sent_amount, received_amount, sent_count, received_count = stats
+        else:
+            total_trans, sent_amount, received_amount, sent_count, received_count = 0, 0, 0, 0, 0
         
         # إحصائيات هذا الشهر
         cursor.execute('''
@@ -3711,7 +3735,10 @@ async def personal_reports_handler(update: Update, context: CallbackContext):
         ''', (user['id'], user['id']))
         
         monthly_stats = cursor.fetchone()
-        monthly_trans, monthly_amount = monthly_stats
+        if monthly_stats:
+            monthly_trans, monthly_amount = monthly_stats
+        else:
+            monthly_trans, monthly_amount = 0, 0
         
         conn.close()
         
@@ -4935,7 +4962,10 @@ async def show_wallet_page(update: Update, context: CallbackContext, user: dict,
         ''', (user['id'], user['id'], user['id'], user['id']))
         
         stats = cursor.fetchone()
-        total_count, sent_amount, received_amount = stats
+        if stats:
+            total_count, sent_amount, received_amount = stats
+        else:
+            total_count, sent_amount, received_amount = 0, 0, 0
         
         conn.close()
         
@@ -5268,7 +5298,8 @@ async def confirm_card_purchase(update: Update, context: CallbackContext, networ
             SELECT COUNT(*) FROM network_cards 
             WHERE network_id = ? AND card_value = ? AND is_sold = 0
         ''', (network_id, card_price))
-        available_count = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        available_count = result[0] if result else 0
         
         conn.close()
         
@@ -5378,7 +5409,10 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             
             # التحقق من الرصيد مرة أخرى
             cursor.execute('SELECT balance FROM users WHERE telegram_id = ?', (user['telegram_id'],))
-            current_balance = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            if not result:
+                raise Exception("خطأ في استرداد بيانات المستخدم")
+            current_balance = result[0]
             
             if current_balance < card_price:
                 raise Exception(f"رصيدك ({current_balance:,.2f} ريال) غير كافي")
@@ -5404,7 +5438,10 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             
             # الحصول على معلومات الكرت
             cursor.execute('SELECT card_code FROM network_cards WHERE id = ?', (card_id,))
-            card_code = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            if not result:
+                raise Exception("خطأ في استرداد بيانات الكرت")
+            card_code = result[0]
             
             # تسجيل القيد المحاسبي لشراء الكرت
             record_purchase_accounting(card_price, user['id'], transaction_id)
