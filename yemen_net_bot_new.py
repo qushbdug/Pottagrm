@@ -88,6 +88,9 @@ try:
     
     # Import permissions system
     from permissions import has_permission, check_permission_or_deny, AVAILABLE_PERMISSIONS
+    
+    # Import restructured handler modules
+    from main_router import button_click_handler
 except ImportError as e:
     print(f"Error importing modules: {e}")
     print("Make sure all module files are in the bot_modules directory")
@@ -214,22 +217,11 @@ async def get_pooled_db_connection():
         raise BotDatabaseError(f"Failed to get database connection: {e}")
 
 # Main callback handler
-async def button_click_handler(update: Update, context):
-    """Enhanced callback query handler with better error handling"""
-    try:
-        query = update.callback_query
-        
-        # Handle query answer with specific timeout
-        try:
-            await asyncio.wait_for(query.answer(), timeout=5.0)
-        except asyncio.TimeoutError:
-            logger.warning(f"Query answer timeout for user {query.from_user.id}")
-        except (TelegramError, NetworkError) as e:
-            logger.warning(f"Telegram error in query answer: {e}")
-        except Exception as e:
-            logger.error(f"Unexpected error in query answer: {e}")
-        
-        callback_data = query.data
+# button_click_handler moved to main_router.py for better organization
+# This function is now imported from main_router module
+
+# The main button_click_handler is now in main_router.py
+# All the large handler logic has been moved to separate modules for better organization
         
         # Get user with validation
         try:
