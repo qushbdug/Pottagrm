@@ -3292,6 +3292,25 @@ async def handle_text_message(update: Update, context: CallbackContext):
                 return
         
         # للمستخدمين الآخرين (العملاء والمشرفين) - استخدام المعالج العام
+        # اعتراض تدفق إدخال الكوبونات للمشرف الأعلى
+        if user['role'] == 'super_admin':
+            from bot_modules.admin_functions import (
+                process_single_coupon_input,
+                process_bulk_amount_input,
+                process_bulk_count_input,
+            )
+            # فردي
+            if context.user_data.get('awaiting_single_coupon'):
+                await process_single_coupon_input(update, context)
+                return
+            # متعدد خطوة 1: القيمة
+            if context.user_data.get('awaiting_bulk_amount'):
+                await process_bulk_amount_input(update, context)
+                return
+            # متعدد خطوة 2: العدد
+            if context.user_data.get('awaiting_bulk_count'):
+                await process_bulk_count_input(update, context)
+                return
         await general_text_handler(update, context)
             
     except Exception as e:
