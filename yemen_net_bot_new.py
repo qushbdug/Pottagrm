@@ -460,10 +460,17 @@ async def button_click_handler(update: Update, context):
             customer_id = int(callback_data.split('_')[2])
             return await CustomerManagement.show_customer_profile(update, context, customer_id)
         
-        # File upload handlers
+        # File upload handlers and purchase category selection disambiguation
         elif callback_data.startswith('select_network_'):
             return await process_network_selection(update, context)
         elif callback_data.startswith('select_category_'):
+            parts = callback_data.split('_')
+            # Purchase flow uses: select_category_{network_id}_{price}
+            if len(parts) >= 4:
+                network_id = parts[2]
+                price = parts[3]
+                return await confirm_card_purchase(update, context, network_id, price)
+            # Upload flow uses: select_category_{value} or select_category_auto
             return await process_category_selection(update, context)
         elif callback_data.startswith('price_'):
             return await process_price_selection(update, context)
