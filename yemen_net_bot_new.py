@@ -888,14 +888,7 @@ async def button_click_handler(update: Update, context):
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
                 return
         
-        # Coupon quick creation handlers
-        elif callback_data.startswith('create_quick_coupon_'):
-            if user['role'] != 'super_admin':
-                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
-                return
-            amount = int(callback_data.split('_')[-1])
-            from bot_modules.admin_functions import create_quick_coupon_handler
-            return await create_quick_coupon_handler(update, context, amount)
+        # Quick coupon creation removed per request
         
         # Additional coupon handlers
         elif callback_data == 'coupons_stats':
