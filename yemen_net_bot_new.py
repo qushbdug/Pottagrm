@@ -5594,6 +5594,22 @@ def main():
                     application.bot.set_chat_menu_button(menu_button=MenuButtonCommands()),
                     timeout=30.0
                 )
+                # Set bot description and short description for better link previews
+                try:
+                    description_text = (
+                        "بوت كروت الإنترنت اليمني المطوّر: شراء كروت، محفظة ذكية، تقارير شخصية، عروض وكوبونات."
+                    )
+                    short_description_text = "بوت كروت الإنترنت اليمني المطوّر"
+                    await asyncio.wait_for(
+                        application.bot.set_my_description(description=description_text),
+                        timeout=30.0
+                    )
+                    await asyncio.wait_for(
+                        application.bot.set_my_short_description(short_description=short_description_text),
+                        timeout=30.0
+                    )
+                except Exception as de:
+                    logger.warning(f"Failed to set bot descriptions: {de}")
                 logger.info("Bot commands set successfully")
             except asyncio.TimeoutError:
                 logger.error("Timeout setting bot commands")
