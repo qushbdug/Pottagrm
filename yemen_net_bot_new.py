@@ -6224,7 +6224,7 @@ async def confirm_card_purchase(update: Update, context: CallbackContext, networ
 """
         
         keyboard = [
-            [InlineKeyboardButton('✅ نعم، أريد الشراء', callback_data=f'confirm_purchase_{network_id}_{price}'),
+            [InlineKeyboardButton('✅ نعم، أريد الشراء', callback_data=f'process_purchase_{network_id}_{price}'),
              InlineKeyboardButton('❌ لا، إلغاء', callback_data=f'buy_from_network_{network_id}')]
         ]
         
