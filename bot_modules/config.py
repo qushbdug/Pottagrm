@@ -48,8 +48,6 @@ QUICK_COMMANDS = [
     BotCommand('notifications', '🔔 إشعاراتي'),
     
     # الإعدادات والحساب
-    BotCommand('settings', '⚙️ إعدادات الحساب'),
-    BotCommand('ratings', '⭐ تقييماتي ومراجعاتي'),
     
     # الإدارة والمساعدة
     BotCommand('admin', '👑 لوحة الإدارة'),
