@@ -6149,6 +6149,11 @@ async def confirm_card_purchase(update: Update, context: CallbackContext, networ
     """تأكيد شراء الكرت"""
     try:
         query = update.callback_query
+        # Answer callback to avoid repeated pending queries
+        try:
+            await query.answer()
+        except Exception:
+            pass
         user = get_user(query.from_user.id)
         
         if not user:
@@ -6223,7 +6228,13 @@ async def confirm_card_purchase(update: Update, context: CallbackContext, networ
              InlineKeyboardButton('❌ لا، إلغاء', callback_data=f'buy_from_network_{network_id}')]
         ]
         
-        await query.edit_message_text(confirm_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        # Safely edit message; ignore 'not modified' error if user double-clicked
+        try:
+            await query.edit_message_text(confirm_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        except BadRequest as e:
+            if 'Message is not modified' in str(e):
+                return
+            raise
         
     except Exception as e:
         logger.error(f"Error in confirm card purchase: {e}")
