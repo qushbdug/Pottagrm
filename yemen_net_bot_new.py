@@ -223,6 +223,13 @@ async def button_click_handler(update: Update, context):
     """Enhanced callback query handler with better error handling"""
     try:
         query = update.callback_query
+        # Read callback data first so it's available even if answering fails
+        callback_data = query.data
+        
+        # Allow role selection during registration without requiring an existing user
+        if callback_data and callback_data.startswith('role_'):
+            return await choose_role(update, context)
+        
         await query.answer()
         
         # Get user with validation
@@ -230,8 +237,6 @@ async def button_click_handler(update: Update, context):
         if not user:
             await query.edit_message_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
             return
-        
-        callback_data = query.data
         
         # Main menu
         if callback_data == 'main_menu':
@@ -631,6 +636,8 @@ async def button_click_handler(update: Update, context):
             )
         except:
             pass
+        # Exit early to avoid referencing possibly undefined variables below
+        return
 
 # Placeholder handlers for features being implemented
         if callback_data == 'main_menu':
