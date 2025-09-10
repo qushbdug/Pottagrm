@@ -2476,21 +2476,55 @@ async def copy_share_link_handler(update: Update, context: CallbackContext):
     """معالج نسخ رابط مشاركة الشبكة"""
     try:
         query = update.callback_query
-        await query.answer("📋 تم نسخ الرابط! يمكنك مشاركته الآن", show_alert=True)
+        callback = query.data or ''
+        network_id = callback.split('_')[-1] if callback.startswith('copy_share_link_') else None
+        bot_username = context.bot.username or "YemenNetBot"
+        if network_id:
+            share_link = f"https://t.me/{bot_username}?start=network_{network_id}"
+            await query.answer("📋 تم نسخ الرابط!", show_alert=False)
+            await context.bot.send_message(chat_id=query.from_user.id, text=f"🔗 رابط مشاركة الشبكة:\n{share_link}")
+        else:
+            await query.answer("❌ لم يتم تحديد معرف الشبكة", show_alert=True)
         
     except Exception as e:
         logger.error(f"Error in copy share link handler: {e}")
-        await query.answer("❌ حدث خطأ في نسخ الرابط")
+        try:
+            await query.answer("❌ حدث خطأ في نسخ الرابط")
+        except Exception:
+            pass
 
 async def copy_referral_link_handler(update: Update, context: CallbackContext):
     """معالج نسخ رابط الإحالة"""
     try:
         query = update.callback_query
-        await query.answer("📋 تم نسخ رابط الإحالة! شاركه مع أصدقائك لتحصل على عمولة 5%", show_alert=True)
+        user = get_user(query.from_user.id)
+        bot_username = context.bot.username or "YemenNetBot"
+        invite_code = user['invite_code'] if user and user['invite_code'] else None
+        if not invite_code:
+            import random, string
+            try:
+                new_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute('UPDATE users SET invite_code = ? WHERE id = ?', (new_code, user['id']))
+                conn.commit()
+                conn.close()
+                invite_code = new_code
+            except Exception:
+                invite_code = None
+        if invite_code:
+            referral_link = f"https://t.me/{bot_username}?start=ref_{invite_code}"
+            await query.answer("📋 تم نسخ رابط الإحالة!", show_alert=False)
+            await context.bot.send_message(chat_id=query.from_user.id, text=f"🔗 رابط الإحالة الخاص بك:\n{referral_link}")
+        else:
+            await query.answer("❌ لا يوجد كود إحالة متاح", show_alert=True)
         
     except Exception as e:
         logger.error(f"Error in copy referral link handler: {e}")
-        await query.answer("❌ حدث خطأ في نسخ الرابط")
+        try:
+            await query.answer("❌ حدث خطأ في نسخ رابط الإحالة")
+        except Exception:
+            pass
 
 async def cards_reports_handler(update: Update, context):
     """Handle cards reports"""

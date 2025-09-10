@@ -430,6 +430,8 @@ def create_main_keyboard(role: str):
                 ])
         
         # Add help and support
+        # إضافة زر مشاركة رابط الإحالة إلى الصفحة الرئيسية
+        base_buttons.append([InlineKeyboardButton('🔗 رابط الإحالة', callback_data='referral_stats')])
         base_buttons.append([InlineKeyboardButton('❓ المساعدة والدعم', callback_data='help')])
         
         return base_buttons
