@@ -6268,8 +6268,8 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # بدء معاملة قاعدة البيانات
-        cursor.execute('BEGIN TRANSACTION')
+        # بدء معاملة بكتابة فورية لتقليل التنافس
+        cursor.execute('BEGIN IMMEDIATE')
         
         try:
             cursor.execute('SELECT name, provider, supplier_id FROM networks WHERE id = ? AND is_active = 1', (network_id,))
@@ -6292,12 +6292,11 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             except (ValueError, TypeError) as e:
                 raise Exception(f"سعر الكرت غير صحيح: {price}")
             
-            # التحقق من توفر الكرت وحجزه (SELECT FOR UPDATE لمنع Race Conditions)
+            # التحقق من توفر الكرت وحجزه (بدون FOR UPDATE في SQLite)
             cursor.execute('''
                 SELECT id FROM network_cards 
                 WHERE network_id = ? AND card_value = ? AND is_sold = 0
                 LIMIT 1
-                FOR UPDATE
             ''', (network_id, card_price))
             
             card_result = cursor.fetchone()
@@ -6322,8 +6321,10 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             if current_balance < card_price:
                 raise Exception(f"رصيدك ({current_balance:,.2f} ريال) غير كافي")
             
-            # تحديث حالة الكرت إلى مباع
-            cursor.execute('UPDATE network_cards SET is_sold = 1, sold_at = datetime("now") WHERE id = ?', (card_id,))
+            # تحديث حالة الكرت إلى مباع مع شرط الأمان لمنع السباق
+            cursor.execute('UPDATE network_cards SET is_sold = 1, sold_at = datetime("now") WHERE id = ? AND is_sold = 0', (card_id,))
+            if cursor.rowcount == 0:
+                raise Exception("الكرت تم حجزه بواسطة عملية أخرى، حاول مرة أخرى")
             
             # حساب تقسيم الأرباح (70% للمزود، 30% للمشرف)
             provider_share = card_price * 0.70  # 70% للمزود
