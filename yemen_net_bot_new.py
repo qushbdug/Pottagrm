@@ -230,6 +230,10 @@ async def button_click_handler(update: Update, context):
         if callback_data and callback_data.startswith('role_'):
             return await choose_role(update, context)
         
+        # Fast-path: simplified upload confirmation
+        if callback_data == 'confirm_simplified_upload':
+            return await confirm_simplified_upload(update, context)
+        
         await query.answer()
         
         # Get user with validation
