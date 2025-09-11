@@ -4665,10 +4665,13 @@ async def transfer_to_friend_handler(update: Update, context: CallbackContext):
         await query.edit_message_text(wallet_error("عرض صفحة التحويل"))
 
 async def personal_reports_handler(update: Update, context: CallbackContext):
-    """معالج التقارير الشخصية"""
+    """معالج التقارير الشخصية يدعم الأوامر والضغط على الأزرار"""
     try:
-        query = update.callback_query
-        user = get_user(query.from_user.id)
+        is_callback = hasattr(update, 'callback_query') and update.callback_query
+        if is_callback:
+            query = update.callback_query
+            await query.answer()
+        user = get_user(update.effective_user.id)
         
         # الحصول على إحصائيات المستخدم
         conn = get_db_connection()
@@ -4747,17 +4750,23 @@ async def personal_reports_handler(update: Update, context: CallbackContext):
              InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
-        await query.edit_message_text(reports_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        if is_callback:
+            await query.edit_message_text(reports_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        else:
+            await update.message.reply_text(reports_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
     except Exception as e:
         logger.error(f"Error in personal reports handler: {e}")
         await query.edit_message_text(ErrorMessages.report_error("الشخصية"))
 
 async def promotions_handler(update: Update, context: CallbackContext):
-    """معالج العروض والخصومات"""
+    """معالج العروض والخصومات يدعم الأوامر والضغط على الأزرار"""
     try:
-        query = update.callback_query
-        user = get_user(query.from_user.id)
+        is_callback = hasattr(update, 'callback_query') and update.callback_query
+        if is_callback:
+            query = update.callback_query
+            await query.answer()
+        user = get_user(update.effective_user.id)
         
         # الحصول على العروض المتاحة
         conn = get_db_connection()
@@ -4830,17 +4839,23 @@ async def promotions_handler(update: Update, context: CallbackContext):
             [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
-        await query.edit_message_text(promotions_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        if is_callback:
+            await query.edit_message_text(promotions_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        else:
+            await update.message.reply_text(promotions_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
     except Exception as e:
         logger.error(f"Error in promotions handler: {e}")
         await query.edit_message_text(menu_error("العروض والخصومات", "عرض العروض"))
 
 async def my_notifications_handler(update: Update, context: CallbackContext):
-    """معالج إشعاراتي"""
+    """معالج إشعاراتي يدعم الأوامر والضغط على الأزرار"""
     try:
-        query = update.callback_query
-        user = get_user(query.from_user.id)
+        is_callback = hasattr(update, 'callback_query') and update.callback_query
+        if is_callback:
+            query = update.callback_query
+            await query.answer()
+        user = get_user(update.effective_user.id)
         
         # الحصول على آخر المعاملات كإشعارات
         conn = get_db_connection()
@@ -4910,7 +4925,10 @@ async def my_notifications_handler(update: Update, context: CallbackContext):
             [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
-        await query.edit_message_text(notifications_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        if is_callback:
+            await query.edit_message_text(notifications_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        else:
+            await update.message.reply_text(notifications_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
     except Exception as e:
         logger.error(f"Error in my notifications handler: {e}")
@@ -5735,6 +5753,9 @@ def main():
         application.add_handler(CommandHandler('promotions', promotions_handler))
         application.add_handler(CommandHandler('redeem_coupon', redeem_coupon_handler))
         application.add_handler(CommandHandler('statement', account_statement_handler))
+        application.add_handler(CommandHandler('transfer', COMMAND_HANDLERS['transfer_to_friend']))
+        application.add_handler(CommandHandler('reports', personal_reports_handler))
+        application.add_handler(CommandHandler('notifications', my_notifications_handler))
         
         # Start the bot with enhanced error handling
         logger.info(f'{EMOJIS["fire"]} Starting Pottagrm Enhanced Bot v2.1.0...')

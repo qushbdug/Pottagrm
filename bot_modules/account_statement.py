@@ -479,8 +479,20 @@ class AccountStatementGenerator:
 
 # دوال مساعدة للاستدعاء السريع
 async def account_statement_handler(update: Update, context: CallbackContext):
-    """معالج عرض خيارات كشف الحساب"""
-    return await AccountStatementGenerator.show_statement_options(update, context)
+    """معالج عرض خيارات كشف الحساب يدعم الأوامر والأزرار"""
+    try:
+        is_callback = hasattr(update, 'callback_query') and update.callback_query
+        if is_callback:
+            return await AccountStatementGenerator.show_statement_options(update, context)
+        else:
+            # محادثة أمر /statement
+            return await AccountStatementGenerator.show_statement_options(update, context)
+    except Exception as e:
+        from bot_modules.enhanced_error_messages import unexpected_error
+        if is_callback:
+            await update.callback_query.edit_message_text(unexpected_error("كشف الحساب", "عرض الخيارات"))
+        else:
+            await update.message.reply_text(unexpected_error("كشف الحساب", "عرض الخيارات"))
 
 async def download_excel_30_handler(update: Update, context: CallbackContext):
     """تنزيل Excel - آخر 30 يوم"""
