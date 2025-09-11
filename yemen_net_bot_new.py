@@ -775,6 +775,18 @@ async def button_click_handler(update: Update, context):
             return await CustomerManagement.search_customers(update, context)
         elif callback_data == 'customer_list':
             return await CustomerManagement.list_customers(update, context)
+        elif callback_data == 'customer_list_active':
+            return await CustomerManagement.list_customers_active(update, context)
+        elif callback_data == 'customer_list_inactive':
+            return await CustomerManagement.list_customers_inactive(update, context)
+        elif callback_data == 'customer_list_top_balance':
+            return await CustomerManagement.list_customers_top_balance(update, context)
+        elif callback_data == 'customer_list_most_active':
+            return await CustomerManagement.list_customers_most_active(update, context)
+        elif callback_data == 'customer_list_new':
+            return await CustomerManagement.list_customers_new(update, context)
+        elif callback_data == 'customer_list_suspicious':
+            return await CustomerManagement.list_customers_suspicious(update, context)
         elif callback_data == 'customer_reports':
             return await CustomerManagement.customer_reports(update, context)
         elif callback_data == 'customer_balance_mgmt':
@@ -1422,13 +1434,11 @@ async def supplier_panel_handler(update: Update, context):
 💰 رصيدك: **{user['balance']:.2f}** ريال
 🆔 **معرف المزود: `{supplier_code}`**
 🔰 حالة التفعيل: **{'✅ مفعل' if user['is_active'] else '⏳ في الانتظار'}**
-
 📊 **إحصائيات المزود:**
 📶 شبكتك: **{network_status}** ({networks_count}/1)
 📋 كروت متاحة: **{active_cards}**
 ✅ كروت مباعة: **{sold_cards}**
 📤 رفع حديث (7 أيام): **{recent_uploads}**
-
 💰 **ملخص الأرباح (70% من المبيعات):**
 💵 إجمالي الأرباح: **{profit_info['total_earnings']:,.2f}** ريال
 📤 تم سحبه/معلق: **{profit_info['withdrawn_amount']:,.2f}** ريال
@@ -2226,7 +2236,6 @@ async def view_my_withdrawals_handler(update: Update, context: CallbackContext):
         else:
             withdrawals_text += """
 ❌ **لا توجد طلبات سحب**
-
 💡 يمكنك تقديم طلب سحب في أي وقت، وستتم الموافقة يوم الجمعة.
 """
         
@@ -2962,12 +2971,10 @@ async def handle_document(update: Update, context: CallbackContext):
 ❌ **ملف غير مدعوم**
 🎯 **النظام المبسط الجديد:**
 يدعم فقط ملفات **TXT** (.txt)
-
 📋 **كيفية إنشاء الملف:**
 • افتح برنامج Notepad أو أي محرر نصوص
 • اكتب كل رقم كرت في سطر منفصل
 • احفظ الملف بصيغة TXT
-
 💡 **مثال على المحتوى:**
 ```
 123456789012
@@ -3743,7 +3750,6 @@ async def process_category_selection(update: Update, context: CallbackContext):
 💳 **الفئة:** {category_name}
 📊 **حجم الملف:** {upload_data['size']/1024:.1f} كيلوبايت
 📝 **عدد الأسطر:** {len([l for l in lines if l.strip()])}
-
 🔍 **معاينة الأسطر الأولى:**
 ```
 {preview}
@@ -3765,7 +3771,6 @@ async def process_category_selection(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error processing category selection: {e}")
         await query.edit_message_text(ErrorMessages.card_error("اختيار فئة الكرت"))
-
 async def cancel_upload(update: Update, context: CallbackContext):
     """Cancel file upload"""
     try:
@@ -4538,7 +4543,6 @@ async def show_network_details(update: Update, context: CallbackContext, network
     except Exception as e:
         logger.error(f"Error in show network details: {e}")
         await query.edit_message_text(search_error("تفاصيل الشبكة", "قاعدة البيانات"))
-
 async def legacy_search_networks_handler(update: Update, context: CallbackContext):
     """Legacy search function - shows all networks (deprecated)"""
     try:
@@ -4565,7 +4569,6 @@ async def legacy_search_networks_handler(update: Update, context: CallbackContex
         
         search_text = f"""
 🔍 **البحث في الشبكات** 🔍
-
 📊 **إجمالي الشبكات المتاحة:** {len(networks)} شبكة
 
 🌐 **الشبكات المتاحة:**
@@ -4906,9 +4909,6 @@ async def my_notifications_handler(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in my notifications handler: {e}")
         await query.edit_message_text(ErrorMessages.notification_error("عرض الإشعارات"))
-
-# account_settings_handler removed as requested
-# account_settings_handler removed as requested
 
 async def transfer_history_handler(update: Update, context: CallbackContext):
     """معالج سجل التحويلات"""
@@ -5335,7 +5335,6 @@ async def recharge_balance_handler(update: Update, context: CallbackContext):
         
         recharge_text = f"""
 💰 **شحن الرصيد** 💰
-
 👤 مرحباً **{user['full_name']}**
 💳 رقم محفظتك: **{user['wallet_number']}**
 💰 رصيدك الحالي: **{user['balance']:,.2f}** ريال
@@ -5356,7 +5355,6 @@ async def recharge_balance_handler(update: Update, context: CallbackContext):
    • للمساعدة في عملية الشحن
    • للاستفسار عن نقاط البيع
    • لحل أي مشاكل في الشحن
-
 💡 **أسرع طريقة: استخدم الكوبونات!**
 """
         
@@ -6128,7 +6126,6 @@ async def confirm_user_transfer(update: Update, context: CallbackContext, user_i
                 [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
             ])
         )
-
 async def show_network_categories(update: Update, context: CallbackContext, network_id: str):
     """عرض فئات الكروت المتاحة في الشبكة للشراء"""
     try:
