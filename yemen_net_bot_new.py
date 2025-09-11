@@ -446,6 +446,12 @@ async def button_click_handler(update: Update, context):
             return await AdminManagement.get_admin_dashboard(update, context)
         elif callback_data == 'admin_manage_admins':
             return await AdminManagement.manage_admins(update, context)
+        elif callback_data == 'admin_permissions_management':
+            return await AdminManagement.admin_permissions_handler(update, context)
+        elif callback_data == 'admin_performance_evaluation':
+            return await AdminManagement.get_admin_analytics(update, context)
+        elif callback_data == 'admin_banned_management':
+            return await AdminManagement.admin_banned_handler(update, context)
         elif callback_data == 'admin_analytics':
             return await AdminManagement.get_admin_analytics(update, context)
         elif callback_data.startswith('admin_profile_'):
