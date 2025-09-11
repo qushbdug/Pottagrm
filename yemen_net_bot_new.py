@@ -2103,12 +2103,12 @@ async def request_withdrawal_handler(update: Update, context: CallbackContext):
 ✅ المتاح للسحب: **{withdrawable_info['available_amount']:,.2f}** ريال
 
 📅 **شروط السحب:**
-• يمكن طلب السحب فقط يوم الجمعة
+• يمكن إنشاء طلب السحب في أي وقت
+• تتم الموافقة والتحويل من الإدارة يوم الجمعة فقط
 • الحد الأدنى للسحب: 100 ريال
-• يتم التحويل يدوياً من الإدارة
-• مدة المعالجة: 1-3 أيام عمل
+• مدة المعالجة بعد الموافقة: 1-3 أيام عمل
 
-🕐 **حالة اليوم:** {'✅ يمكن طلب السحب (يوم الجمعة)' if can_withdraw else '❌ لا يمكن طلب السحب (ليس يوم الجمعة)'}
+🕐 **حالة اليوم:** {'✅ تتم الموافقات اليوم (الجمعة)' if can_withdraw else 'ℹ️ الموافقات تتم يوم الجمعة فقط'}
 """
         
         if pending_requests > 0:
@@ -2116,7 +2116,7 @@ async def request_withdrawal_handler(update: Update, context: CallbackContext):
         
         keyboard = []
         
-        if can_withdraw and withdrawable_info['available_amount'] >= 100 and pending_requests == 0:
+        if withdrawable_info['available_amount'] >= 100 and pending_requests == 0:
             keyboard.append([InlineKeyboardButton('💰 تقديم طلب سحب', callback_data='submit_withdrawal_request')])
         
         keyboard.extend([
@@ -2224,7 +2224,7 @@ async def view_my_withdrawals_handler(update: Update, context: CallbackContext):
             withdrawals_text += """
 ❌ **لا توجد طلبات سحب**
 
-💡 يمكنك تقديم طلب سحب يوم الجمعة عندما يكون لديك أرباح متاحة.
+💡 يمكنك تقديم طلب سحب في أي وقت، وستتم الموافقة يوم الجمعة.
 """
         
         keyboard = [
@@ -2365,6 +2365,13 @@ async def approve_withdrawal_handler(update: Update, context: CallbackContext, w
         
         if not user or user['role'] != 'super_admin':
             await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # السماح بالموافقة يوم الجمعة فقط
+        from datetime import datetime
+        if datetime.utcnow().weekday() != 4:  # الجمعة = 4
+            await query.edit_message_text(
+                f"{EMOJIS['info']} الموافقات تتم يوم الجمعة فقط. يرجى العودة يوم الجمعة.")
             return
         
         # تحديث حالة الطلب
