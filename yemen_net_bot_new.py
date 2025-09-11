@@ -12,6 +12,7 @@ import logging
 import asyncio
 import sys
 import os
+import html
 from datetime import datetime
 import sqlite3
 from telegram.error import TelegramError, NetworkError, TimedOut, BadRequest
@@ -1995,39 +1996,43 @@ async def share_network_handler(update: Update, context: CallbackContext, networ
         bot_username = context.bot.username or "YemenNetBot"
         share_link = generate_supplier_share_link(network_id, bot_username)
         
-        share_text = f"""
-🔗 **مشاركة شبكتك** 🔗
+        # تأمين النص ضد مشاكل تنسيق Markdown باستعمال HTML مع هروب المحارف
+        name_html = html.escape(str(network_info.get('name') or ''))
+        provider_html = html.escape(str(network_info.get('provider') or ''))
+        location_html = html.escape(str(network_info.get('location') or ''))
+        city_html = html.escape(str(network_info.get('city') or ''))
+        total_cards = network_info.get('total_cards') or 0
+        available_cards = network_info.get('available_cards') or 0
+        min_price = network_info.get('min_price') or 0
+        max_price = network_info.get('max_price') or 0
 
-📶 **{network_info['name']}**
-🏢 المزود: **{network_info['provider']}**
-🏙️ الموقع: **{network_info['location']}, {network_info['city']}**
-
-📊 **إحصائيات الشبكة:**
-💳 إجمالي الكروت: **{network_info['total_cards']:,}** كرت
-✅ الكروت المتاحة: **{network_info['available_cards']:,}** كرت
-💰 نطاق الأسعار: **{network_info['min_price']:,.0f} - {network_info['max_price']:,.0f}** ريال
-
-🎯 **رابط المشاركة:**
-`{share_link}`
-
-💡 **كيفية الاستخدام:**
-• شارك هذا الرابط مع العملاء
-• عند النقر عليه سيفتح شبكتك مباشرة
-• يمكن للعملاء الشراء فوراً من شبكتك
-• احصل على المزيد من المبيعات!
-
-📱 **طرق المشاركة:**
-• انسخ الرابط وشاركه في الواتساب
-• انشره في مجموعات التليجرام
-• ضعه في منشوراتك على وسائل التواصل
-• أرسله للعملاء مباشرة
-
-🎊 **مزايا الرابط المباشر:**
-• وصول سريع لشبكتك
-• تجربة شراء محسنة
-• زيادة في المبيعات
-• سهولة في التسويق
-"""
+        share_text = (
+            f"🔗 <b>مشاركة شبكتك</b> 🔗\n\n"
+            f"📶 <b>{name_html}</b>\n"
+            f"🏢 المزود: <b>{provider_html}</b>\n"
+            f"🏙️ الموقع: <b>{location_html}, {city_html}</b>\n\n"
+            f"📊 <b>إحصائيات الشبكة:</b>\n"
+            f"💳 إجمالي الكروت: <b>{total_cards:,}</b> كرت\n"
+            f"✅ الكروت المتاحة: <b>{available_cards:,}</b> كرت\n"
+            f"💰 نطاق الأسعار: <b>{min_price:,.0f} - {max_price:,.0f}</b> ريال\n\n"
+            f"🎯 <b>رابط المشاركة:</b>\n"
+            f"<code>{html.escape(share_link)}</code>\n\n"
+            f"💡 <b>كيفية الاستخدام:</b>\n"
+            f"• شارك هذا الرابط مع العملاء\n"
+            f"• عند النقر عليه سيفتح شبكتك مباشرة\n"
+            f"• يمكن للعملاء الشراء فوراً من شبكتك\n"
+            f"• احصل على المزيد من المبيعات!\n\n"
+            f"📱 <b>طرق المشاركة:</b>\n"
+            f"• انسخ الرابط وشاركه في الواتساب\n"
+            f"• انشره في مجموعات التليجرام\n"
+            f"• ضعه في منشوراتك على وسائل التواصل\n"
+            f"• أرسله للعملاء مباشرة\n\n"
+            f"🎊 <b>مزايا الرابط المباشر:</b>\n"
+            f"• وصول سريع لشبكتك\n"
+            f"• تجربة شراء محسنة\n"
+            f"• زيادة في المبيعات\n"
+            f"• سهولة في التسويق"
+        )
         
         keyboard = [
             [InlineKeyboardButton('📋 نسخ الرابط', callback_data=f'copy_share_link_{network_id}')],
@@ -2035,11 +2040,11 @@ async def share_network_handler(update: Update, context: CallbackContext, networ
              InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
         ]
         
-        await query.edit_message_text(share_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await query.edit_message_text(share_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
         
     except Exception as e:
         logger.error(f"Error in share network handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إنشاء رابط المشاركة")
+        await query.edit_message_text(unexpected_error("مشاركة الشبكة"))
 
 async def request_withdrawal_handler(update: Update, context: CallbackContext):
     """معالج طلب سحب الأرباح للمزود"""
@@ -2480,9 +2485,29 @@ async def copy_share_link_handler(update: Update, context: CallbackContext):
         network_id = callback.split('_')[-1] if callback.startswith('copy_share_link_') else None
         bot_username = context.bot.username or "YemenNetBot"
         if network_id:
+            # جلب اسم الشبكة لعرضه في الرسالة
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute('SELECT name FROM networks WHERE id = ?', (network_id,))
+                row = cursor.fetchone()
+                conn.close()
+                network_name = row[0] if row else None
+            except Exception:
+                network_name = None
+
             share_link = f"https://t.me/{bot_username}?start=network_{network_id}"
             await query.answer("📋 تم نسخ الرابط!", show_alert=False)
-            await context.bot.send_message(chat_id=query.from_user.id, text=f"🔗 رابط مشاركة الشبكة:\n{share_link}")
+            if network_name:
+                await context.bot.send_message(
+                    chat_id=query.from_user.id,
+                    text=(
+                        f"🔗 رابط الشبكة:\n{share_link}\n\n"
+                        f"اضغط الرابط للدخول مباشرة إلى\nشبكة {network_name}"
+                    )
+                )
+            else:
+                await context.bot.send_message(chat_id=query.from_user.id, text=f"🔗 رابط مشاركة الشبكة:\n{share_link}")
         else:
             await query.answer("❌ لم يتم تحديد معرف الشبكة", show_alert=True)
         
