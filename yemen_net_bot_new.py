@@ -21,7 +21,7 @@ from telegram.error import TelegramError, NetworkError, TimedOut, BadRequest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'bot_modules'))
 
 # Import Telegram bot components
-from telegram import Update, MenuButtonCommands, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, MenuButtonCommands, InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler,
     ConversationHandler, PicklePersistence, filters, CallbackContext
@@ -2040,6 +2040,7 @@ async def share_network_handler(update: Update, context: CallbackContext, networ
              InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
         ]
         
+        # عرض المعاينة سيكون عندما نرسل الرابط برسالة منفصلة، لأن edit_message_text لا يعرض معاينة للرابط مع الكود داخل النص
         await query.edit_message_text(share_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
         
     except Exception as e:
@@ -2498,16 +2499,11 @@ async def copy_share_link_handler(update: Update, context: CallbackContext):
 
             share_link = f"https://t.me/{bot_username}?start=network_{network_id}"
             await query.answer("📋 تم نسخ الرابط!", show_alert=False)
-            if network_name:
-                await context.bot.send_message(
-                    chat_id=query.from_user.id,
-                    text=(
-                        f"🔗 رابط الشبكة:\n{share_link}\n\n"
-                        f"اضغط الرابط للدخول مباشرة إلى\nشبكة {network_name}"
-                    )
-                )
-            else:
-                await context.bot.send_message(chat_id=query.from_user.id, text=f"🔗 رابط مشاركة الشبكة:\n{share_link}")
+            preview = LinkPreviewOptions(is_disabled=False, show_above_text=True)
+            title = f"رابط الشبكة - {network_name}" if network_name else "رابط الشبكة"
+            # ضع الرابط في أول السطر لتفعيل المعاينة
+            text = f"{share_link}\n\n{title}\nاضغط للدخول المباشر"
+            await context.bot.send_message(chat_id=query.from_user.id, text=text, link_preview_options=preview)
         else:
             await query.answer("❌ لم يتم تحديد معرف الشبكة", show_alert=True)
         
@@ -2540,7 +2536,9 @@ async def copy_referral_link_handler(update: Update, context: CallbackContext):
         if invite_code:
             referral_link = f"https://t.me/{bot_username}?start=ref_{invite_code}"
             await query.answer("📋 تم نسخ رابط الإحالة!", show_alert=False)
-            await context.bot.send_message(chat_id=query.from_user.id, text=f"🔗 رابط الإحالة الخاص بك:\n{referral_link}")
+            preview = LinkPreviewOptions(is_disabled=False, show_above_text=True)
+            text = f"{referral_link}\n\nرابط الإحالة الخاص بك\nاضغط للدخول"
+            await context.bot.send_message(chat_id=query.from_user.id, text=text, link_preview_options=preview)
         else:
             await query.answer("❌ لا يوجد كود إحالة متاح", show_alert=True)
         
