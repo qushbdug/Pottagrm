@@ -975,8 +975,86 @@ async def dashboard_handler(update, context):
         logger.error(f"Error in dashboard handler: {e}")
         await query.edit_message_text(menu_error("لوحة المعلومات", "تحميل البيانات"))
 
-async def view_all_suppliers_handler(update, context):
-    return await placeholder_handler(update, context, "عرض جميع المزودين")
+async def view_all_suppliers_handler(update: Update, context: CallbackContext):
+    """عرض جميع المزودين مع ترقيم صفحات بسيط"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+
+        # استخراج الصفحة من callback إن وجدت
+        data = query.data or 'super_view_all_suppliers'
+        parts = data.split('_')
+        page = 1
+        if len(parts) >= 5 and parts[-2] == 'page':
+            try:
+                page = max(1, int(parts[-1]))
+            except Exception:
+                page = 1
+
+        page_size = 10
+        offset = (page - 1) * page_size
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # إجمالي المزودين
+        cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'supplier'")
+        total_suppliers = cursor.fetchone()[0]
+
+        # جلب الصفحة الحالية
+        cursor.execute('''
+            SELECT id, full_name, phone, is_active, balance
+            FROM users
+            WHERE role = 'supplier'
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+        ''', (page_size, offset))
+        rows = cursor.fetchall()
+        conn.close()
+
+        total_pages = max(1, (total_suppliers + page_size - 1) // page_size)
+
+        text = f"""
+👥 **جميع المزودين** (صفحة {page}/{total_pages})
+
+إجمالي المزودين: **{total_suppliers}**
+"""
+
+        if rows:
+            for sid, name, phone, is_active, balance in rows:
+                status = '✅ مفعل' if is_active else '⏸️ موقوف'
+                text += f"""
+━━━━━━━━━━━━━━━━
+👤 {name or 'غير معروف'}
+📱 {phone or 'غير متوفر'}
+💰 الرصيد: {balance or 0:.2f} ريال
+🔰 الحالة: {status}
+🆔 {sid}
+"""
+        else:
+            text += "\n❌ لا توجد بيانات."
+
+        # أزرار الترقيم
+        nav_buttons = []
+        if page > 1:
+            nav_buttons.append(InlineKeyboardButton('⬅️ السابق', callback_data=f'super_view_all_suppliers_page_{page-1}'))
+        if page < total_pages:
+            nav_buttons.append(InlineKeyboardButton('التالي ➡️', callback_data=f'super_view_all_suppliers_page_{page+1}'))
+
+        keyboard = []
+        if nav_buttons:
+            keyboard.append(nav_buttons)
+        keyboard.append([InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel')])
+
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+    except Exception as e:
+        logger.error(f"Error in view_all_suppliers_handler: {e}")
+        await query.edit_message_text(menu_error('إدارة المزودين', 'عرض جميع المزودين'))
 
 async def view_supplier_details_handler(update, context):
     return await placeholder_handler(update, context, "تفاصيل المزودين")

@@ -606,6 +606,11 @@ async def button_click_handler(update: Update, context):
             )
             return
         
+        # Admin: view all suppliers pagination
+        elif callback_data.startswith('super_view_all_suppliers'):
+            from bot_modules.admin_functions import view_all_suppliers_handler
+            return await view_all_suppliers_handler(update, context)
+        
         # Fallback for truly unhandled callbacks
         else:
             logger.warning(f"Unhandled callback: {callback_data}")
@@ -650,7 +655,6 @@ async def button_click_handler(update: Update, context):
             pass
         # Exit early to avoid referencing possibly undefined variables below
         return
-
 # Placeholder handlers for features being implemented
         if callback_data == 'main_menu':
             return await show_main_menu(update, context, user['role'])
@@ -1414,7 +1418,6 @@ async def supplier_panel_handler(update: Update, context):
         
         panel_text = f"""
 🏪 **لوحة المزود المطورة** 🏪
-
 👤 **{user['full_name']}**
 💰 رصيدك: **{user['balance']:.2f}** ريال
 🆔 **معرف المزود: `{supplier_code}`**
@@ -2957,7 +2960,6 @@ async def handle_document(update: Update, context: CallbackContext):
         if not file_name.lower().endswith('.txt'):
             await update.message.reply_text("""
 ❌ **ملف غير مدعوم**
-
 🎯 **النظام المبسط الجديد:**
 يدعم فقط ملفات **TXT** (.txt)
 
@@ -3736,7 +3738,6 @@ async def process_category_selection(update: Update, context: CallbackContext):
         
         confirmation_text = f"""
 ✅ **تأكيد رفع الكروت**
-
 📁 **الملف:** {upload_data['filename']}
 📶 **الشبكة:** {network['name']}
 💳 **الفئة:** {category_name}
@@ -5293,7 +5294,6 @@ async def account_status_handler(update: Update, context: CallbackContext):
 • التحقق: مكتمل ✅
 • الأمان: محمي ✅
 • الإشعارات: مفعلة ✅
-
 🎯 **تقييم الحساب:**
 • الموثوقية: ممتاز ⭐⭐⭐⭐⭐
 • الأمان: عالي 🔒
@@ -6090,7 +6090,6 @@ async def wallet_page_handler(update: Update, context: CallbackContext):
             "حاول العودة للمحفظة الرئيسية وأعد المحاولة",
             "PAGE_NAV_ERROR"
         ))
-
 async def confirm_user_transfer(update: Update, context: CallbackContext, user_id: str, amount: str):
     """تأكيد التحويل للمستخدم - معالج مفقود"""
     try:
