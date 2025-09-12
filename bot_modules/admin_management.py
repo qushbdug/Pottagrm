@@ -14,7 +14,7 @@ from telegram.ext import CallbackContext
 
 from bot_modules.config import EMOJIS, USER_ROLES, PERMISSIONS
 from bot_modules.database import get_db_connection
-from bot_modules.utils import get_user, update_user_activity
+from bot_modules.utils import get_user, get_user_by_id, update_user_activity
 from bot_modules.permissions import (
     AVAILABLE_PERMISSIONS, 
     has_permission, 
@@ -49,7 +49,8 @@ class AdminManagement:
             
             # عدد المشرفين
             cursor.execute("SELECT COUNT(*) FROM users WHERE role IN ('admin', 'super_admin')")
-            total_admins = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            total_admins = result[0] if result else 0
             
             # المشرفين النشطين (آخر 7 أيام)
             cursor.execute("""
@@ -57,22 +58,26 @@ class AdminManagement:
                 WHERE role IN ('admin', 'super_admin') 
                 AND last_activity >= datetime('now', '-7 days')
             """)
-            active_admins = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            active_admins = result[0] if result else 0
             
             # المشرفين حسب النوع
             cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'")
-            regular_admins = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            regular_admins = result[0] if result else 0
             
             cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'super_admin'")
-            super_admins = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            super_admins = result[0] if result else 0
             
             # نشاطات المشرفين اليوم
             cursor.execute("""
-                SELECT COUNT(*) FROM activity_logs 
+                SELECT COUNT(*) FROM activity_logs
                 WHERE user_id IN (SELECT id FROM users WHERE role IN ('admin', 'super_admin'))
                 AND DATE(created_at) = DATE('now')
             """)
-            today_activities = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            today_activities = result[0] if result else 0
             
             # آخر النشاطات
             cursor.execute("""
@@ -258,17 +263,19 @@ class AdminManagement:
                 SELECT COUNT(*) FROM activity_logs 
                 WHERE user_id = ? AND created_at >= datetime('now', '-30 days')
             """, (admin_id,))
-            monthly_activities = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            monthly_activities = result[0] if result else 0
             
             cursor.execute("""
                 SELECT COUNT(*) FROM activity_logs 
                 WHERE user_id = ? AND DATE(created_at) = DATE('now')
             """, (admin_id,))
-            daily_activities = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            daily_activities = result[0] if result else 0
             
             # آخر النشاطات
             cursor.execute("""
-                SELECT action, description, created_at 
+                SELECT activity_type, description, created_at 
                 FROM activity_logs 
                 WHERE user_id = ? 
                 ORDER BY created_at DESC 
@@ -369,12 +376,12 @@ class AdminManagement:
             
             # أكثر الأنشطة تكراراً
             cursor.execute("""
-                SELECT a.action, COUNT(*) as count
+                SELECT a.activity_type, COUNT(*) as count
                 FROM activity_logs a
                 JOIN users u ON a.user_id = u.id
                 WHERE u.role IN ('admin', 'super_admin')
                 AND a.created_at >= datetime('now', '-30 days')
-                GROUP BY a.action
+                GROUP BY a.activity_type
                 ORDER BY count DESC
                 LIMIT 5
             """)
@@ -574,7 +581,7 @@ class AdminManagement:
                 return
             
             # الحصول على معلومات المشرف المستهدف
-            target_admin = get_user(admin_id)
+            target_admin = get_user_by_id(admin_id)
             if not target_admin or target_admin['role'] not in ['admin', 'super_admin']:
                 await query.edit_message_text(f"{EMOJIS['error']} المشرف المستهدف غير موجود.")
                 return
@@ -635,7 +642,7 @@ class AdminManagement:
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
                 return
             
-            target_admin = get_user(admin_id)
+            target_admin = get_user_by_id(admin_id)
             if not target_admin:
                 await query.edit_message_text(f"{EMOJIS['error']} المشرف المستهدف غير موجود.")
                 return
@@ -951,7 +958,7 @@ class AdminManagement:
 👤 **بيانات المستخدم:**
 🔸 الاسم: **{target_user['full_name']}**
 🔸 المعرف: `{target_user['telegram_id']}`
-🔸 الهاتف: {target_user.get('phone', 'غير محدد')}
+🔸 الهاتف: {target_user['phone'] if target_user['phone'] else 'غير محدد'}
 🔸 الدور الحالي: **{target_user['role']}**
 
 🛡️ **اختر نوع الترقية:**
@@ -1113,7 +1120,7 @@ class AdminManagement:
                 return
             
             # الحصول على معلومات المشرف المراد حذفه
-            target_admin = get_user(admin_id)
+            target_admin = get_user_by_id(admin_id)
             if not target_admin or target_admin['role'] not in ['admin', 'super_admin']:
                 await query.edit_message_text(f"{EMOJIS['error']} المشرف المستهدف غير موجود.")
                 return
@@ -1129,7 +1136,7 @@ class AdminManagement:
 👤 **بيانات المشرف:**
 🔸 الاسم: **{target_admin['full_name']}**
 🔸 المعرف: `{target_admin['telegram_id']}`
-🔸 الهاتف: {target_admin.get('phone', 'غير محدد')}
+🔸 الهاتف: {target_admin['phone'] if target_admin['phone'] else 'غير محدد'}
 🔸 الدور: **{target_admin['role']}**
 
 ❌ **ما سيحدث عند الحذف:**
@@ -1167,7 +1174,7 @@ class AdminManagement:
             await query.answer()
             
             current_user = get_user(query.from_user.id)
-            target_admin = get_user(admin_id)
+            target_admin = get_user_by_id(admin_id)
             
             if not target_admin:
                 await query.edit_message_text(f"{EMOJIS['error']} المشرف المستهدف لم يعد موجوداً.")

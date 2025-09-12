@@ -77,6 +77,19 @@ def get_user(telegram_id: int):
         logger.error(f"Error getting user: {e}")
         return None
 
+def get_user_by_id(user_id: int):
+    """Get user by internal database ID"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
+        user = cursor.fetchone()
+        conn.close()
+        return user
+    except Exception as e:
+        logger.error(f"Error getting user by ID: {e}")
+        return None
+
 def update_user_activity(user_id: int):
     """Update user's last activity timestamp"""
     try:
@@ -189,50 +202,7 @@ def send_smart_notification(user_id: int, notification_type: str, title: str,
         logger.error(f"Error sending smart notification: {e}")
         return None
 
-def calculate_user_rating(user_id: int) -> Dict:
-    """Calculate and update user rating summary"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT rating, COUNT(*) as count FROM ratings 
-            WHERE rated_user_id = ? AND is_visible = 1
-            GROUP BY rating
-        ''', (user_id,))
-        
-        rating_counts = {i: 0 for i in range(1, 6)}
-        total_ratings = 0
-        total_score = 0
-        
-        for rating, count in cursor.fetchall():
-            rating_counts[rating] = count
-            total_ratings += count
-            total_score += rating * count
-        
-        average_rating = total_score / total_ratings if total_ratings > 0 else 0.0
-        
-        # Update or insert rating summary
-        cursor.execute('''
-            INSERT OR REPLACE INTO user_ratings_summary 
-            (user_id, total_ratings, average_rating, rating_1_count, rating_2_count,
-             rating_3_count, rating_4_count, rating_5_count, last_updated)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (user_id, total_ratings, average_rating, rating_counts[1], 
-              rating_counts[2], rating_counts[3], rating_counts[4], 
-              rating_counts[5], datetime.now()))
-        
-        conn.commit()
-        conn.close()
-        
-        return {
-            'total_ratings': total_ratings,
-            'average_rating': round(average_rating, 2),
-            'rating_distribution': rating_counts
-        }
-    except Exception as e:
-        logger.error(f"Error calculating user rating: {e}")
-        return {'total_ratings': 0, 'average_rating': 0.0, 'rating_distribution': {}}
+# calculate_user_rating function removed as requested
 
 # Permission management
 def get_user_permissions(user_id: int) -> List[str]:
@@ -354,8 +324,8 @@ def recalc_and_set_user_balance(user_id: int):
             ''', (user_id, user_id, user_id, user_id))
             
             result = cursor.fetchone()
-            credits = result['credits'] if result['credits'] else 0
-            debits = result['debits'] if result['debits'] else 0
+            credits = result[0] if result[0] else 0
+            debits = result[1] if result[1] else 0
             new_balance = credits - debits
             
             # Update user balance
@@ -704,3 +674,370 @@ def get_cards_stats_by_category(supplier_id):
     stats = cursor.fetchall()
     conn.close()
     return stats
+
+def process_referral_commission_fixed(buyer_user_id: int, purchase_amount: float, transaction_id: str, admin_id: int):
+    """معالجة عمولة الإحالة عند الشراء - مصلحة (تُخصم من حصة المشرف)"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # البحث عن الشخص الذي أحال هذا المشتري
+        cursor.execute('SELECT referred_by FROM users WHERE id = ?', (buyer_user_id,))
+        result = cursor.fetchone()
+        
+        if not result or not result[0]:
+            conn.close()
+            return 0  # لا يوجد محيل - لا توجد عمولة
+            
+        referrer_id = result[0]
+        
+        # حساب العمولة (5% من إجمالي المبلغ)
+        commission_rate = 0.05
+        commission_amount = purchase_amount * commission_rate
+        
+        # إنشاء سجل العمولة
+        import uuid
+        commission_id = str(uuid.uuid4())
+        
+        cursor.execute('''
+            INSERT INTO referral_commissions 
+            (id, referrer_id, referred_user_id, transaction_id, purchase_amount, 
+             commission_amount, commission_rate, paid, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, datetime('now'))
+        ''', (commission_id, referrer_id, buyer_user_id, transaction_id, 
+              purchase_amount, commission_amount, commission_rate))
+        
+        # إضافة العمولة لرصيد المحيل
+        cursor.execute('UPDATE users SET balance = balance + ? WHERE id = ?', 
+                      (commission_amount, referrer_id))
+        
+        # إنشاء معاملة العمولة
+        commission_transaction_id = str(uuid.uuid4())
+        cursor.execute('''
+            INSERT INTO transactions 
+            (id, from_user, to_user, amount, type, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+        ''', (commission_transaction_id, admin_id, referrer_id, commission_amount, 
+              'commission', f'عمولة إحالة 5% من شراء بقيمة {purchase_amount:.2f} ريال'))
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"Referral commission {commission_amount:.2f} paid to user {referrer_id}, deducted from admin share")
+        return commission_amount
+        
+    except Exception as e:
+        logger.error(f"Error processing referral commission: {e}")
+        try:
+            conn.close()
+        except:
+            pass
+        return 0
+
+# Keep old function for backward compatibility but mark as deprecated
+def process_referral_commission(buyer_user_id: int, purchase_amount: float, transaction_id: str):
+    """معالجة عمولة الإحالة عند الشراء - DEPRECATED: استخدم process_referral_commission_fixed"""
+    logger.warning("Using deprecated process_referral_commission function")
+    return process_referral_commission_fixed(buyer_user_id, purchase_amount, transaction_id, None)
+
+def get_referral_stats(user_id: int):
+    """الحصول على إحصائيات الإحالات والعمولات"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # عدد الإحالات
+        cursor.execute('SELECT COUNT(*) FROM users WHERE referred_by = ?', (user_id,))
+        result = cursor.fetchone()
+        total_referrals = result[0] if result else 0
+        
+        # إجمالي العمولات المكتسبة
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as commission_count,
+                COALESCE(SUM(commission_amount), 0) as total_commissions,
+                COALESCE(SUM(purchase_amount), 0) as total_referred_purchases
+            FROM referral_commissions 
+            WHERE referrer_id = ? AND paid = 1
+        ''', (user_id,))
+        
+        result = cursor.fetchone()
+        if result:
+            commission_count, total_commissions, total_referred_purchases = result
+        else:
+            commission_count, total_commissions, total_referred_purchases = 0, 0, 0
+        
+        # العمولات هذا الشهر
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as monthly_commissions,
+                COALESCE(SUM(commission_amount), 0) as monthly_commission_amount
+            FROM referral_commissions 
+            WHERE referrer_id = ? AND paid = 1 
+            AND DATE(created_at) >= DATE('now', 'start of month')
+        ''', (user_id,))
+        
+        result = cursor.fetchone()
+        if result:
+            monthly_commissions, monthly_commission_amount = result
+        else:
+            monthly_commissions, monthly_commission_amount = 0, 0
+        
+        conn.close()
+        
+        return {
+            'total_referrals': total_referrals,
+            'commission_count': commission_count,
+            'total_commissions': total_commissions,
+            'total_referred_purchases': total_referred_purchases,
+            'monthly_commissions': monthly_commissions,
+            'monthly_commission_amount': monthly_commission_amount
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting referral stats: {e}")
+        return {
+            'total_referrals': 0,
+            'commission_count': 0,
+            'total_commissions': 0,
+            'total_referred_purchases': 0,
+            'monthly_commissions': 0,
+            'monthly_commission_amount': 0
+        }
+
+def sanitize_input(text: str, max_length: int = 100, allow_numbers: bool = True) -> str:
+    """تنظيف وتعقيم المدخلات النصية"""
+    if not text:
+        return ""
+    
+    # إزالة المسافات الزائدة
+    text = text.strip()
+    
+    # قطع النص إذا كان طويلاً جداً
+    if len(text) > max_length:
+        text = text[:max_length]
+    
+    # إزالة الأحرف الخطيرة
+    dangerous_chars = ['<', '>', '"', "'", '&', ';', '|', '`', '$']
+    for char in dangerous_chars:
+        text = text.replace(char, '')
+    
+    # إزالة الأرقام إذا لم تكن مسموحة
+    if not allow_numbers:
+        text = ''.join(c for c in text if not c.isdigit())
+    
+    return text
+
+def validate_amount(amount_str: str) -> float:
+    """التحقق من صحة المبلغ المالي"""
+    try:
+        amount = float(amount_str.replace(',', '.').strip())
+        
+        if amount <= 0:
+            raise ValueError("المبلغ يجب أن يكون أكبر من صفر")
+        if amount > 1000000:  # حد أقصى مليون ريال
+            raise ValueError("المبلغ أكبر من الحد المسموح")
+        if amount != amount:  # Check for NaN
+            raise ValueError("المبلغ غير صحيح")
+            
+        # تقريب لرقمين عشريين
+        return round(amount, 2)
+        
+    except (ValueError, TypeError) as e:
+        raise ValueError(f"مبلغ غير صحيح: {amount_str}")
+
+def validate_wallet_number(wallet_number: str) -> bool:
+    """التحقق من صحة رقم المحفظة"""
+    if not wallet_number or len(wallet_number) != 9:
+        return False
+    
+    # يجب أن يكون 9 أرقام فقط
+    return wallet_number.isdigit()
+
+def generate_supplier_share_link(network_id: str, bot_username: str = "YemenNetBot"):
+    """إنشاء رابط مشاركة للمزود لفتح شبكته مباشرة"""
+    # تنظيف معرف الشبكة
+    network_id = sanitize_input(str(network_id), max_length=50)
+    bot_username = sanitize_input(bot_username, max_length=50, allow_numbers=False)
+    
+    # إنشاء deep link للشبكة
+    deep_link = f"https://t.me/{bot_username}?start=network_{network_id}"
+    return deep_link
+
+def get_network_share_info(network_id: str, supplier_id: int):
+    """الحصول على معلومات الشبكة للمشاركة"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT n.name, n.provider, n.location, n.city, 
+                   COUNT(nc.id) as total_cards,
+                   COUNT(CASE WHEN nc.is_sold = 0 THEN 1 END) as available_cards,
+                   MIN(nc.card_value) as min_price,
+                   MAX(nc.card_value) as max_price
+            FROM networks n
+            LEFT JOIN network_cards nc ON n.id = nc.network_id
+            WHERE n.id = ? AND n.supplier_id = ?
+            GROUP BY n.id
+        ''', (network_id, supplier_id))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            return {
+                'name': result[0],
+                'provider': result[1], 
+                'location': result[2],
+                'city': result[3],
+                'total_cards': result[4] or 0,
+                'available_cards': result[5] or 0,
+                'min_price': result[6] or 0,
+                'max_price': result[7] or 0
+            }
+        return None
+        
+    except Exception as e:
+        logger.error(f"Error getting network share info: {e}")
+        return None
+
+def process_purchase_profit_sharing(purchase_amount: float, provider_id: int, transaction_id: str):
+    """معالجة تقسيم الأرباح على عملية الشراء - 70% للمزود و 30% للمشرف الأعلى"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # حساب التقسيم
+        provider_share = purchase_amount * 0.70  # 70% للمزود
+        admin_share = purchase_amount * 0.30     # 30% للمشرف الأعلى
+        
+        # تحديث المعاملة بتفاصيل التقسيم
+        cursor.execute('''
+            UPDATE transactions 
+            SET provider_id = ?, total_amount = ?, provider_share = ?, admin_share = ?
+            WHERE id = ?
+        ''', (provider_id, purchase_amount, provider_share, admin_share, transaction_id))
+        
+        # البحث عن المشرف الأعلى
+        cursor.execute("SELECT id FROM users WHERE role = 'super_admin' LIMIT 1")
+        admin_result = cursor.fetchone()
+        
+        if admin_result:
+            admin_id = admin_result[0]
+            
+            # إضافة حصة المشرف الأعلى لرصيده
+            cursor.execute('UPDATE users SET balance = balance + ? WHERE id = ?', 
+                          (admin_share, admin_id))
+            
+            # إنشاء معاملة منفصلة لحصة المشرف
+            import uuid
+            admin_transaction_id = str(uuid.uuid4())
+            cursor.execute('''
+                INSERT INTO transactions 
+                (id, from_user, to_user, amount, type, description, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+            ''', (admin_transaction_id, None, admin_id, admin_share, 
+                  'admin_profit', f'حصة إدارية 30% من عملية شراء بقيمة {purchase_amount:.2f} ريال'))
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"Profit sharing processed: Provider {provider_id} gets {provider_share:.2f}, Admin gets {admin_share:.2f}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error processing profit sharing: {e}")
+        try:
+            conn.close()
+        except:
+            pass
+        return False
+
+def get_provider_withdrawable_amount(provider_id: int):
+    """حساب المبلغ القابل للسحب للمزود (حصته من المبيعات)"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # حساب إجمالي حصة المزود من المبيعات (70% من كل عملية)
+        cursor.execute('''
+            SELECT COALESCE(SUM(CASE WHEN provider_share IS NOT NULL THEN provider_share ELSE amount * 0.70 END), 0) as total_earnings
+            FROM transactions 
+            WHERE to_user = ? AND type = 'card_purchase'
+        ''', (provider_id,))
+        
+        result = cursor.fetchone()
+        total_earnings = result[0] if result else 0
+        
+        # حساب المبالغ المسحوبة أو المعلقة
+        cursor.execute('''
+            SELECT COALESCE(SUM(amount), 0) as withdrawn_amount
+            FROM withdrawals 
+            WHERE provider_id = ? AND status IN ('Approved', 'Pending')
+        ''', (provider_id,))
+        
+        result = cursor.fetchone()
+        withdrawn_amount = result[0] if result else 0
+        
+        conn.close()
+        
+        # المبلغ المتاح للسحب
+        available_amount = total_earnings - withdrawn_amount
+        
+        return {
+            'total_earnings': total_earnings,
+            'withdrawn_amount': withdrawn_amount,
+            'available_amount': max(0, available_amount)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error calculating withdrawable amount: {e}")
+        return {'total_earnings': 0, 'withdrawn_amount': 0, 'available_amount': 0}
+
+def can_request_withdrawal(timezone_offset_hours: int = 3):
+    """التحقق من إمكانية طلب السحب (فقط يوم الجمعة) مع دعم المنطقة الزمنية"""
+    from datetime import datetime, timedelta
+    
+    # استخدام التوقيت المحلي (افتراضياً +3 ساعات للمنطقة العربية)
+    local_time = datetime.now() + timedelta(hours=timezone_offset_hours)
+    
+    # 4 = الجمعة في Python (0=الاثنين)
+    is_friday = local_time.weekday() == 4
+    
+    # إضافة تحقق من الوقت (مثلاً من 8 صباحاً إلى 8 مساءً)
+    hour = local_time.hour
+    is_business_hours = 8 <= hour <= 20
+    
+    return is_friday and is_business_hours
+
+def create_withdrawal_request(provider_id: int, provider_name: str, account_number: str, 
+                            method: str, amount: float):
+    """إنشاء طلب سحب جديد"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # التحقق من المبلغ المتاح
+        withdrawable = get_provider_withdrawable_amount(provider_id)
+        if amount > withdrawable['available_amount']:
+            return {"success": False, "error": f"المبلغ المطلوب ({amount:.2f}) أكبر من المتاح ({withdrawable['available_amount']:.2f})"}
+        
+        # إنشاء طلب السحب
+        import uuid
+        withdrawal_id = str(uuid.uuid4())
+        
+        cursor.execute('''
+            INSERT INTO withdrawals 
+            (withdrawal_id, provider_id, provider_name, account_number, method, amount, requested_at)
+            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+        ''', (withdrawal_id, provider_id, provider_name, account_number, method, amount))
+        
+        conn.commit()
+        conn.close()
+        
+        return {"success": True, "withdrawal_id": withdrawal_id}
+        
+    except Exception as e:
+        logger.error(f"Error creating withdrawal request: {e}")
+        return {"success": False, "error": "حدث خطأ في إنشاء الطلب"}

@@ -16,12 +16,14 @@ logger = logging.getLogger(__name__)
 def get_db_connection():
     """Get database connection with error handling"""
     try:
-        conn = sqlite3.connect(DB_PATH, timeout=30.0)
+        conn = sqlite3.connect(DB_PATH, timeout=60.0)  # زيادة timeout
         conn.execute('PRAGMA foreign_keys = ON')
         conn.execute('PRAGMA journal_mode = WAL')
-        conn.execute('PRAGMA synchronous = NORMAL')
-        conn.execute('PRAGMA cache_size = 1000')
+        conn.execute('PRAGMA synchronous = NORMAL')  # توازن بين الأمان والسرعة
+        conn.execute('PRAGMA cache_size = 2000')  # زيادة cache
         conn.execute('PRAGMA temp_store = memory')
+        conn.execute('PRAGMA busy_timeout = 30000')  # 30 ثانية انتظار عند القفل
+        conn.execute('PRAGMA wal_autocheckpoint = 1000')  # تحسين WAL
         conn.row_factory = sqlite3.Row
         return conn
     except Exception as e:
@@ -131,11 +133,16 @@ def init_db():
                 status TEXT DEFAULT 'completed',
                 reference_id TEXT,
                 description TEXT,
+                provider_id INTEGER,
+                total_amount REAL,
+                provider_share REAL,
+                admin_share REAL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 is_withdrawable BOOLEAN DEFAULT 0,
                 commission_amount REAL DEFAULT 0.0,
                 FOREIGN KEY(from_user) REFERENCES users(id),
-                FOREIGN KEY(to_user) REFERENCES users(id)
+                FOREIGN KEY(to_user) REFERENCES users(id),
+                FOREIGN KEY(provider_id) REFERENCES users(id)
             )
         ''')
 
@@ -226,36 +233,9 @@ def init_db():
         ''')
 
         # Rating and review system
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS ratings (
-                id TEXT PRIMARY KEY,
-                rater_id INTEGER NOT NULL,
-                rated_user_id INTEGER NOT NULL,
-                transaction_id TEXT,
-                rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
-                review_text TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                is_visible BOOLEAN DEFAULT 1,
-                FOREIGN KEY(rater_id) REFERENCES users(id),
-                FOREIGN KEY(rated_user_id) REFERENCES users(id),
-                FOREIGN KEY(transaction_id) REFERENCES transactions(id)
-            )
-        ''')
+        # ratings table removed as requested
 
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS user_ratings_summary (
-                user_id INTEGER PRIMARY KEY,
-                total_ratings INTEGER DEFAULT 0,
-                average_rating REAL DEFAULT 0.0,
-                rating_1_count INTEGER DEFAULT 0,
-                rating_2_count INTEGER DEFAULT 0,
-                rating_3_count INTEGER DEFAULT 0,
-                rating_4_count INTEGER DEFAULT 0,
-                rating_5_count INTEGER DEFAULT 0,
-                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(user_id) REFERENCES users(id)
-            )
-        ''')
+        # user_ratings_summary table removed as requested
 
         # Smart notifications system
         cursor.execute('''
@@ -388,6 +368,25 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(referrer_id) REFERENCES users(id),
                 FOREIGN KEY(referred_id) REFERENCES users(id)
+            )
+        ''')
+
+        # جدول عمولات الإحالات
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS referral_commissions (
+                id TEXT PRIMARY KEY,
+                referrer_id INTEGER NOT NULL,
+                referred_user_id INTEGER NOT NULL,
+                transaction_id TEXT NOT NULL,
+                purchase_amount REAL NOT NULL,
+                commission_amount REAL NOT NULL,
+                commission_rate REAL DEFAULT 0.05,
+                paid BOOLEAN DEFAULT 0,
+                paid_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(referrer_id) REFERENCES users(id),
+                FOREIGN KEY(referred_user_id) REFERENCES users(id),
+                FOREIGN KEY(transaction_id) REFERENCES transactions(id)
             )
         ''')
 
@@ -745,39 +744,45 @@ def init_db():
         ''')
 
         # Admin system settings table - For system-wide admin settings
+        # admin_system_settings table removed as requested
+
+        # Admin system settings initialization removed as requested
+        
+        # جدول طلبات السحب للمزودين
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS admin_system_settings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                setting_key TEXT UNIQUE NOT NULL,
-                setting_value TEXT NOT NULL,
-                setting_type TEXT DEFAULT 'string',  -- 'string', 'boolean', 'integer', 'json'
-                description TEXT,
-                updated_by INTEGER,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (updated_by) REFERENCES users(id)
+            CREATE TABLE IF NOT EXISTS withdrawals (
+                withdrawal_id TEXT PRIMARY KEY,
+                provider_id INTEGER NOT NULL,
+                provider_name TEXT NOT NULL,
+                account_number TEXT NOT NULL,
+                method TEXT NOT NULL CHECK(method IN ('القطيبي', 'الكريمي', 'شبكة صرافة')),
+                amount REAL NOT NULL,
+                status TEXT DEFAULT 'Pending' CHECK(status IN ('Pending', 'Approved', 'Rejected')),
+                requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                confirmed_at TIMESTAMP,
+                confirmed_by INTEGER,
+                rejection_reason TEXT,
+                FOREIGN KEY(provider_id) REFERENCES users(id),
+                FOREIGN KEY(confirmed_by) REFERENCES users(id)
             )
         ''')
-
-        # Initialize default admin system settings
+        
+        # إضافة عمود referred_by إذا لم يكن موجوداً
         try:
-            default_settings = [
-                ('permissions_system_enabled', 'true', 'boolean', 'تفعيل/تعطيل نظام الصلاحيات'),
-                ('max_admins_allowed', '50', 'integer', 'الحد الأقصى لعدد المشرفين المسموح'),
-                ('admin_session_timeout', '3600', 'integer', 'مهلة انتهاء جلسة المشرف بالثواني'),
-                ('require_2fa_for_admins', 'false', 'boolean', 'إجبار المشرفين على استخدام المصادقة الثنائية'),
-                ('auto_deactivate_inactive_admins', 'false', 'boolean', 'إلغاء تفعيل المشرفين غير النشطين تلقائياً'),
-                ('inactive_admin_threshold_days', '30', 'integer', 'عدد أيام عدم النشاط قبل الإلغاء التلقائي')
-            ]
-            
-            for setting_key, setting_value, setting_type, description in default_settings:
-                cursor.execute('''
-                    INSERT OR IGNORE INTO admin_system_settings 
-                    (setting_key, setting_value, setting_type, description) 
-                    VALUES (?, ?, ?, ?)
-                ''', (setting_key, setting_value, setting_type, description))
-                
-        except Exception as e:
-            logger.warning(f"Error initializing admin system settings: {e}")
+            cursor.execute("ALTER TABLE users ADD COLUMN referred_by INTEGER")
+        except sqlite3.OperationalError:
+            # العمود موجود بالفعل
+            pass
+        
+        # إضافة أعمدة تقسيم الأرباح للمعاملات إذا لم تكن موجودة
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN provider_id INTEGER")
+            cursor.execute("ALTER TABLE transactions ADD COLUMN total_amount REAL")
+            cursor.execute("ALTER TABLE transactions ADD COLUMN provider_share REAL")
+            cursor.execute("ALTER TABLE transactions ADD COLUMN admin_share REAL")
+        except sqlite3.OperationalError:
+            # الأعمدة موجودة بالفعل
+            pass
         
         # Data insertion is handled separately to avoid conflicts
 
