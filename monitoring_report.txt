@@ -1,0 +1,16 @@
+تقرير مراقبة البوت - 2025-09-12 22:26:09
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📊 تقرير دوري - 2025-09-12 22:26:09
+❌ الأخطاء: 6
+⚠️ التحذيرات: 2
+💰 المعاملات: 0
+0
+✅ حالة البوت: يعمل
+
+🔴 آخر الأخطاء:
+2025-09-12 21:51:35,882 - yemen_net_bot_new - ERROR - Error in show network categories: 'NoneType' object has no attribute 'from_user'
+2025-09-12 21:51:35,882 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 21:51:45,437 - yemen_net_bot_new - ERROR - Error in show network categories: 'NoneType' object has no attribute 'from_user'
+2025-09-12 21:51:45,438 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 22:25:20,422 - yemen_net_bot_new - ERROR - Error in button click handler: Query is too old and response timeout expired or query id is invalid
