@@ -70,3 +70,45 @@
 2025-09-12 21:51:45,438 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
 2025-09-12 22:25:20,422 - yemen_net_bot_new - ERROR - Error in button click handler: Query is too old and response timeout expired or query id is invalid
 2025-09-12 22:26:38,467 - admin_functions - ERROR - Error in manage admins handler: no such column: t.created_by
+
+📊 تقرير دوري - 2025-09-12 23:15:11
+❌ الأخطاء: 7
+⚠️ التحذيرات: 4
+💰 المعاملات: 0
+0
+✅ حالة البوت: يعمل
+
+🔴 آخر الأخطاء:
+2025-09-12 21:51:35,882 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 21:51:45,437 - yemen_net_bot_new - ERROR - Error in show network categories: 'NoneType' object has no attribute 'from_user'
+2025-09-12 21:51:45,438 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 22:25:20,422 - yemen_net_bot_new - ERROR - Error in button click handler: Query is too old and response timeout expired or query id is invalid
+2025-09-12 22:26:38,467 - admin_functions - ERROR - Error in manage admins handler: no such column: t.created_by
+
+📊 تقرير دوري - 2025-09-12 23:20:11
+❌ الأخطاء: 7
+⚠️ التحذيرات: 4
+💰 المعاملات: 0
+0
+✅ حالة البوت: يعمل
+
+🔴 آخر الأخطاء:
+2025-09-12 21:51:35,882 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 21:51:45,437 - yemen_net_bot_new - ERROR - Error in show network categories: 'NoneType' object has no attribute 'from_user'
+2025-09-12 21:51:45,438 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 22:25:20,422 - yemen_net_bot_new - ERROR - Error in button click handler: Query is too old and response timeout expired or query id is invalid
+2025-09-12 22:26:38,467 - admin_functions - ERROR - Error in manage admins handler: no such column: t.created_by
+
+📊 تقرير دوري - 2025-09-12 23:25:11
+❌ الأخطاء: 7
+⚠️ التحذيرات: 4
+💰 المعاملات: 0
+0
+✅ حالة البوت: يعمل
+
+🔴 آخر الأخطاء:
+2025-09-12 21:51:35,882 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 21:51:45,437 - yemen_net_bot_new - ERROR - Error in show network categories: 'NoneType' object has no attribute 'from_user'
+2025-09-12 21:51:45,438 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 22:25:20,422 - yemen_net_bot_new - ERROR - Error in button click handler: Query is too old and response timeout expired or query id is invalid
+2025-09-12 22:26:38,467 - admin_functions - ERROR - Error in manage admins handler: no such column: t.created_by
