@@ -459,14 +459,6 @@ async def button_click_handler(update: Update, context):
             admin_id = int(callback_data.split('_')[2])
             return await AdminManagement.show_admin_profile(update, context, admin_id)
         
-        # Customer management handlers
-        elif callback_data == 'customer_dashboard':
-            return await CustomerManagement.get_customer_dashboard(update, context)
-        elif callback_data == 'customer_analytics':
-            return await CustomerManagement.get_customer_analytics(update, context)
-        elif callback_data.startswith('customer_profile_'):
-            customer_id = int(callback_data.split('_')[2])
-            return await CustomerManagement.show_customer_profile(update, context, customer_id)
         
         # File upload handlers and purchase category selection disambiguation
         elif callback_data.startswith('select_network_'):
@@ -617,6 +609,47 @@ async def button_click_handler(update: Update, context):
         elif callback_data.startswith('super_view_all_suppliers'):
             from bot_modules.admin_functions import view_all_suppliers_handler
             return await view_all_suppliers_handler(update, context)
+        
+        # Enhanced Customer Management System
+        elif callback_data == 'customer_dashboard':
+            logger.info(f"Customer dashboard requested by user {query.from_user.id}")
+            try:
+                return await CustomerManagement.get_customer_dashboard(update, context)
+            except Exception as e:
+                logger.error(f"Error calling customer dashboard: {e}", exc_info=True)
+                await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في فتح إدارة العملاء.")
+                return
+        elif callback_data == 'customer_search':
+            return await CustomerManagement.search_customers(update, context)
+        elif callback_data == 'customer_list':
+            return await CustomerManagement.list_customers(update, context)
+        elif callback_data == 'customer_list_active':
+            return await CustomerManagement.list_customers_active(update, context)
+        elif callback_data == 'customer_list_inactive':
+            return await CustomerManagement.list_customers_inactive(update, context)
+        elif callback_data == 'customer_list_top_balance':
+            return await CustomerManagement.list_customers_top_balance(update, context)
+        elif callback_data == 'customer_list_most_active':
+            return await CustomerManagement.list_customers_most_active(update, context)
+        elif callback_data == 'customer_list_new':
+            return await CustomerManagement.list_customers_new(update, context)
+        elif callback_data == 'customer_list_suspicious':
+            return await CustomerManagement.list_customers_suspicious(update, context)
+        elif callback_data == 'customer_reports':
+            return await CustomerManagement.customer_reports(update, context)
+        elif callback_data == 'customer_balance_mgmt':
+            return await CustomerManagement.balance_management(update, context)
+        elif callback_data == 'customer_banned':
+            return await CustomerManagement.banned_customers(update, context)
+        elif callback_data == 'customer_analytics':
+            return await CustomerManagement.get_customer_analytics(update, context)
+        elif callback_data == 'customer_support':
+            return await CustomerManagement.customer_support(update, context)
+        elif callback_data == 'customer_incentives':
+            return await CustomerManagement.customer_incentives(update, context)
+        elif callback_data.startswith('customer_profile_'):
+            customer_id = int(callback_data.split('_')[2])
+            return await CustomerManagement.show_customer_profile(update, context, customer_id)
         
         # Fallback for truly unhandled callbacks
         else:
@@ -782,47 +815,6 @@ async def button_click_handler(update: Update, context):
             else:
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية للوصول لهذه اللوحة.")
                 return
-        
-        # Enhanced Customer Management System
-        elif callback_data == 'customer_dashboard':
-            logger.info(f"Customer dashboard requested by user {query.from_user.id}")
-            try:
-                return await CustomerManagement.get_customer_dashboard(update, context)
-            except Exception as e:
-                logger.error(f"Error calling customer dashboard: {e}", exc_info=True)
-                await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في فتح إدارة العملاء.")
-                return
-        elif callback_data == 'customer_search':
-            return await CustomerManagement.search_customers(update, context)
-        elif callback_data == 'customer_list':
-            return await CustomerManagement.list_customers(update, context)
-        elif callback_data == 'customer_list_active':
-            return await CustomerManagement.list_customers_active(update, context)
-        elif callback_data == 'customer_list_inactive':
-            return await CustomerManagement.list_customers_inactive(update, context)
-        elif callback_data == 'customer_list_top_balance':
-            return await CustomerManagement.list_customers_top_balance(update, context)
-        elif callback_data == 'customer_list_most_active':
-            return await CustomerManagement.list_customers_most_active(update, context)
-        elif callback_data == 'customer_list_new':
-            return await CustomerManagement.list_customers_new(update, context)
-        elif callback_data == 'customer_list_suspicious':
-            return await CustomerManagement.list_customers_suspicious(update, context)
-        elif callback_data == 'customer_reports':
-            return await CustomerManagement.customer_reports(update, context)
-        elif callback_data == 'customer_balance_mgmt':
-            return await CustomerManagement.balance_management(update, context)
-        elif callback_data == 'customer_banned':
-            return await CustomerManagement.banned_customers(update, context)
-        elif callback_data == 'customer_analytics':
-            return await CustomerManagement.get_customer_analytics(update, context)
-        elif callback_data == 'customer_support':
-            return await CustomerManagement.customer_support(update, context)
-        elif callback_data == 'customer_incentives':
-            return await CustomerManagement.customer_incentives(update, context)
-        elif callback_data.startswith('customer_profile_'):
-            customer_id = int(callback_data.split('_')[2])
-            return await CustomerManagement.show_customer_profile(update, context, customer_id)
         
         # Enhanced Admin Management System  
         elif callback_data == 'admin_dashboard':
