@@ -6,7 +6,7 @@ Contains super admin and admin specific functions
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext
 from bot_modules.config import *
@@ -975,8 +975,86 @@ async def dashboard_handler(update, context):
         logger.error(f"Error in dashboard handler: {e}")
         await query.edit_message_text(menu_error("لوحة المعلومات", "تحميل البيانات"))
 
-async def view_all_suppliers_handler(update, context):
-    return await placeholder_handler(update, context, "عرض جميع المزودين")
+async def view_all_suppliers_handler(update: Update, context: CallbackContext):
+    """عرض جميع المزودين مع ترقيم صفحات بسيط"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+
+        # استخراج الصفحة من callback إن وجدت
+        data = query.data or 'super_view_all_suppliers'
+        parts = data.split('_')
+        page = 1
+        if len(parts) >= 5 and parts[-2] == 'page':
+            try:
+                page = max(1, int(parts[-1]))
+            except Exception:
+                page = 1
+
+        page_size = 10
+        offset = (page - 1) * page_size
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # إجمالي المزودين
+        cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'supplier'")
+        total_suppliers = cursor.fetchone()[0]
+
+        # جلب الصفحة الحالية
+        cursor.execute('''
+            SELECT id, full_name, phone, is_active, balance
+            FROM users
+            WHERE role = 'supplier'
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+        ''', (page_size, offset))
+        rows = cursor.fetchall()
+        conn.close()
+
+        total_pages = max(1, (total_suppliers + page_size - 1) // page_size)
+
+        text = f"""
+👥 **جميع المزودين** (صفحة {page}/{total_pages})
+
+إجمالي المزودين: **{total_suppliers}**
+"""
+
+        if rows:
+            for sid, name, phone, is_active, balance in rows:
+                status = '✅ مفعل' if is_active else '⏸️ موقوف'
+                text += f"""
+━━━━━━━━━━━━━━━━
+👤 {name or 'غير معروف'}
+📱 {phone or 'غير متوفر'}
+💰 الرصيد: {balance or 0:.2f} ريال
+🔰 الحالة: {status}
+🆔 {sid}
+"""
+        else:
+            text += "\n❌ لا توجد بيانات."
+
+        # أزرار الترقيم
+        nav_buttons = []
+        if page > 1:
+            nav_buttons.append(InlineKeyboardButton('⬅️ السابق', callback_data=f'super_view_all_suppliers_page_{page-1}'))
+        if page < total_pages:
+            nav_buttons.append(InlineKeyboardButton('التالي ➡️', callback_data=f'super_view_all_suppliers_page_{page+1}'))
+
+        keyboard = []
+        if nav_buttons:
+            keyboard.append(nav_buttons)
+        keyboard.append([InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel')])
+
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+    except Exception as e:
+        logger.error(f"Error in view_all_suppliers_handler: {e}")
+        await query.edit_message_text(menu_error('إدارة المزودين', 'عرض جميع المزودين'))
 
 async def view_supplier_details_handler(update, context):
     return await placeholder_handler(update, context, "تفاصيل المزودين")
@@ -2484,6 +2562,8 @@ ADMIN_CALLBACKS.update({
     
     # Coupon management
     'super_create_coupons': lambda u, c: create_coupons_handler(u, c),
+    'create_single_coupon': lambda u, c: create_single_coupon_start(u, c),
+    'create_bulk_coupons': lambda u, c: create_bulk_coupons_start(u, c),
     'super_coupons_stats': lambda u, c: coupons_stats_handler(u, c),
     'super_list_coupons': lambda u, c: list_coupons_handler(u, c),
     
@@ -4134,10 +4214,6 @@ async def create_coupons_handler(update: Update, context: CallbackContext):
         keyboard = [
             [InlineKeyboardButton('💰 كوبون فردي', callback_data='create_single_coupon'),
              InlineKeyboardButton('📦 كوبونات متعددة', callback_data='create_bulk_coupons')],
-            [InlineKeyboardButton('⚡ كوبون سريع (10 ريال)', callback_data='create_quick_coupon_10'),
-             InlineKeyboardButton('⚡ كوبون سريع (25 ريال)', callback_data='create_quick_coupon_25')],
-            [InlineKeyboardButton('⚡ كوبون سريع (50 ريال)', callback_data='create_quick_coupon_50'),
-             InlineKeyboardButton('⚡ كوبون سريع (100 ريال)', callback_data='create_quick_coupon_100')],
             [InlineKeyboardButton('📊 إحصائيات الكوبونات', callback_data='coupons_stats'),
              InlineKeyboardButton('📋 قائمة الكوبونات', callback_data='list_coupons')],
             [InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
@@ -4149,46 +4225,62 @@ async def create_coupons_handler(update: Update, context: CallbackContext):
         logger.error(f"Error in create coupons handler: {e}")
         await query.edit_message_text(coupon_error("عرض واجهة إنشاء الكوبونات"))
 
-async def create_quick_coupon_handler(update: Update, context: CallbackContext, amount: int):
-    """إنشاء كوبون سريع بقيمة محددة"""
+async def create_single_coupon_start(update: Update, context: CallbackContext):
+    """بدء إنشاء كوبون فردي: يطلب إدخال المبلغ فقط (بدون صلاحية)"""
     try:
         query = update.callback_query
         await query.answer()
-        
         user = get_user(query.from_user.id)
         if not user or user['role'] != 'super_admin':
-            await query.edit_message_text("❌ ليس لديك صلاحية لهذه العملية.")
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
             return
-        
-        # إنشاء كود كوبون عشوائي بالتنسيق الصحيح (A + 8 أرقام)
-        import random
-        import string
-        
-        # إنشاء كود بتنسيق A + 8 أرقام ليتوافق مع نظام التحقق
-        # محاولة إنشاء كود فريد (حتى 50 محاولة)
+        text = (
+            "💰 إدخال قيمة الكوبون\n\n"
+            "✍️ اكتب قيمة الكوبون بالريال فقط (مثال: 50 أو 75.5)"
+        )
+        context.user_data['awaiting_single_coupon'] = True
+        await query.edit_message_text(text)
+    except Exception as e:
+        logger.error(f"Error in single coupon start: {e}")
+        await query.edit_message_text(coupon_error("بدء إنشاء كوبون فردي"))
+
+async def process_single_coupon_input(update: Update, context: CallbackContext):
+    """معالجة إدخال إنشاء كوبون فردي (المبلغ فقط)"""
+    try:
+        if not context.user_data.get('awaiting_single_coupon'):
+            return
+        user = get_user(update.effective_user.id)
+        if not user or user['role'] != 'super_admin':
+            await update.message.reply_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        parts = update.message.text.strip().split()
+        if len(parts) == 0:
+            await update.message.reply_text(f"{EMOJIS['error']} أدخل قيمة صحيحة.")
+            return
+        try:
+            amount = float(parts[0].replace(',', '.'))
+            if amount <= 0:
+                raise ValueError("amount")
+        except Exception:
+            await update.message.reply_text(f"{EMOJIS['error']} المبلغ غير صحيح.")
+            return
+        # لا توجد صلاحية (expiry) وفق الطلب
+        # توليد كود فريد
+        import random, string
         coupon_code = None
-        for _ in range(50):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        for _ in range(100):
             trial_code = 'A' + ''.join(random.choices(string.digits, k=8))
-            
-            # التحقق من عدم وجود الكود مسبقاً
-            conn = get_db_connection()
-            cursor = conn.cursor()
             cursor.execute('SELECT 1 FROM coupons WHERE coupon_code = ?', (trial_code,))
             if not cursor.fetchone():
                 coupon_code = trial_code
-                conn.close()
                 break
-            conn.close()
-        
         if not coupon_code:
-            await query.edit_message_text(f"{EMOJIS['error']} فشل في إنشاء كود كوبون فريد.")
+            conn.close()
+            await update.message.reply_text(f"{EMOJIS['error']} تعذر إنشاء كود فريد. حاول مجدداً.")
             return
-        
-        # إدراج الكوبون في قاعدة البيانات
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # إنشاء جدول الكوبونات إذا لم يكن موجوداً
+        # إنشاء الجدول إن لم يوجد
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS coupons (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4196,50 +4288,153 @@ async def create_quick_coupon_handler(update: Update, context: CallbackContext, 
                 amount REAL NOT NULL,
                 is_used INTEGER DEFAULT 0,
                 used_by INTEGER DEFAULT NULL,
-                created_by INTEGER NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                used_at DATETIME DEFAULT NULL,
-                expiry_date DATETIME DEFAULT NULL,
-                description TEXT DEFAULT NULL,
-                FOREIGN KEY (used_by) REFERENCES users (id),
-                FOREIGN KEY (created_by) REFERENCES users (id)
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                used_at TIMESTAMP,
+                expiry_date TIMESTAMP,
+                description TEXT
             )
         ''')
-        
-        from datetime import datetime, timedelta
-        expiry_date = datetime.now() + timedelta(days=30)
-        
         cursor.execute('''
             INSERT INTO coupons (coupon_code, amount, created_by, expiry_date, description)
             VALUES (?, ?, ?, ?, ?)
-        ''', (coupon_code, amount, user['id'], expiry_date.isoformat(), f'كوبون سريع {amount} ريال'))
-        
+        ''', (coupon_code, amount, user['id'], None, 'كوبون فردي'))
         conn.commit()
         conn.close()
-        
-        success_text = f"""
-✅ **تم إنشاء الكوبون بنجاح!** ✅
-
-🎟️ **كود الكوبون:** `{coupon_code}`
-💰 **القيمة:** {amount} ريال
-👑 **المنشئ:** {user['full_name']}
-📅 **تاريخ الانتهاء:** {expiry_date.strftime('%Y-%m-%d')}
-
-📋 **ملاحظة:** احفظ كود الكوبون في مكان آمن
-⚠️ **تحذير:** الكوبون صالح لمدة 30 يوم فقط
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('🎟️ إنشاء كوبون آخر', callback_data='super_create_coupons'),
-             InlineKeyboardButton('📋 قائمة الكوبونات', callback_data='list_coupons')],
-            [InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
-        ]
-        
-        await query.edit_message_text(success_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
+        context.user_data.pop('awaiting_single_coupon', None)
+        success = (
+            f"✅ تم إنشاء الكوبون بنجاح!\n\n"
+            f"🎟️ الكود: `{coupon_code}`\n"
+            f"💰 القيمة: {amount} ريال"
+        )
+        await update.message.reply_text(success, parse_mode='Markdown')
     except Exception as e:
-        logger.error(f"Error creating quick coupon: {e}")
-        await query.edit_message_text(coupon_error("إنشاء الكوبون"))
+        logger.error(f"Error in process single coupon: {e}")
+        await update.message.reply_text(coupon_error("إنشاء كوبون فردي"))
+
+async def create_bulk_coupons_start(update: Update, context: CallbackContext):
+    """بدء إنشاء كوبونات متعددة: تدفق تدرجي (أولاً المبلغ ثم العدد)"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        text = (
+            "📦 إنشاء كوبونات متعددة\n\n"
+            "1️⃣ أدخل قيمة الكوبون بالريال (مثال: 50 أو 75.5)"
+        )
+        context.user_data['awaiting_bulk_amount'] = True
+        await query.edit_message_text(text)
+    except Exception as e:
+        logger.error(f"Error in bulk coupons start: {e}")
+        await query.edit_message_text(coupon_error("بدء إنشاء كوبونات متعددة"))
+
+async def process_bulk_amount_input(update: Update, context: CallbackContext):
+    """الخطوة 1 من 2: التقاط قيمة الكوبون للدفعة"""
+    try:
+        if not context.user_data.get('awaiting_bulk_amount'):
+            return
+        user = get_user(update.effective_user.id)
+        if not user or user['role'] != 'super_admin':
+            await update.message.reply_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        try:
+            amount = float(update.message.text.strip().replace(',', '.'))
+            if amount <= 0:
+                raise ValueError
+        except Exception:
+            await update.message.reply_text(f"{EMOJIS['error']} أدخل قيمة صحيحة (مثال: 50 أو 75.5)")
+            return
+        context.user_data['bulk_amount'] = amount
+        context.user_data.pop('awaiting_bulk_amount', None)
+        context.user_data['awaiting_bulk_count'] = True
+        await update.message.reply_text("2️⃣ أدخل عدد الكوبونات المطلوب إنشاؤها (مثال: 25)")
+    except Exception as e:
+        logger.error(f"Error in process bulk amount: {e}")
+        await update.message.reply_text(coupon_error("تحديد قيمة الكوبونات"))
+
+async def process_bulk_count_input(update: Update, context: CallbackContext):
+    """الخطوة 2 من 2: التقاط عدد الكوبونات وإنشاؤها"""
+    try:
+        if not context.user_data.get('awaiting_bulk_count'):
+            return
+        user = get_user(update.effective_user.id)
+        if not user or user['role'] != 'super_admin':
+            await update.message.reply_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        amount = context.user_data.get('bulk_amount')
+        if amount is None:
+            await update.message.reply_text(f"{EMOJIS['error']} لم يتم تحديد قيمة الكوبون. ابدأ من جديد.")
+            context.user_data.pop('awaiting_bulk_count', None)
+            return
+        try:
+            count = int(update.message.text.strip())
+            if count <= 0:
+                raise ValueError
+        except Exception:
+            await update.message.reply_text(f"{EMOJIS['error']} أدخل عدداً صحيحاً (مثال: 25)")
+            return
+        if count > 1000:
+            await update.message.reply_text(f"{EMOJIS['warning']} الحد الأقصى 1000 كوبون في الدفعة الواحدة.")
+            return
+        import random, string
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS coupons (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                coupon_code TEXT UNIQUE NOT NULL,
+                amount REAL NOT NULL,
+                is_used INTEGER DEFAULT 0,
+                used_by INTEGER DEFAULT NULL,
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                used_at TIMESTAMP,
+                expiry_date TIMESTAMP,
+                description TEXT
+            )
+        ''')
+        created = 0
+        skipped = 0
+        for _ in range(count):
+            for _attempt in range(100):
+                trial_code = 'A' + ''.join(random.choices(string.digits, k=8))
+                cursor.execute('SELECT 1 FROM coupons WHERE coupon_code = ?', (trial_code,))
+                if not cursor.fetchone():
+                    try:
+                        cursor.execute(
+                            'INSERT INTO coupons (coupon_code, amount, created_by, expiry_date, description) VALUES (?, ?, ?, ?, ?)',
+                            (trial_code, amount, user['id'], None, 'كوبون دفعي')
+                        )
+                        created += 1
+                    except Exception:
+                        skipped += 1
+                    break
+            else:
+                skipped += 1
+        conn.commit()
+        conn.close()
+        # تنظيف الحالات
+        context.user_data.pop('awaiting_bulk_count', None)
+        context.user_data.pop('bulk_amount', None)
+        summary = (
+            f"✅ تم إنشاء الكوبونات!\n\n"
+            f"💰 القيمة: {amount} ريال\n"
+            f"📦 الكمية المطلوبة: {count}\n"
+            f"✅ المُنشأ: {created}\n"
+            f"⚠️ تخطّي/مكرر: {skipped}"
+        )
+        await update.message.reply_text(summary)
+    except Exception as e:
+        logger.error(f"Error in process bulk count: {e}")
+        await update.message.reply_text(coupon_error("إنشاء كوبونات متعددة"))
+async def create_quick_coupon_handler(update: Update, context: CallbackContext, amount: int):
+    """تم إلغاء ميزة الكوبون السريع حسب الطلب"""
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("⚠️ تم تعطيل ميزة الكوبونات السريعة. استخدم الخيارات: كوبون فردي أو كوبونات متعددة.")
 
 async def coupons_stats_handler(update: Update, context: CallbackContext):
     """عرض إحصائيات الكوبونات"""

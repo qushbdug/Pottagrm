@@ -578,56 +578,29 @@ async def export_comprehensive_handler(update: Update, context: CallbackContext)
     return await ExportSystem.show_period_selection(update, context, 'comprehensive')
 
 async def quick_export_handler(update: Update, context: CallbackContext):
-    """تصدير سريع للمشرف الأعلى"""
+    """قائمة تصدير سريع حقيقية مع خيارات فترات"""
     try:
         query = update.callback_query
-        await query.answer("📊 جاري إنشاء التصدير السريع...")
-        
+        await query.answer()
         user = get_user(query.from_user.id)
-        if not user or user['role'] != 'super_admin':
-            await query.edit_message_text(f"{EMOJIS['error']} هذه الميزة مقتصرة على المشرف الأعلى.")
+        if not user or user['role'] not in ['admin','super_admin']:
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
             return
-        
-        quick_text = f"""
-⚡ **تصدير سريع للمشرف الأعلى** ⚡
 
-👑 **{user['full_name']}**
+        text = f"""
+⚡ **التصدير السريع** ⚡
 
-📊 **خيارات التصدير السريع:**
-
-💰 **تقارير مالية (آخر 30 يوم):**
-• تقرير الأرباح والإيرادات
-• تحليل المعاملات المالية
-• ملخص الحركة المالية
-
-👥 **تقارير المستخدمين (آخر 30 يوم):**
-• بيانات العملاء وأنشطتهم
-• أداء المزودين ومبيعاتهم
-• إحصائيات شاملة
-
-📋 **تقارير شاملة:**
-• تقرير تنفيذي كامل (آخر 30 يوم)
-• تقرير شامل (جميع البيانات)
-
-⚡ اختر نوع التصدير المطلوب:
+اختر نوع التصدير والفترة:
 """
-        
         keyboard = [
-            [InlineKeyboardButton('💰 الأرباح (30 يوم)', callback_data='export_profits_30'),
-             InlineKeyboardButton('👥 العملاء (30 يوم)', callback_data='export_customers_30')],
-            [InlineKeyboardButton('🏪 المزودين (30 يوم)', callback_data='export_suppliers_30'),
-             InlineKeyboardButton('📊 شامل (30 يوم)', callback_data='export_comprehensive_30')],
-            [InlineKeyboardButton('📋 شامل (جميع البيانات)', callback_data='export_comprehensive_all'),
-             InlineKeyboardButton('⚙️ تصدير مخصص', callback_data='export_profits')],
-            [InlineKeyboardButton('🔙 العودة للوحة الإدارة', callback_data='super_admin_panel')]
+            [InlineKeyboardButton('👥 العملاء - آخر 30 يوم', callback_data='export_customers')],
+            [InlineKeyboardButton('👥 العملاء - آخر 90 يوم', callback_data='export_customers')],
+            [InlineKeyboardButton('🏪 المزودون - شامل', callback_data='export_suppliers')],
+            [InlineKeyboardButton('💰 الأرباح - شامل', callback_data='export_profits')],
+            [InlineKeyboardButton('📦 شامل - كل البيانات', callback_data='export_comprehensive')],
+            [InlineKeyboardButton('📈 النظام المحاسبي', callback_data='accounting_system')]
         ]
-        
-        await query.edit_message_text(
-            quick_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='Markdown'
-        )
-        
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     except Exception as e:
-        logger.error(f"Error in quick export handler: {e}")
-        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في التصدير السريع.")
+        logger.error(f"Error in quick_export_handler: {e}")
+        await query.edit_message_text(menu_error('التصدير', 'التصدير السريع'))

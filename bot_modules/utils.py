@@ -1018,10 +1018,6 @@ def create_withdrawal_request(provider_id: int, provider_name: str, account_numb
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # التحقق من إمكانية السحب
-        if not can_request_withdrawal():
-            return {"success": False, "error": "يمكن طلب السحب فقط يوم الجمعة"}
-        
         # التحقق من المبلغ المتاح
         withdrawable = get_provider_withdrawable_amount(provider_id)
         if amount > withdrawable['available_amount']:

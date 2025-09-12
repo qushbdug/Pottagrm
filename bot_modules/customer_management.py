@@ -393,69 +393,99 @@ class CustomerManagement:
             await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في التحليلات.")
 
     @staticmethod
-    async def list_customers(update: Update, context: CallbackContext):
-        """عرض قائمة العملاء"""
+    async def _list_customers_filtered(update: Update, context: CallbackContext, filter_key: str):
         try:
             query = update.callback_query
             await query.answer()
-            
             user = get_user(query.from_user.id)
-            if not user or user['role'] not in ['admin', 'super_admin']:
+            if not user or user['role'] not in ['admin','super_admin']:
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
                 return
-            
+
             conn = get_db_connection()
             cursor = conn.cursor()
-            
-            # الحصول على قائمة العملاء
-            cursor.execute('''
+
+            base_sql = '''
                 SELECT id, full_name, phone, balance, is_active, created_at,
-                       (SELECT COUNT(*) FROM transactions WHERE from_user = u.id OR to_user = u.id) as transaction_count
+                       (SELECT COUNT(*) FROM transactions WHERE from_user = u.id OR to_user = u.id) as txn
                 FROM users u
                 WHERE role = 'customer'
-                ORDER BY balance DESC, transaction_count DESC
-                LIMIT 20
-            ''')
-            
-            customers = cursor.fetchall()
+            '''
+            order_sql = ' ORDER BY created_at DESC'
+            where_extra = ''
+            title = 'قائمة العملاء'
+            if filter_key == 'active':
+                where_extra = ' AND is_active = 1'
+                title = 'العملاء النشطون'
+            elif filter_key == 'inactive':
+                where_extra = ' AND (is_active = 0 OR last_activity IS NULL OR last_activity < datetime(\'now\', \'-60 days\'))'
+                title = 'العملاء غير النشطين'
+            elif filter_key == 'top_balance':
+                order_sql = ' ORDER BY balance DESC, txn DESC'
+                title = 'أعلى الأرصدة'
+            elif filter_key == 'most_active':
+                order_sql = ' ORDER BY txn DESC, balance DESC'
+                title = 'الأكثر نشاطاً'
+            elif filter_key == 'new':
+                where_extra = " AND created_at >= datetime('now','-30 days')"
+                order_sql = ' ORDER BY created_at DESC'
+                title = 'عملاء جدد'
+            elif filter_key == 'suspicious':
+                where_extra = " AND (balance > 100000 OR balance < -100)"
+                title = 'عملاء مشكوك فيهم'
+
+            sql = base_sql + where_extra + order_sql + ' LIMIT 20'
+            cursor.execute(sql)
+            rows = cursor.fetchall()
             conn.close()
-            
-            list_text = f"""
-📋 **قائمة العملاء** 📋
 
-👑 **المشرف:** {user['full_name']}
-
-👥 **أفضل 20 عميل:**
-
+            text = f"""
+📋 **{title}** 📋
 """
-            
-            if customers:
-                for i, customer in enumerate(customers, 1):
-                    status = "✅ نشط" if customer[4] else "⏸️ غير نشط"
-                    list_text += f"""
-{i}️⃣ **{customer[1]}**
-📱 {customer[2]} | 💰 {customer[3]:,.2f} ريال
-📊 {customer[6]} معاملة | {status}
-━━━━━━━━━━━━━━━━━━━
+            if rows:
+                for i, r in enumerate(rows, 1):
+                    status = '✅ نشط' if r[4] else '⏸️ غير نشط'
+                    text += f"""
+{i}️⃣ **{r[1]}**
+📱 {r[2]} | 💰 {r[3]:,.2f} ريال
+📊 {r[6]} معاملة | {status}
+━━━━━━━━━━━━━━━━━━
 """
             else:
-                list_text += "❌ لا توجد عملاء مسجلين"
-            
+                text += "❌ لا توجد نتائج لهذه الفلترة"
+
             keyboard = [
-                [InlineKeyboardButton('🔍 البحث عن عميل', callback_data='customer_search'),
-                 InlineKeyboardButton('📊 إحصائيات العملاء', callback_data='customer_analytics')],
-                [InlineKeyboardButton('🔙 العودة لإدارة العملاء', callback_data='customer_dashboard')]
+                [InlineKeyboardButton('🔍 البحث', callback_data='customer_search'), InlineKeyboardButton('📊 إحصائيات', callback_data='customer_analytics')],
+                [InlineKeyboardButton('🔙 العودة', callback_data='customer_dashboard')]
             ]
-            
-            await query.edit_message_text(
-                list_text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
-            
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         except Exception as e:
-            logger.error(f"Error listing customers: {e}")
-            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض قائمة العملاء.")
+            logger.error(f"Error in filtered customer list: {e}")
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض القائمة.")
+
+    @staticmethod
+    async def list_customers_active(update: Update, context: CallbackContext):
+        return await CustomerManagement._list_customers_filtered(update, context, 'active')
+
+    @staticmethod
+    async def list_customers_inactive(update: Update, context: CallbackContext):
+        return await CustomerManagement._list_customers_filtered(update, context, 'inactive')
+
+    @staticmethod
+    async def list_customers_top_balance(update: Update, context: CallbackContext):
+        return await CustomerManagement._list_customers_filtered(update, context, 'top_balance')
+
+    @staticmethod
+    async def list_customers_most_active(update: Update, context: CallbackContext):
+        return await CustomerManagement._list_customers_filtered(update, context, 'most_active')
+
+    @staticmethod
+    async def list_customers_new(update: Update, context: CallbackContext):
+        return await CustomerManagement._list_customers_filtered(update, context, 'new')
+
+    @staticmethod
+    async def list_customers_suspicious(update: Update, context: CallbackContext):
+        return await CustomerManagement._list_customers_filtered(update, context, 'suspicious')
 
     @staticmethod
     async def customer_reports(update: Update, context: CallbackContext):
@@ -579,7 +609,7 @@ class CustomerManagement:
 {i}️⃣ **{customer[0]}**
 📱 {customer[1]} | 💳 {customer[3]}
 {balance_color} **{customer[2]:,.2f}** ريال
-━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━
 """
             else:
                 balance_text += "❌ لا توجد أرصدة للعرض"

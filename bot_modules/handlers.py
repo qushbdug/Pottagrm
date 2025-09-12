@@ -269,15 +269,18 @@ async def choose_role(update: Update, context: CallbackContext) -> int:
                 VALUES (?, ?, ?, datetime('now'))
             ''', (referral_id, referrer_id, user_id))
         
-        # Log the registration
-        log_activity(user_id, 'user_registration', f'New user registered as {role}', {
-            'telegram_id': update.effective_user.id,
-            'role': role,
-            'wallet_number': wallet_number
-        })
-        
         conn.commit()
         conn.close()
+        
+        # Log the registration (after commit to avoid SQLite locks)
+        try:
+            log_activity(user_id, 'user_registration', f'New user registered as {role}', {
+                'telegram_id': update.effective_user.id,
+                'role': role,
+                'wallet_number': wallet_number
+            })
+        except Exception as e:
+            logger.debug(f"Registration activity log skipped: {e}")
         
         # Store data before clearing
         full_name = context.user_data.get('full_name', 'المستخدم')
@@ -427,6 +430,8 @@ def create_main_keyboard(role: str):
                 ])
         
         # Add help and support
+        # إضافة زر مشاركة رابط الإحالة إلى الصفحة الرئيسية
+        base_buttons.append([InlineKeyboardButton('🔗 رابط الإحالة', callback_data='referral_stats')])
         base_buttons.append([InlineKeyboardButton('❓ المساعدة والدعم', callback_data='help')])
         
         return base_buttons
