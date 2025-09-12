@@ -839,6 +839,12 @@ async def button_click_handler(update: Update, context):
         elif callback_data.startswith('perm_quick_edit_'):
             admin_id = int(callback_data.split('_')[3])
             return await AdminManagement.edit_admin_permissions(update, context, admin_id)
+        elif callback_data.startswith('perm_grant_all_'):
+            admin_id = int(callback_data.split('_')[3])
+            return await AdminManagement.grant_all_permissions(update, context, admin_id)
+        elif callback_data.startswith('perm_revoke_all_'):
+            admin_id = int(callback_data.split('_')[3])
+            return await AdminManagement.revoke_all_permissions(update, context, admin_id)
         elif callback_data.startswith('perm_grant_') or callback_data.startswith('perm_revoke_'):
             parts = callback_data.split('_')
             action = parts[1]  # grant or revoke
@@ -859,13 +865,7 @@ async def button_click_handler(update: Update, context):
         elif callback_data == 'promote_to_super_admin':
             return await AdminManagement.execute_admin_promotion(update, context, 'super_admin')
         elif callback_data == 'add_admin_cancel':
-            # تنظيف بيانات السياق
-            context.user_data.pop('awaiting_admin_telegram_id', None)
-            context.user_data.pop('awaiting_admin_phone', None)
-            context.user_data.pop('target_admin_telegram_id', None)
-            context.user_data.pop('target_admin_db_id', None)
-            context.user_data.pop('admin_add_step', None)
-            return await AdminManagement.get_admin_dashboard(update, context)
+            return await AdminManagement.add_admin_cancel_handler(update, context)
         
         # Admin Search System
         elif callback_data == 'admin_search_admin':
@@ -3241,6 +3241,12 @@ async def handle_text_message(update: Update, context: CallbackContext):
         message_text = update.message.text.strip()
         
         # ===== Admin Management Text Handlers =====
+        
+        # معالجة إدخال رقم محفظة لإضافة مشرف جديد
+        if context.user_data.get('awaiting_admin_wallet'):
+            from bot_modules.admin_management import AdminManagement
+            await AdminManagement.process_admin_wallet_input(update, context)
+            return
         
         # معالجة إدخال معرف تلجرام لإضافة مشرف جديد
         if context.user_data.get('awaiting_admin_telegram_id'):
