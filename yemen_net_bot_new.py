@@ -78,7 +78,8 @@ try:
         ADMIN_CALLBACKS, activate_single_supplier, admin_panel_handler,
         admin_add_offers_handler, accounting_system_handler,
         create_coupons_handler, create_quick_coupon_handler,
-        coupons_stats_handler, list_coupons_handler
+        coupons_stats_handler, list_coupons_handler,
+        show_super_admin_panel
     )
     
     # Import management modules
@@ -774,9 +775,23 @@ async def button_click_handler(update: Update, context):
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية للوصول لهذه اللوحة.")
                 return
         
+        # Super admin panel
+        elif callback_data == 'super_admin_panel':
+            if user and user['role'] == 'super_admin':
+                return await show_super_admin_panel(update, context, user)
+            else:
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية للوصول لهذه اللوحة.")
+                return
+        
         # Enhanced Customer Management System
         elif callback_data == 'customer_dashboard':
-            return await CustomerManagement.get_customer_dashboard(update, context)
+            logger.info(f"Customer dashboard requested by user {query.from_user.id}")
+            try:
+                return await CustomerManagement.get_customer_dashboard(update, context)
+            except Exception as e:
+                logger.error(f"Error calling customer dashboard: {e}", exc_info=True)
+                await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في فتح إدارة العملاء.")
+                return
         elif callback_data == 'customer_search':
             return await CustomerManagement.search_customers(update, context)
         elif callback_data == 'customer_list':
