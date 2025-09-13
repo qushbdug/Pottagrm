@@ -2478,6 +2478,11 @@ ADMIN_CALLBACKS.update({
     'balance_sheet': lambda u, c: balance_sheet_handler(u, c),
     'general_ledger': lambda u, c: general_ledger_handler(u, c),
     
+    # Download statements submenu aliases
+    'customer_statements': lambda u, c: accounting_customers_handler(u, c),
+    'supplier_statements': lambda u, c: accounting_suppliers_handler(u, c),
+    'export_all_data': lambda u, c: export_options_handler(u, c),
+    
     # Accounting reports handlers
     'accounting_transactions': lambda u, c: accounting_transactions_handler(u, c),
     'accounting_profits': lambda u, c: accounting_profits_handler(u, c),
