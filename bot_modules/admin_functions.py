@@ -1597,43 +1597,38 @@ async def manage_admins_handler(update: Update, context: CallbackContext):
             await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
             return
         
-        # Get comprehensive admin statistics
+        # Get comprehensive admin statistics using existing columns
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # إحصائيات المشرفين المفصلة
         cursor.execute('''
             SELECT 
                 COUNT(*) as total_admins,
-                COUNT(CASE WHEN is_active = 1 THEN 1 END) as active_admins,
-                COUNT(CASE WHEN role = 'super_admin' THEN 1 END) as super_admins,
-                COUNT(CASE WHEN role = 'admin' THEN 1 END) as regular_admins,
-                COUNT(CASE WHEN created_at >= datetime('now', '-30 days') THEN 1 END) as new_admins,
-                COUNT(CASE WHEN updated_at >= datetime('now', '-24 hours') THEN 1 END) as active_today
+                SUM(CASE WHEN role = 'admin' AND is_active = 1 THEN 1 ELSE 0 END) as active_admins,
+                SUM(CASE WHEN role = 'super_admin' THEN 1 ELSE 0 END) as super_admins
             FROM users WHERE role IN ('admin', 'super_admin')
         ''')
-        admin_stats = cursor.fetchone()
+        row = cursor.fetchone()
+        total_admins = row[0] or 0
+        active_admins = row[1] or 0
+        super_admins = row[2] or 0
         
-        # نشاط المشرفين
+        # Top admins by inferred activity proxy: recent last_activity
         cursor.execute('''
-            SELECT 
-                u.id, u.full_name, u.role, u.is_active, u.created_at, u.updated_at,
-                COUNT(t.id) as total_actions
-            FROM users u
-            LEFT JOIN transactions t ON u.id = t.created_by AND t.created_at >= datetime('now', '-7 days')
-            WHERE u.role IN ('admin', 'super_admin')
-            GROUP BY u.id, u.full_name, u.role, u.is_active, u.created_at, u.updated_at
-            ORDER BY total_actions DESC, u.updated_at DESC
+            SELECT id, full_name, role, is_active, created_at, last_activity
+            FROM users
+            WHERE role IN ('admin', 'super_admin')
+            ORDER BY COALESCE(last_activity, created_at) DESC
             LIMIT 5
         ''')
         top_admins = cursor.fetchall()
         
-        # أحدث المشرفين
+        # Recent admins
         cursor.execute('''
             SELECT full_name, role, created_at, is_active
-            FROM users 
+            FROM users
             WHERE role IN ('admin', 'super_admin')
-            ORDER BY created_at DESC 
+            ORDER BY created_at DESC
             LIMIT 3
         ''')
         recent_admins = cursor.fetchall()
@@ -1643,43 +1638,37 @@ async def manage_admins_handler(update: Update, context: CallbackContext):
         text = f"""
 👑 **إدارة المشرفين المتقدمة** 👑
 
-{EMOJIS['admin']} مرحباً **{user['full_name']}**
+{EMOJIS['admin']} مرحباً **{md_safe(user['full_name'])}**
 
 📊 **إحصائيات شاملة للمشرفين:**
-👥 إجمالي المشرفين: **{admin_stats[0]:,}**
-✅ النشطين: **{admin_stats[1]:,}** ({admin_stats[1]/max(admin_stats[0], 1)*100:.1f}%)
-👑 المشرفين الأعلى: **{admin_stats[2]:,}**
-🛡️ المشرفين العاديين: **{admin_stats[3]:,}**
-🆕 جدد هذا الشهر: **{admin_stats[4]:,}**
-⚡ نشطين اليوم: **{admin_stats[5]:,}**
+👥 إجمالي المشرفين: **{total_admins:,}**
+✅ النشطين: **{active_admins:,}** ({(active_admins/max(total_admins or 1, 1))*100:.1f}%)
+👑 المشرفين الأعلى: **{super_admins:,}**
 
-🏆 **أكثر المشرفين نشاطاً (آخر 7 أيام):**"""
-
+🏆 **أكثر المشرفين نشاطاً (آخر تحديث):**"""
         for i, admin in enumerate(top_admins[:3], 1):
             role_emoji = "👑" if admin[2] == 'super_admin' else "🛡️"
             status = "✅" if admin[3] else "❌"
-            text += f"\n{i}️⃣ {role_emoji} {admin[1]} {status} - **{admin[6]}** عملية"
-
+            text += f"\n{i}️⃣ {role_emoji} {md_safe(admin[1])} {status}"
+        
         text += f"\n\n🆕 **أحدث المشرفين:**"
         for admin in recent_admins[:2]:
             role_emoji = "👑" if admin[1] == 'super_admin' else "🛡️"
             status = "✅" if admin[3] else "❌"
             date = admin[2][:10] if admin[2] else "غير معروف"
-            text += f"\n• {role_emoji} {admin[0]} {status} - انضم: {date}"
-
+            text += f"\n• {role_emoji} {md_safe(admin[0])} {status} - انضم: {md_safe(date)}"
+        
         text += "\n\n🔧 **عمليات الإدارة المتقدمة:**"
         
         keyboard = [
             [InlineKeyboardButton('👥 قائمة المشرفين', callback_data='admin_list_all'),
-             InlineKeyboardButton('🔍 البحث المتقدم', callback_data='advanced_admin_search')],
+             InlineKeyboardButton('🔍 البحث المتقدم', callback_data='admin_search')],
             [InlineKeyboardButton('➕ إضافة مشرف جديد', callback_data='admin_add_new'),
-             InlineKeyboardButton('📊 تقارير شاملة', callback_data='comprehensive_admin_reports')],
+             InlineKeyboardButton('📊 تقارير شاملة', callback_data='admin_reports')],
             [InlineKeyboardButton('⚙️ إدارة الصلاحيات', callback_data='admin_permissions_management'),
              InlineKeyboardButton('🏆 تقييم الأداء', callback_data='admin_performance_evaluation')],
             [InlineKeyboardButton('🚫 إدارة المحظورين', callback_data='admin_banned_management'),
              InlineKeyboardButton('📈 تحليل النشاط', callback_data='admin_activity_analysis')],
-            [InlineKeyboardButton('🔄 عمليات جماعية', callback_data='bulk_admin_operations'),
-             InlineKeyboardButton('⚡ المراقبة المباشرة', callback_data='admin_live_monitoring')],
             [InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]
         ]
         
@@ -2630,6 +2619,9 @@ ADMIN_CALLBACKS.update({
     'report_monthly': lambda u, c: placeholder_handler(u, c, "تقرير شهري"),
     'export_pdf_report': lambda u, c: placeholder_handler(u, c, "تصدير PDF"),
     'export_excel': lambda u, c: placeholder_handler(u, c, "تصدير Excel"),
+    'sales_reports': lambda u, c: placeholder_handler(u, c, "تقارير المبيعات"),
+    'offers_reports': lambda u, c: placeholder_handler(u, c, "تقارير العروض"),
+    'view_all_networks': lambda u, c: placeholder_handler(u, c, "عرض جميع الشبكات"),
 })
 
 # إضافة الدوال المفقودة كـ placeholders
@@ -3166,19 +3158,18 @@ async def accounting_profits_handler(update: Update, context: CallbackContext):
         month_sales_count = month_profits[0] if month_profits[0] else 0
         month_commission = month_profits[1] if month_profits[1] else 0.0
         
-        # أرباح المزودين اليوم
-        cursor.execute("""
+        # أرباح المزودين اليوم (تقريب: ربط المزود عبر to_user)
+        cursor.execute('''
             SELECT u.full_name, COUNT(*) as sales, SUM(t.amount) as revenue
             FROM transactions t
-            JOIN network_cards nc ON t.description LIKE '%' || nc.network_id || '%'
-            JOIN networks n ON nc.network_id = n.id  
-            JOIN users u ON n.supplier_id = u.id
+            JOIN users u ON t.to_user = u.id
             WHERE t.type = 'card_purchase'
+            AND u.role = 'supplier'
             AND DATE(t.created_at) = DATE('now')
-            GROUP BY u.id, u.full_name
+            GROUP BY u.id
             ORDER BY revenue DESC
             LIMIT 5
-        """)
+        ''')
         top_suppliers_today = cursor.fetchall()
         
         conn.close()
