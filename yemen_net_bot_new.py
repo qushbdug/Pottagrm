@@ -433,6 +433,13 @@ async def button_click_handler(update: Update, context):
                 return await export_comprehensive_handler(update, context)
             elif callback_data == 'quick_export':
                 return await quick_export_handler(update, context)
+            else:
+                # Handle period selection callbacks like export_profits_30, export_suppliers_year, etc.
+                parts = callback_data.split('_')
+                if len(parts) >= 3:
+                    export_type = parts[1]
+                    period = '_'.join(parts[2:])
+                    return await ExportSystem.export_data_handler(update, context, export_type, period)
         
         # Accounting search handlers
         elif callback_data == 'accounting_search':

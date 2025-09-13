@@ -2541,6 +2541,7 @@ ADMIN_CALLBACKS.update({
     'export_suppliers_file': lambda u, c: export_suppliers_handler(u, c),
     'export_customers_file': lambda u, c: export_customers_handler(u, c),
     'export_comprehensive': lambda u, c: export_comprehensive_handler(u, c),
+    'quick_export': lambda u, c: quick_export_handler(u, c),
     'export_custom': lambda u, c: export_profits_handler(u, c),
     'export_date_range': lambda u, c: export_profits_handler(u, c),
     'export_advanced': lambda u, c: quick_export_handler(u, c),
