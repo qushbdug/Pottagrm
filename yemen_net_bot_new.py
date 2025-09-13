@@ -78,7 +78,8 @@ try:
         ADMIN_CALLBACKS, activate_single_supplier, admin_panel_handler,
         admin_add_offers_handler, accounting_system_handler,
         create_coupons_handler, create_quick_coupon_handler,
-        coupons_stats_handler, list_coupons_handler
+        coupons_stats_handler, list_coupons_handler,
+        show_super_admin_panel
     )
     
     # Import management modules
@@ -458,14 +459,6 @@ async def button_click_handler(update: Update, context):
             admin_id = int(callback_data.split('_')[2])
             return await AdminManagement.show_admin_profile(update, context, admin_id)
         
-        # Customer management handlers
-        elif callback_data == 'customer_dashboard':
-            return await CustomerManagement.get_customer_dashboard(update, context)
-        elif callback_data == 'customer_analytics':
-            return await CustomerManagement.get_customer_analytics(update, context)
-        elif callback_data.startswith('customer_profile_'):
-            customer_id = int(callback_data.split('_')[2])
-            return await CustomerManagement.show_customer_profile(update, context, customer_id)
         
         # File upload handlers and purchase category selection disambiguation
         elif callback_data.startswith('select_network_'):
@@ -616,6 +609,47 @@ async def button_click_handler(update: Update, context):
         elif callback_data.startswith('super_view_all_suppliers'):
             from bot_modules.admin_functions import view_all_suppliers_handler
             return await view_all_suppliers_handler(update, context)
+        
+        # Enhanced Customer Management System
+        elif callback_data == 'customer_dashboard':
+            logger.info(f"Customer dashboard requested by user {query.from_user.id}")
+            try:
+                return await CustomerManagement.get_customer_dashboard(update, context)
+            except Exception as e:
+                logger.error(f"Error calling customer dashboard: {e}", exc_info=True)
+                await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في فتح إدارة العملاء.")
+                return
+        elif callback_data == 'customer_search':
+            return await CustomerManagement.search_customers(update, context)
+        elif callback_data == 'customer_list':
+            return await CustomerManagement.list_customers(update, context)
+        elif callback_data == 'customer_list_active':
+            return await CustomerManagement.list_customers_active(update, context)
+        elif callback_data == 'customer_list_inactive':
+            return await CustomerManagement.list_customers_inactive(update, context)
+        elif callback_data == 'customer_list_top_balance':
+            return await CustomerManagement.list_customers_top_balance(update, context)
+        elif callback_data == 'customer_list_most_active':
+            return await CustomerManagement.list_customers_most_active(update, context)
+        elif callback_data == 'customer_list_new':
+            return await CustomerManagement.list_customers_new(update, context)
+        elif callback_data == 'customer_list_suspicious':
+            return await CustomerManagement.list_customers_suspicious(update, context)
+        elif callback_data == 'customer_reports':
+            return await CustomerManagement.customer_reports(update, context)
+        elif callback_data == 'customer_balance_mgmt':
+            return await CustomerManagement.balance_management(update, context)
+        elif callback_data == 'customer_banned':
+            return await CustomerManagement.banned_customers(update, context)
+        elif callback_data == 'customer_analytics':
+            return await CustomerManagement.get_customer_analytics(update, context)
+        elif callback_data == 'customer_support':
+            return await CustomerManagement.customer_support(update, context)
+        elif callback_data == 'customer_incentives':
+            return await CustomerManagement.customer_incentives(update, context)
+        elif callback_data.startswith('customer_profile_'):
+            customer_id = int(callback_data.split('_')[2])
+            return await CustomerManagement.show_customer_profile(update, context, customer_id)
         
         # Fallback for truly unhandled callbacks
         else:
@@ -774,40 +808,13 @@ async def button_click_handler(update: Update, context):
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية للوصول لهذه اللوحة.")
                 return
         
-        # Enhanced Customer Management System
-        elif callback_data == 'customer_dashboard':
-            return await CustomerManagement.get_customer_dashboard(update, context)
-        elif callback_data == 'customer_search':
-            return await CustomerManagement.search_customers(update, context)
-        elif callback_data == 'customer_list':
-            return await CustomerManagement.list_customers(update, context)
-        elif callback_data == 'customer_list_active':
-            return await CustomerManagement.list_customers_active(update, context)
-        elif callback_data == 'customer_list_inactive':
-            return await CustomerManagement.list_customers_inactive(update, context)
-        elif callback_data == 'customer_list_top_balance':
-            return await CustomerManagement.list_customers_top_balance(update, context)
-        elif callback_data == 'customer_list_most_active':
-            return await CustomerManagement.list_customers_most_active(update, context)
-        elif callback_data == 'customer_list_new':
-            return await CustomerManagement.list_customers_new(update, context)
-        elif callback_data == 'customer_list_suspicious':
-            return await CustomerManagement.list_customers_suspicious(update, context)
-        elif callback_data == 'customer_reports':
-            return await CustomerManagement.customer_reports(update, context)
-        elif callback_data == 'customer_balance_mgmt':
-            return await CustomerManagement.balance_management(update, context)
-        elif callback_data == 'customer_banned':
-            return await CustomerManagement.banned_customers(update, context)
-        elif callback_data == 'customer_analytics':
-            return await CustomerManagement.get_customer_analytics(update, context)
-        elif callback_data == 'customer_support':
-            return await CustomerManagement.customer_support(update, context)
-        elif callback_data == 'customer_incentives':
-            return await CustomerManagement.customer_incentives(update, context)
-        elif callback_data.startswith('customer_profile_'):
-            customer_id = int(callback_data.split('_')[2])
-            return await CustomerManagement.show_customer_profile(update, context, customer_id)
+        # Super admin panel
+        elif callback_data == 'super_admin_panel':
+            if user and user['role'] == 'super_admin':
+                return await show_super_admin_panel(update, context, user)
+            else:
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية للوصول لهذه اللوحة.")
+                return
         
         # Enhanced Admin Management System  
         elif callback_data == 'admin_dashboard':
@@ -832,6 +839,12 @@ async def button_click_handler(update: Update, context):
         elif callback_data.startswith('perm_quick_edit_'):
             admin_id = int(callback_data.split('_')[3])
             return await AdminManagement.edit_admin_permissions(update, context, admin_id)
+        elif callback_data.startswith('perm_grant_all_'):
+            admin_id = int(callback_data.split('_')[3])
+            return await AdminManagement.grant_all_permissions(update, context, admin_id)
+        elif callback_data.startswith('perm_revoke_all_'):
+            admin_id = int(callback_data.split('_')[3])
+            return await AdminManagement.revoke_all_permissions(update, context, admin_id)
         elif callback_data.startswith('perm_grant_') or callback_data.startswith('perm_revoke_'):
             parts = callback_data.split('_')
             action = parts[1]  # grant or revoke
@@ -852,13 +865,7 @@ async def button_click_handler(update: Update, context):
         elif callback_data == 'promote_to_super_admin':
             return await AdminManagement.execute_admin_promotion(update, context, 'super_admin')
         elif callback_data == 'add_admin_cancel':
-            # تنظيف بيانات السياق
-            context.user_data.pop('awaiting_admin_telegram_id', None)
-            context.user_data.pop('awaiting_admin_phone', None)
-            context.user_data.pop('target_admin_telegram_id', None)
-            context.user_data.pop('target_admin_db_id', None)
-            context.user_data.pop('admin_add_step', None)
-            return await AdminManagement.get_admin_dashboard(update, context)
+            return await AdminManagement.add_admin_cancel_handler(update, context)
         
         # Admin Search System
         elif callback_data == 'admin_search_admin':
@@ -932,7 +939,6 @@ async def button_click_handler(update: Update, context):
             if user['role'] != 'super_admin':
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
                 return
-            from bot_modules.admin_functions import list_coupons_handler
             return await list_coupons_handler(update, context)
         
         # Supplier activation (specific handling)
@@ -3234,6 +3240,12 @@ async def handle_text_message(update: Update, context: CallbackContext):
         message_text = update.message.text.strip()
         
         # ===== Admin Management Text Handlers =====
+        
+        # معالجة إدخال رقم محفظة لإضافة مشرف جديد
+        if context.user_data.get('awaiting_admin_wallet'):
+            from bot_modules.admin_management import AdminManagement
+            await AdminManagement.process_admin_wallet_input(update, context)
+            return
         
         # معالجة إدخال معرف تلجرام لإضافة مشرف جديد
         if context.user_data.get('awaiting_admin_telegram_id'):

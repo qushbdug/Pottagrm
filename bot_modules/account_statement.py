@@ -38,6 +38,7 @@ from bot_modules.database import get_db_connection
 from bot_modules.utils import get_user
 from bot_modules.config import EMOJIS, USER_ROLES
 from bot_modules.enhanced_error_messages import ErrorMessages
+from bot_modules.enhanced_excel_generator import EnhancedExcelGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -420,8 +421,8 @@ class AccountStatementGenerator:
                     await query.edit_message_text(f"{EMOJIS['error']} ميزة Excel غير متوفرة حالياً.")
                     return
                 
-                # إنشاء ملف Excel
-                excel_buffer = AccountStatementGenerator.generate_excel_statement(user, transactions, days)
+                # إنشاء ملف Excel محسّن
+                excel_buffer = EnhancedExcelGenerator.generate_enhanced_statement(user, transactions, days)
                 filename = f"كشف_حساب_{user['wallet_number']}_{filename_date}.xlsx"
                 
                 # إرسال الملف

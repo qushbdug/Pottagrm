@@ -486,6 +486,11 @@ class CustomerManagement:
     @staticmethod
     async def list_customers_suspicious(update: Update, context: CallbackContext):
         return await CustomerManagement._list_customers_filtered(update, context, 'suspicious')
+    
+    @staticmethod
+    async def list_customers(update: Update, context: CallbackContext):
+        """عرض قائمة العملاء الافتراضية"""
+        return await CustomerManagement._list_customers_filtered(update, context, 'all')
 
     @staticmethod
     async def customer_reports(update: Update, context: CallbackContext):

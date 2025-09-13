@@ -1,0 +1,280 @@
+تقرير مراقبة البوت - 2025-09-12 22:26:09
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📊 تقرير دوري - 2025-09-12 22:26:09
+❌ الأخطاء: 6
+⚠️ التحذيرات: 2
+💰 المعاملات: 0
+0
+✅ حالة البوت: يعمل
+
+🔴 آخر الأخطاء:
+2025-09-12 21:51:35,882 - yemen_net_bot_new - ERROR - Error in show network categories: 'NoneType' object has no attribute 'from_user'
+2025-09-12 21:51:35,882 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 21:51:45,437 - yemen_net_bot_new - ERROR - Error in show network categories: 'NoneType' object has no attribute 'from_user'
+2025-09-12 21:51:45,438 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 22:25:20,422 - yemen_net_bot_new - ERROR - Error in button click handler: Query is too old and response timeout expired or query id is invalid
+
+📊 تقرير دوري - 2025-09-12 22:31:09
+❌ الأخطاء: 7
+⚠️ التحذيرات: 3
+💰 المعاملات: 0
+0
+✅ حالة البوت: يعمل
+
+🔴 آخر الأخطاء:
+2025-09-12 21:51:35,882 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 21:51:45,437 - yemen_net_bot_new - ERROR - Error in show network categories: 'NoneType' object has no attribute 'from_user'
+2025-09-12 21:51:45,438 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 22:25:20,422 - yemen_net_bot_new - ERROR - Error in button click handler: Query is too old and response timeout expired or query id is invalid
+2025-09-12 22:26:38,467 - admin_functions - ERROR - Error in manage admins handler: no such column: t.created_by
+
+📊 تقرير دوري - 2025-09-12 22:36:09
+❌ الأخطاء: 7
+⚠️ التحذيرات: 3
+💰 المعاملات: 0
+0
+✅ حالة البوت: يعمل
+
+🔴 آخر الأخطاء:
+2025-09-12 21:51:35,882 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 21:51:45,437 - yemen_net_bot_new - ERROR - Error in show network categories: 'NoneType' object has no attribute 'from_user'
+2025-09-12 21:51:45,438 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 22:25:20,422 - yemen_net_bot_new - ERROR - Error in button click handler: Query is too old and response timeout expired or query id is invalid
+2025-09-12 22:26:38,467 - admin_functions - ERROR - Error in manage admins handler: no such column: t.created_by
+
+📊 تقرير دوري - 2025-09-12 23:05:11
+❌ الأخطاء: 7
+⚠️ التحذيرات: 3
+💰 المعاملات: 0
+0
+✅ حالة البوت: يعمل
+
+🔴 آخر الأخطاء:
+2025-09-12 21:51:35,882 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 21:51:45,437 - yemen_net_bot_new - ERROR - Error in show network categories: 'NoneType' object has no attribute 'from_user'
+2025-09-12 21:51:45,438 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 22:25:20,422 - yemen_net_bot_new - ERROR - Error in button click handler: Query is too old and response timeout expired or query id is invalid
+2025-09-12 22:26:38,467 - admin_functions - ERROR - Error in manage admins handler: no such column: t.created_by
+
+📊 تقرير دوري - 2025-09-12 23:10:11
+❌ الأخطاء: 7
+⚠️ التحذيرات: 4
+💰 المعاملات: 0
+0
+✅ حالة البوت: يعمل
+
+🔴 آخر الأخطاء:
+2025-09-12 21:51:35,882 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 21:51:45,437 - yemen_net_bot_new - ERROR - Error in show network categories: 'NoneType' object has no attribute 'from_user'
+2025-09-12 21:51:45,438 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 22:25:20,422 - yemen_net_bot_new - ERROR - Error in button click handler: Query is too old and response timeout expired or query id is invalid
+2025-09-12 22:26:38,467 - admin_functions - ERROR - Error in manage admins handler: no such column: t.created_by
+
+📊 تقرير دوري - 2025-09-12 23:15:11
+❌ الأخطاء: 7
+⚠️ التحذيرات: 4
+💰 المعاملات: 0
+0
+✅ حالة البوت: يعمل
+
+🔴 آخر الأخطاء:
+2025-09-12 21:51:35,882 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 21:51:45,437 - yemen_net_bot_new - ERROR - Error in show network categories: 'NoneType' object has no attribute 'from_user'
+2025-09-12 21:51:45,438 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 22:25:20,422 - yemen_net_bot_new - ERROR - Error in button click handler: Query is too old and response timeout expired or query id is invalid
+2025-09-12 22:26:38,467 - admin_functions - ERROR - Error in manage admins handler: no such column: t.created_by
+
+📊 تقرير دوري - 2025-09-12 23:20:11
+❌ الأخطاء: 7
+⚠️ التحذيرات: 4
+💰 المعاملات: 0
+0
+✅ حالة البوت: يعمل
+
+🔴 آخر الأخطاء:
+2025-09-12 21:51:35,882 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 21:51:45,437 - yemen_net_bot_new - ERROR - Error in show network categories: 'NoneType' object has no attribute 'from_user'
+2025-09-12 21:51:45,438 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 22:25:20,422 - yemen_net_bot_new - ERROR - Error in button click handler: Query is too old and response timeout expired or query id is invalid
+2025-09-12 22:26:38,467 - admin_functions - ERROR - Error in manage admins handler: no such column: t.created_by
+
+📊 تقرير دوري - 2025-09-12 23:25:11
+❌ الأخطاء: 7
+⚠️ التحذيرات: 4
+💰 المعاملات: 0
+0
+✅ حالة البوت: يعمل
+
+🔴 آخر الأخطاء:
+2025-09-12 21:51:35,882 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 21:51:45,437 - yemen_net_bot_new - ERROR - Error in show network categories: 'NoneType' object has no attribute 'from_user'
+2025-09-12 21:51:45,438 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 22:25:20,422 - yemen_net_bot_new - ERROR - Error in button click handler: Query is too old and response timeout expired or query id is invalid
+2025-09-12 22:26:38,467 - admin_functions - ERROR - Error in manage admins handler: no such column: t.created_by
+
+📊 تقرير دوري - 2025-09-12 23:30:11
+❌ الأخطاء: 7
+⚠️ التحذيرات: 4
+💰 المعاملات: 0
+0
+✅ حالة البوت: يعمل
+
+🔴 آخر الأخطاء:
+2025-09-12 21:51:35,882 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 21:51:45,437 - yemen_net_bot_new - ERROR - Error in show network categories: 'NoneType' object has no attribute 'from_user'
+2025-09-12 21:51:45,438 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 22:25:20,422 - yemen_net_bot_new - ERROR - Error in button click handler: Query is too old and response timeout expired or query id is invalid
+2025-09-12 22:26:38,467 - admin_functions - ERROR - Error in manage admins handler: no such column: t.created_by
+
+📊 تقرير دوري - 2025-09-12 23:35:11
+❌ الأخطاء: 7
+⚠️ التحذيرات: 5
+💰 المعاملات: 0
+0
+✅ حالة البوت: يعمل
+
+🔴 آخر الأخطاء:
+2025-09-12 21:51:35,882 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 21:51:45,437 - yemen_net_bot_new - ERROR - Error in show network categories: 'NoneType' object has no attribute 'from_user'
+2025-09-12 21:51:45,438 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 22:25:20,422 - yemen_net_bot_new - ERROR - Error in button click handler: Query is too old and response timeout expired or query id is invalid
+2025-09-12 22:26:38,467 - admin_functions - ERROR - Error in manage admins handler: no such column: t.created_by
+
+📊 تقرير دوري - 2025-09-12 23:40:11
+❌ الأخطاء: 7
+⚠️ التحذيرات: 6
+💰 المعاملات: 0
+0
+✅ حالة البوت: يعمل
+
+🔴 آخر الأخطاء:
+2025-09-12 21:51:35,882 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 21:51:45,437 - yemen_net_bot_new - ERROR - Error in show network categories: 'NoneType' object has no attribute 'from_user'
+2025-09-12 21:51:45,438 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 22:25:20,422 - yemen_net_bot_new - ERROR - Error in button click handler: Query is too old and response timeout expired or query id is invalid
+2025-09-12 22:26:38,467 - admin_functions - ERROR - Error in manage admins handler: no such column: t.created_by
+
+📊 تقرير دوري - 2025-09-12 23:45:11
+❌ الأخطاء: 7
+⚠️ التحذيرات: 6
+💰 المعاملات: 0
+0
+✅ حالة البوت: يعمل
+
+🔴 آخر الأخطاء:
+2025-09-12 21:51:35,882 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 21:51:45,437 - yemen_net_bot_new - ERROR - Error in show network categories: 'NoneType' object has no attribute 'from_user'
+2025-09-12 21:51:45,438 - handlers - ERROR - Error in start handler: 'NoneType' object has no attribute 'edit_message_text'
+2025-09-12 22:25:20,422 - yemen_net_bot_new - ERROR - Error in button click handler: Query is too old and response timeout expired or query id is invalid
+2025-09-12 22:26:38,467 - admin_functions - ERROR - Error in manage admins handler: no such column: t.created_by
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 التقرير النهائي - 2025-09-13 02:38:40
+❌ إجمالي الأخطاء: 7
+⚠️ إجمالي التحذيرات: 6
+💰 إجمالي المعاملات: 0
+0
+
+📜 آخر 100 سطر من السجل:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2025-09-12 23:32:13,276 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:32:43,367 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:33:13,457 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:33:43,547 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:34:13,639 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:34:28,539 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:34:28,852 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/sendMessage "HTTP/1.1 200 OK"
+2025-09-12 23:34:38,178 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:34:38,455 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:34:38,569 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/editMessageText "HTTP/1.1 200 OK"
+2025-09-12 23:34:49,851 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:34:50,156 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:34:50,295 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/editMessageText "HTTP/1.1 200 OK"
+2025-09-12 23:35:19,942 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:35:50,032 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:36:20,128 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:36:50,218 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:37:20,311 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:37:50,402 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:38:20,492 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:38:50,582 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:39:20,672 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:39:26,789 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:39:27,065 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:27,166 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:27,299 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/editMessageText "HTTP/1.1 200 OK"
+2025-09-12 23:39:28,390 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:39:28,501 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:28,612 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/editMessageText "HTTP/1.1 200 OK"
+2025-09-12 23:39:29,800 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:39:29,897 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:30,008 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/editMessageText "HTTP/1.1 200 OK"
+2025-09-12 23:39:31,271 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:39:31,369 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:31,472 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:31,578 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/editMessageText "HTTP/1.1 200 OK"
+2025-09-12 23:39:33,029 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:39:33,134 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:33,271 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:33,375 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/editMessageText "HTTP/1.1 200 OK"
+2025-09-12 23:39:34,653 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:39:34,755 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:34,852 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:34,854 - bot_modules.permissions - INFO - Super admin telegram_id 7684780523 (db_id: 1) granted permission 'accounting_access' automatically
+2025-09-12 23:39:34,964 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/editMessageText "HTTP/1.1 200 OK"
+2025-09-12 23:39:37,639 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:39:37,759 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/sendMessage "HTTP/1.1 200 OK"
+2025-09-12 23:39:40,381 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:39:40,476 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:40,594 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:40,699 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/editMessageText "HTTP/1.1 200 OK"
+2025-09-12 23:39:41,468 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:39:41,561 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:41,679 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/editMessageText "HTTP/1.1 200 OK"
+2025-09-12 23:39:45,511 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:39:45,604 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:45,718 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/editMessageText "HTTP/1.1 200 OK"
+2025-09-12 23:39:46,680 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:39:46,772 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:46,774 - yemen_net_bot_new - INFO - Customer dashboard requested by user 7684780523
+2025-09-12 23:39:46,876 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:46,992 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/editMessageText "HTTP/1.1 200 OK"
+2025-09-12 23:39:49,439 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:39:49,536 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:49,654 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:49,802 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/editMessageText "HTTP/1.1 200 OK"
+2025-09-12 23:39:51,365 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:39:51,609 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:51,611 - yemen_net_bot_new - INFO - Customer dashboard requested by user 7684780523
+2025-09-12 23:39:51,815 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:51,950 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/editMessageText "HTTP/1.1 200 OK"
+2025-09-12 23:39:53,425 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:39:53,521 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:53,636 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/editMessageText "HTTP/1.1 200 OK"
+2025-09-12 23:39:54,731 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:39:54,847 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:54,942 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:55,073 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/editMessageText "HTTP/1.1 200 OK"
+2025-09-12 23:39:56,240 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:39:56,334 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:56,446 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:56,556 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/editMessageText "HTTP/1.1 200 OK"
+2025-09-12 23:39:59,276 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:39:59,373 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:59,497 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:39:59,610 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/editMessageText "HTTP/1.1 200 OK"
+2025-09-12 23:40:01,243 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:40:01,360 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/answerCallbackQuery "HTTP/1.1 200 OK"
+2025-09-12 23:40:01,361 - yemen_net_bot_new - WARNING - Unhandled callback: perm_quick_edit_2
+2025-09-12 23:40:01,473 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/editMessageText "HTTP/1.1 200 OK"
+2025-09-12 23:40:31,336 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:41:01,429 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:41:31,522 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:42:01,615 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:42:31,709 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:43:01,800 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:43:31,896 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:44:01,989 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:44:32,085 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
+2025-09-12 23:45:02,179 - httpx - INFO - HTTP Request: POST https://api.telegram.org/bot7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0/getUpdates "HTTP/1.1 200 OK"
