@@ -21,6 +21,14 @@ from bot_modules.accounting_search import accounting_search_handler, quick_stats
 
 logger = logging.getLogger(__name__)
 
+# Escape minimal markdown characters for safe rendering in Markdown
+def md_safe(text):
+    try:
+        s = str(text)
+        return s.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('`', '\\`')
+    except Exception:
+        return str(text)
+
 async def admin_panel_handler(update: Update, context: CallbackContext):
     """Handle admin panel access"""
     try:
@@ -3050,25 +3058,20 @@ async def accounting_transactions_handler(update: Update, context: CallbackConte
         
         conn.close()
         
-        transactions_text = f"""
-💸 **تقارير المعاملات** 💸
-
-📊 **إحصائيات سريعة:**
-
-📅 **اليوم:**
-• العدد: {today_count:,} معاملة
-• المبلغ: {today_amount:,.2f} ريال
-
-📅 **آخر 7 أيام:**
-• العدد: {week_count:,} معاملة  
-• المبلغ: {week_amount:,.2f} ريال
-
-📅 **آخر 30 يوم:**
-• العدد: {month_count:,} معاملة
-• المبلغ: {month_amount:,.2f} ريال
-
-🔄 **أحدث المعاملات:**
-"""
+        transactions_text = (
+            "💸 **تقارير المعاملات** 💸\n\n"
+            "📊 **إحصائيات سريعة:**\n\n"
+            "📅 **اليوم:**\n"
+            f"• العدد: {today_count:,} معاملة\n"
+            f"• المبلغ: {today_amount:,.2f} ريال\n\n"
+            "📅 **آخر 7 أيام:**\n"
+            f"• العدد: {week_count:,} معاملة\n"
+            f"• المبلغ: {week_amount:,.2f} ريال\n\n"
+            "📅 **آخر 30 يوم:**\n"
+            f"• العدد: {month_count:,} معاملة\n"
+            f"• المبلغ: {month_amount:,.2f} ريال\n\n"
+            "🔄 **أحدث المعاملات:**"
+        )
         
         if recent_transactions:
             for i, transaction in enumerate(recent_transactions, 1):
@@ -3086,10 +3089,10 @@ async def accounting_transactions_handler(update: Update, context: CallbackConte
                     "withdrawal": "سحب"
                 }.get(trans_type, trans_type)
                 
-                transactions_text += f"""
-{i}. {type_emoji} **{type_name}** - {amount:,.2f} ريال
-   👤 {user_display} | 📅 {date_str}
-"""
+                transactions_text += (
+                    f"\n{i}. {type_emoji} **{type_name}** - {amount:,.2f} ريال\n"
+                    f"   👤 {md_safe(user_display)} | 📅 {md_safe(date_str)}"
+                )
         else:
             transactions_text += "\n• لا توجد معاملات حديثة"
         
