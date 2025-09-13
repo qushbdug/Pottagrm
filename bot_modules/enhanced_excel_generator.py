@@ -320,15 +320,33 @@ class EnhancedExcelGenerator:
         for sheet in wb.worksheets:
             for column in sheet.columns:
                 max_length = 0
-                column_letter = column[0].column_letter
+                column_letter = None
+                
+                # البحث عن خلية غير مدمجة للحصول على رقم العمود
+                for cell in column:
+                    if hasattr(cell, 'column_letter'):
+                        try:
+                            column_letter = cell.column_letter
+                            break
+                        except:
+                            continue
+                
+                if not column_letter:
+                    continue
+                    
+                # حساب أقصى طول
                 for cell in column:
                     try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
+                        if hasattr(cell, 'value') and cell.value:
+                            cell_length = len(str(cell.value))
+                            if cell_length > max_length:
+                                max_length = cell_length
                     except:
                         pass
+                
                 adjusted_width = min(max_length + 2, 50)
-                sheet.column_dimensions[column_letter].width = adjusted_width
+                if adjusted_width > 0:
+                    sheet.column_dimensions[column_letter].width = adjusted_width
         
         # حفظ في الذاكرة
         excel_buffer = io.BytesIO()
