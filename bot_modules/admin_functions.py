@@ -815,7 +815,7 @@ async def executive_reports_handler(update: Update, context: CallbackContext):
 # Security monitoring handler removed as requested
 
 async def manage_admins_handler(update, context):
-    """Handle admin management"""
+    """Handle admin management (schema-safe version)"""
     try:
         query = update.callback_query
         await query.answer()
@@ -825,50 +825,45 @@ async def manage_admins_handler(update, context):
             await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
             return
         
-        # Get admin statistics
+        # Get admin statistics (use existing columns only)
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute("SELECT COUNT(*) as total_admins FROM users WHERE role = 'admin'")
-        result = cursor.fetchone()
-        total_admins = result['total_admins'] if result else 0
+        cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'")
+        total_admins = cursor.fetchone()[0] or 0
         
-        cursor.execute("SELECT COUNT(*) as active_admins FROM users WHERE role = 'admin' AND is_active = 1")
-        result = cursor.fetchone()
-        active_admins = result['active_admins'] if result else 0
+        cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = 1")
+        active_admins = cursor.fetchone()[0] or 0
         
-        cursor.execute("SELECT COUNT(*) as super_admins FROM users WHERE role = 'super_admin'")
-        result = cursor.fetchone()
-        super_admins = result['super_admins'] if result else 0
+        cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'super_admin'")
+        super_admins = cursor.fetchone()[0] or 0
         
-        # Get recent admin activities
+        # Recent admin activity by last_activity
         cursor.execute('''
-            SELECT u.full_name, u.last_activity_at 
-            FROM users u 
-            WHERE u.role IN ('admin', 'super_admin') 
-            ORDER BY u.last_activity_at DESC 
+            SELECT full_name, last_activity 
+            FROM users 
+            WHERE role IN ('admin', 'super_admin') 
+            ORDER BY last_activity DESC 
             LIMIT 5
         ''')
         recent_activities = cursor.fetchall()
         
         conn.close()
         
-        text = f"""
-👑 **إدارة المشرفين** 👑
-
-📊 **إحصائيات المشرفين:**
-👥 إجمالي المشرفين: **{total_admins}**
-🟢 المشرفين النشطين: **{active_admins}**
-👑 المشرفين الأعلى: **{super_admins}**
-
-👥 **آخر نشاط للمشرفين:**
-"""
+        text = (
+            "👑 **إدارة المشرفين** 👑\n\n"
+            "📊 **إحصائيات المشرفين:**\n"
+            f"👥 إجمالي المشرفين: **{total_admins}**\n"
+            f"🟢 المشرفين النشطين: **{active_admins}**\n"
+            f"👑 المشرفين الأعلى: **{super_admins}**\n\n"
+            "👥 **آخر نشاط للمشرفين:**"
+        )
         
         for activity in recent_activities[:3]:
-            last_activity = activity['last_activity_at'] or 'لم يسجل دخول'
-            if isinstance(last_activity, str) and last_activity != 'لم يسجل دخول':
-                last_activity = last_activity[:16]
-            text += f"\n• {activity['full_name']}: {last_activity}"
+            last_activity = activity['last_activity'] if isinstance(activity, sqlite3.Row) else activity[1]
+            last_activity_str = (last_activity[:16] if isinstance(last_activity, str) else 'غير متوفر') if last_activity else 'لم يسجل دخول'
+            name = activity['full_name'] if isinstance(activity, sqlite3.Row) else activity[0]
+            text += f"\n• {md_safe(name)}: {md_safe(last_activity_str)}"
         
         text += "\n\n🔧 **إدارة شاملة للمشرفين:**"
         
@@ -887,7 +882,7 @@ async def manage_admins_handler(update, context):
         
     except Exception as e:
         logger.error(f"Error in manage admins handler: {e}")
-        await query.edit_message_text(ErrorMessages.admin_error("تحميل إدارة المشرفين"))
+        await query.edit_message_text(ErrorMessages.admin_error("إدارة المشرفين"))
 
 async def dashboard_handler(update, context):
     """Handle dashboard display"""
