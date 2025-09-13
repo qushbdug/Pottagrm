@@ -2587,6 +2587,20 @@ ADMIN_CALLBACKS.update({
     'admin_reports': admin_reports_handler,
     'admin_permissions': admin_permissions_handler,
     'admin_banned': admin_banned_handler,
+
+    # Extended admin management shortcuts
+    'admin_dashboard': manage_admins_handler,
+    'admin_manage_admins': manage_admins_handler,
+    'admin_permissions_management': admin_permissions_handler,
+    'admin_performance_evaluation': admin_reports_handler,
+    'admin_banned_management': admin_banned_handler,
+    'admin_activity_analysis': admin_reports_handler,
+    'admin_live_monitoring': lambda u, c: placeholder_handler(u, c, "المراقبة المباشرة"),
+    'admin_export_analytics': admin_reports_handler,
+    'admin_charts': lambda u, c: placeholder_handler(u, c, "الرسوم البيانية"),
+    'admin_custom_report': admin_reports_handler,
+    'admin_analytics_settings': lambda u, c: placeholder_handler(u, c, "إعدادات التحليل"),
+    'admin_send_report': admin_reports_handler,
     # User management handlers
     'users_list_all': users_list_all_handler,
     'users_search': users_search_handler,

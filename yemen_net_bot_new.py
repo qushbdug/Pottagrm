@@ -1053,6 +1053,19 @@ async def button_click_handler(update: Update, context):
             await contact_admin_handler(update, context)
         elif callback_data == 'account_status':
             await account_status_handler(update, context)
+        elif callback_data == 'update_contact_info':
+            # عرض معلومات الاتصال كنص ثابت إلى حين استكمال المعالج المتقدم
+            await query.answer()
+            text = (
+                "📞 معلومات الاتصال\n\n"
+                "- الهاتف: 777000000\n"
+                "- البريد: support@example.com\n\n"
+                "اختر إجراءً:" 
+            )
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            ])
+            await query.edit_message_text(text, reply_markup=keyboard)
         elif callback_data == 'account_statement':
             await account_statement_handler(update, context)
         
