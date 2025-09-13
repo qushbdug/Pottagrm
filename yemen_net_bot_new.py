@@ -939,7 +939,6 @@ async def button_click_handler(update: Update, context):
             if user['role'] != 'super_admin':
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
                 return
-            from bot_modules.admin_functions import list_coupons_handler
             return await list_coupons_handler(update, context)
         
         # Supplier activation (specific handling)
