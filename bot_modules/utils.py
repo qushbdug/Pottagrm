@@ -72,7 +72,10 @@ def get_user(telegram_id: int):
         cursor.execute('SELECT * FROM users WHERE telegram_id = ?', (telegram_id,))
         user = cursor.fetchone()
         conn.close()
-        return user
+        # تحويل sqlite3.Row إلى dictionary للتوافق
+        if user:
+            return dict(user)
+        return None
     except Exception as e:
         logger.error(f"Error getting user: {e}")
         return None
@@ -85,7 +88,10 @@ def get_user_by_id(user_id: int):
         cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
         user = cursor.fetchone()
         conn.close()
-        return user
+        # تحويل sqlite3.Row إلى dictionary للتوافق
+        if user:
+            return dict(user)
+        return None
     except Exception as e:
         logger.error(f"Error getting user by ID: {e}")
         return None

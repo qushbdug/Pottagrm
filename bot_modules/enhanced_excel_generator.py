@@ -131,7 +131,12 @@ class EnhancedExcelGenerator:
         
         ws_summary[f'E{row}'] = "الهاتف"
         ws_summary[f'E{row}'].fill = info_fill
-        ws_summary[f'F{row}'] = user.get('phone', 'غير محدد')
+        # التعامل مع sqlite3.Row
+        try:
+            phone = user['phone'] if user['phone'] else 'غير محدد'
+        except:
+            phone = 'غير محدد'
+        ws_summary[f'F{row}'] = phone
         
         ws_summary[f'G{row}'] = "النوع"
         ws_summary[f'G{row}'].fill = info_fill
