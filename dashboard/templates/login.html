@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تسجيل الدخول - Yemen Net Bot Dashboard</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Cairo', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .login-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            width: 100%;
+            max-width: 450px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 30px;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        }
+
+        .logo i {
+            color: white;
+            font-size: 35px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-weight: 700;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 40px;
+            font-weight: 400;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+            text-align: right;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .input-group {
+            position: relative;
+        }
+
+        .input-group i {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #667eea;
+            font-size: 18px;
+        }
+
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 15px 50px 15px 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 12px;
+            font-size: 16px;
+            font-family: 'Cairo', sans-serif;
+            transition: all 0.3s ease;
+            background: #fafbfc;
+            text-align: right;
+        }
+
+        input[type="text"]:focus, input[type="number"]:focus {
+            outline: none;
+            border-color: #667eea;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            font-family: 'Cairo', sans-serif;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 15px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn .spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #ffffff;
+            border-top: 2px solid transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            font-weight: 500;
+            display: none;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .step {
+            display: none;
+        }
+
+        .step.active {
+            display: block;
+        }
+
+        .otp-inputs {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+
+        .otp-input {
+            width: 50px;
+            height: 60px;
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            border: 2px solid #e1e5e9;
+            border-radius: 12px;
+            background: #fafbfc;
+            transition: all 0.3s ease;
+        }
+
+        .otp-input:focus {
+            outline: none;
+            border-color: #667eea;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .resend-otp {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 14px;
+            margin-top: 15px;
+            display: inline-block;
+            transition: color 0.3s ease;
+        }
+
+        .resend-otp:hover {
+            color: #764ba2;
+        }
+
+        .security-note {
+            background: #e3f2fd;
+            color: #1565c0;
+            padding: 15px;
+            border-radius: 12px;
+            margin-top: 20px;
+            font-size: 13px;
+            text-align: right;
+            border-right: 4px solid #2196f3;
+        }
+
+        .security-note i {
+            margin-left: 5px;
+            color: #2196f3;
+        }
+
+        @media (max-width: 480px) {
+            .login-container {
+                padding: 30px 20px;
+                margin: 10px;
+            }
+
+            h1 {
+                font-size: 24px;
+            }
+
+            .otp-inputs {
+                gap: 5px;
+            }
+
+            .otp-input {
+                width: 40px;
+                height: 50px;
+                font-size: 20px;
+            }
+        }
+
+        .back-btn {
+            background: transparent;
+            color: #667eea;
+            border: 2px solid #667eea;
+            font-weight: 600;
+        }
+
+        .back-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo">
+            <i class="fas fa-shield-alt"></i>
+        </div>
+        
+        <h1>لوحة التحكم</h1>
+        <p class="subtitle">Yemen Net Bot Dashboard</p>
+
+        <div class="alert alert-success" id="success-alert"></div>
+        <div class="alert alert-error" id="error-alert"></div>
+
+        <!-- Step 1: Enter Telegram ID -->
+        <div class="step active" id="step1">
+            <form id="telegram-form">
+                <div class="form-group">
+                    <label for="telegram_id">معرف التليجرام</label>
+                    <div class="input-group">
+                        <input type="number" id="telegram_id" name="telegram_id" placeholder="أدخل معرف التليجرام الخاص بك" required>
+                        <i class="fab fa-telegram"></i>
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn" id="request-otp-btn">
+                    <span class="btn-text">طلب رمز التحقق</span>
+                    <div class="spinner"></div>
+                </button>
+            </form>
+            
+            <div class="security-note">
+                <i class="fas fa-info-circle"></i>
+                هذه اللوحة مخصصة للمشرف الأعلى فقط. سيتم إرسال رمز تحقق إلى حساب التليجرام الخاص بك.
+            </div>
+        </div>
+
+        <!-- Step 2: Enter OTP -->
+        <div class="step" id="step2">
+            <h3 style="color: #333; margin-bottom: 20px;">أدخل رمز التحقق</h3>
+            <p style="color: #666; margin-bottom: 20px;">تم إرسال رمز التحقق إلى حساب التليجرام الخاص بك</p>
+            
+            <form id="otp-form">
+                <div class="otp-inputs">
+                    <input type="text" class="otp-input" maxlength="1" data-index="0">
+                    <input type="text" class="otp-input" maxlength="1" data-index="1">
+                    <input type="text" class="otp-input" maxlength="1" data-index="2">
+                    <input type="text" class="otp-input" maxlength="1" data-index="3">
+                    <input type="text" class="otp-input" maxlength="1" data-index="4">
+                    <input type="text" class="otp-input" maxlength="1" data-index="5">
+                </div>
+                
+                <button type="submit" class="btn" id="verify-otp-btn">
+                    <span class="btn-text">تأكيد الدخول</span>
+                    <div class="spinner"></div>
+                </button>
+                
+                <button type="button" class="btn back-btn" id="back-btn">العودة</button>
+            </form>
+            
+            <a href="#" class="resend-otp" id="resend-otp">إعادة إرسال الرمز</a>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let currentTelegramId = '';
+        
+        // DOM elements
+        const step1 = document.getElementById('step1');
+        const step2 = document.getElementById('step2');
+        const telegramForm = document.getElementById('telegram-form');
+        const otpForm = document.getElementById('otp-form');
+        const telegramIdInput = document.getElementById('telegram_id');
+        const otpInputs = document.querySelectorAll('.otp-input');
+        const requestOtpBtn = document.getElementById('request-otp-btn');
+        const verifyOtpBtn = document.getElementById('verify-otp-btn');
+        const backBtn = document.getElementById('back-btn');
+        const resendOtpBtn = document.getElementById('resend-otp');
+        const successAlert = document.getElementById('success-alert');
+        const errorAlert = document.getElementById('error-alert');
+
+        // Utility functions
+        function showAlert(message, type = 'error') {
+            const alert = type === 'success' ? successAlert : errorAlert;
+            alert.textContent = message;
+            alert.style.display = 'block';
+            
+            setTimeout(() => {
+                alert.style.display = 'none';
+            }, 5000);
+        }
+
+        function showLoading(button) {
+            const btnText = button.querySelector('.btn-text');
+            const spinner = button.querySelector('.spinner');
+            
+            btnText.style.display = 'none';
+            spinner.style.display = 'inline-block';
+            button.disabled = true;
+        }
+
+        function hideLoading(button) {
+            const btnText = button.querySelector('.btn-text');
+            const spinner = button.querySelector('.spinner');
+            
+            btnText.style.display = 'inline';
+            spinner.style.display = 'none';
+            button.disabled = false;
+        }
+
+        function switchStep(from, to) {
+            from.classList.remove('active');
+            to.classList.add('active');
+        }
+
+        // OTP input handling
+        otpInputs.forEach((input, index) => {
+            input.addEventListener('input', (e) => {
+                if (e.target.value.length === 1 && index < otpInputs.length - 1) {
+                    otpInputs[index + 1].focus();
+                }
+            });
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Backspace' && e.target.value === '' && index > 0) {
+                    otpInputs[index - 1].focus();
+                }
+            });
+        });
+
+        // Request OTP
+        telegramForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const telegramId = telegramIdInput.value.trim();
+            if (!telegramId) {
+                showAlert('يرجى إدخال معرف التليجرام');
+                return;
+            }
+
+            showLoading(requestOtpBtn);
+
+            try {
+                const response = await fetch('/api/auth/request-otp', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        telegram_id: telegramId
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    currentTelegramId = telegramId;
+                    showAlert(data.message, 'success');
+                    setTimeout(() => {
+                        switchStep(step1, step2);
+                    }, 1000);
+                } else {
+                    showAlert(data.error);
+                }
+            } catch (error) {
+                showAlert('حدث خطأ في الاتصال. حاول مرة أخرى.');
+            } finally {
+                hideLoading(requestOtpBtn);
+            }
+        });
+
+        // Verify OTP
+        otpForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const otpCode = Array.from(otpInputs).map(input => input.value).join('');
+            
+            if (otpCode.length !== 6) {
+                showAlert('يرجى إدخال رمز التحقق كاملاً');
+                return;
+            }
+
+            showLoading(verifyOtpBtn);
+
+            try {
+                const response = await fetch('/api/auth/verify-otp', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        telegram_id: currentTelegramId,
+                        otp_code: otpCode
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Store JWT token
+                    localStorage.setItem('access_token', data.access_token);
+                    localStorage.setItem('telegram_id', currentTelegramId);
+                    
+                    showAlert('تم تسجيل الدخول بنجاح!', 'success');
+                    
+                    // Redirect to dashboard
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 1000);
+                } else {
+                    showAlert(data.error);
+                    // Clear OTP inputs on error
+                    otpInputs.forEach(input => input.value = '');
+                    otpInputs[0].focus();
+                }
+            } catch (error) {
+                showAlert('حدث خطأ في الاتصال. حاول مرة أخرى.');
+            } finally {
+                hideLoading(verifyOtpBtn);
+            }
+        });
+
+        // Back button
+        backBtn.addEventListener('click', () => {
+            switchStep(step2, step1);
+            otpInputs.forEach(input => input.value = '');
+        });
+
+        // Resend OTP
+        resendOtpBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            
+            try {
+                const response = await fetch('/api/auth/request-otp', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        telegram_id: currentTelegramId
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert('تم إعادة إرسال الرمز بنجاح', 'success');
+                } else {
+                    showAlert(data.error);
+                }
+            } catch (error) {
+                showAlert('حدث خطأ في إعادة الإرسال');
+            }
+        });
+
+        // Check if already logged in
+        if (localStorage.getItem('access_token')) {
+            window.location.href = '/';
+        }
+    </script>
+</body>
+</html>
