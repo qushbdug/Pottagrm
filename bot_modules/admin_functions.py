@@ -1880,7 +1880,7 @@ ADMIN_CALLBACKS = {
     'executive_reports': executive_reports_handler,
     'super_manage_users': manage_users_handler,
     'super_executive_reports': executive_reports_handler,
-    'super_manage_admins': manage_admins_handler,
+    'super_manage_admins': lambda u, c: __import__('bot_modules.admin_management', fromlist=['AdminManagement']).AdminManagement.manage_admins(u, c),
     'super_dashboard': dashboard_handler,
     'super_view_all_suppliers': view_all_suppliers_handler,
     'view_supplier_details': view_supplier_details_handler,
@@ -2444,7 +2444,7 @@ ADMIN_CALLBACKS.update({
     'admin_wallet': admin_wallet_handler,
     'admin_send_money': admin_send_money_handler,
   # Keep for compatibility
-    'super_manage_admins': manage_admins_handler,
+    'super_manage_admins': lambda u, c: __import__('bot_modules.admin_management', fromlist=['AdminManagement']).AdminManagement.manage_admins(u, c),
     'super_manage_users': manage_users_handler,
     'super_dashboard': dashboard_handler,
     'super_executive_reports': executive_reports_handler,
@@ -2455,7 +2455,7 @@ ADMIN_CALLBACKS.update({
     'commission_management': commission_management_handler,
     'edit_commission': edit_commission_handler,
     'manage_users': manage_users_handler,
-    'manage_admins': manage_admins_handler,
+    'manage_admins': lambda u, c: __import__('bot_modules.admin_management', fromlist=['AdminManagement']).AdminManagement.manage_admins(u, c),
     'dashboard': dashboard_handler,
     'executive_reports': executive_reports_handler,
     
@@ -2581,8 +2581,9 @@ ADMIN_CALLBACKS.update({
     'admin_banned': admin_banned_handler,
 
     # Extended admin management shortcuts
-    'admin_dashboard': manage_admins_handler,
-    'admin_manage_admins': manage_admins_handler,
+    # Route admin management to the new AdminManagement module
+    'admin_dashboard': lambda u, c: __import__('bot_modules.admin_management', fromlist=['AdminManagement']).AdminManagement.get_admin_dashboard(u, c),
+    'admin_manage_admins': lambda u, c: __import__('bot_modules.admin_management', fromlist=['AdminManagement']).AdminManagement.manage_admins(u, c),
     'admin_permissions_management': admin_permissions_handler,
     'admin_performance_evaluation': admin_reports_handler,
     'admin_banned_management': admin_banned_handler,
