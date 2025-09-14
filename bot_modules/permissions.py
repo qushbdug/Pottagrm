@@ -38,6 +38,22 @@ AVAILABLE_PERMISSIONS = {
         'name_ar': 'إدارة العملاء',
         'description': 'إدارة حسابات العملاء وعرض تفاصيلهم',
         'category': 'users'
+    },
+    # New explicit permissions for the new admin system
+    'manage_admins': {
+        'name_ar': 'إدارة المشرفين',
+        'description': 'إضافة/تعديل/حذف المشرفين',
+        'category': 'users'
+    },
+    'withdrawals': {
+        'name_ar': 'طلبات السحب',
+        'description': 'عرض ومعالجة طلبات السحب',
+        'category': 'finance'
+    },
+    'broadcast': {
+        'name_ar': 'إرسال رسالة جماعية',
+        'description': 'إرسال رسائل جماعية للمستخدمين',
+        'category': 'communication'
     }
 }
 

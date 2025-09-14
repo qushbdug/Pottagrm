@@ -283,12 +283,9 @@ class AdminManagement:
             """, (admin_id,))
             recent_activities = cursor.fetchall()
             
-            # الصلاحيات
-            cursor.execute("""
-                SELECT permission_name FROM user_permissions 
-                WHERE user_id = ?
-            """, (admin_id,))
-            permissions = [row[0] for row in cursor.fetchall()]
+            # الصلاحيات (باستخدام admin_permissions)
+            perms_dict = get_admin_permissions(admin_id)
+            permissions = [k for k, v in perms_dict.items() if v]
             
             conn.close()
             
@@ -599,13 +596,13 @@ class AdminManagement:
 
 """
             
-            # الصلاحيات الأساسية المطلوبة
+            # الصلاحيات المطلوبة حسب الطلب
             basic_permissions = {
-                'accounting_system': {'name': 'النظام المحاسبي', 'icon': '💰'},
-                'customer_management': {'name': 'إدارة العملاء', 'icon': '👥'},
-                'withdrawal_requests': {'name': 'طلبات السحب', 'icon': '💸'},
-                'broadcast_messages': {'name': 'إرسال رسالة جماعية', 'icon': '📢'},
-                'dashboard_access': {'name': 'لوحة المعلومات', 'icon': '📊'}
+                'manage_clients': {'name': 'إدارة العملاء', 'icon': '👥'},
+                'manage_admins': {'name': 'إدارة المشرفين', 'icon': '🛡️'},
+                'withdrawals': {'name': 'طلبات السحب', 'icon': '💸'},
+                'broadcast': {'name': 'إرسال رسالة جماعية', 'icon': '📢'},
+                'accounting_access': {'name': 'النظام المحاسبي', 'icon': '💰'}
             }
             
             # عرض الصلاحيات مع إمكانية التبديل
@@ -630,8 +627,7 @@ class AdminManagement:
             edit_text += "\n💡 **اضغط على الزر لتفعيل أو إلغاء الصلاحية**"
             
             keyboard.extend([
-                [InlineKeyboardButton('🔐 منح جميع الصلاحيات', callback_data=f'perm_grant_all_{admin_id}')],
-                [InlineKeyboardButton('🚫 سحب جميع الصلاحيات', callback_data=f'perm_revoke_all_{admin_id}')],
+                [InlineKeyboardButton('🔙 العودة', callback_data='admin_manage_admins')],
                 [InlineKeyboardButton('🔙 العودة', callback_data='perm_list_all_admins')]
             ])
             
@@ -913,26 +909,20 @@ class AdminManagement:
             context.user_data['target_admin'] = target_user
             context.user_data.pop('awaiting_admin_wallet', None)
             
-            # عرض تأكيد الترقية
+            # عرض تأكيد إضافة كمشرف (فقط مشرف عادي حسب المتطلبات)
             confirm_text = f"""
-✅ **تأكيد ترقية المستخدم** ✅
+✅ **تأكيد إضافة كمشرف** ✅
 
 👤 **المستخدم:** {target_user['full_name']}
 💳 **رقم المحفظة:** {target_user['wallet_number']}
 📱 **الهاتف:** {target_user['phone'] or 'غير محدد'}
 💰 **الرصيد:** {target_user['balance']:,.2f} ريال
 
-🔐 **سيحصل على الصلاحيات التالية:**
-• عرض لوحة المعلومات
-• إدارة العملاء الأساسية
-• عرض التقارير
-
-⚡ **اختر نوع المشرف:**
+💡 **سيتم تعيينه كمشرف ويمكن تعديل صلاحياته مباشرةً بعد الإضافة.**
 """
             
             keyboard = [
-                [InlineKeyboardButton('🛡️ مشرف عادي', callback_data='promote_to_admin')],
-                [InlineKeyboardButton('👑 مشرف أعلى', callback_data='promote_to_super_admin')],
+                [InlineKeyboardButton('➕ إضافة كمشرف', callback_data='promote_to_admin')],
                 [InlineKeyboardButton('❌ إلغاء', callback_data='admin_dashboard')]
             ]
             
@@ -1290,31 +1280,8 @@ class AdminManagement:
             
             conn.close()
             
-            # رسالة النجاح
-            role_name = "مشرف أعلى" if new_role == 'super_admin' else "مشرف عادي"
-            
-            success_text = f"""
-✅ **تم إضافة المشرف بنجاح!**
-
-👤 **المشرف الجديد:**
-🔸 الاسم: **{target_user['full_name']}**
-🔸 المعرف: `{target_telegram_id}`
-🔸 الدور: **{role_name}**
-
-⏰ تاريخ الإضافة: {datetime.now().strftime('%Y-%m-%d %H:%M')}
-"""
-            
-            keyboard = [
-                [InlineKeyboardButton('➕ إضافة مشرف آخر', callback_data='admin_add_new')],
-                [InlineKeyboardButton('👤 قائمة المشرفين', callback_data='admin_manage_admins')],
-                [InlineKeyboardButton('🔙 العودة', callback_data='admin_dashboard')]
-            ]
-            
-            await query.edit_message_text(
-                success_text,
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='Markdown'
-            )
+            # الانتقال مباشرة لواجهة تعديل الصلاحيات للمشرف الجديد
+            await AdminManagement.edit_admin_permissions(update, context, target_db_id)
             
             # تنظيف بيانات السياق
             if 'target_admin_telegram_id' in context.user_data:
