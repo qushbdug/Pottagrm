@@ -34,7 +34,7 @@ except ImportError as e:
     print(f"Error importing bot modules: {e}")
     # Fallback values
     BOT_TOKEN = '7766964799:AAHex-hGfjPX6g_R2aZ7-UPrgnFxQKAjSa0'
-    DB_PATH = '../../yemen_net.db'
+    DB_PATH = os.path.abspath('../../yemen_net.db')
 
 # Initialize Flask app
 app = Flask(__name__, 
@@ -56,6 +56,15 @@ app.register_blueprint(api_bp, url_prefix='/api')
 
 # Global variables for OTP storage (in production, use Redis or database)
 otp_storage = {}
+
+# Database connection function
+def get_dashboard_db_connection():
+    """Get database connection for dashboard"""
+    db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../yemen_net.db'))
+    if not os.path.exists(db_path):
+        print(f"Database not found at: {db_path}")
+        return None
+    return sqlite3.connect(db_path)
 
 class DashboardAuth:
     """Authentication system for dashboard"""
@@ -99,17 +108,21 @@ class DashboardAuth:
     def is_super_admin(telegram_id):
         """Check if user is super admin"""
         try:
-            conn = get_db_connection()
+            conn = get_dashboard_db_connection()
+            if not conn:
+                return False
+            
             cursor = conn.cursor()
             
             cursor.execute("""
                 SELECT role FROM users 
                 WHERE telegram_id = ? AND role = 'super_admin'
-            """, (telegram_id,))
+            """, (str(telegram_id),))
             
             result = cursor.fetchone()
             conn.close()
             
+            print(f"Super admin check for {telegram_id}: {result is not None}")
             return result is not None
         except Exception as e:
             print(f"Error checking super admin: {e}")
@@ -227,7 +240,9 @@ def verify_otp():
 def get_dashboard_stats():
     """Get dashboard statistics"""
     try:
-        conn = get_db_connection()
+        conn = get_dashboard_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
         cursor = conn.cursor()
         
         # Get total customers
