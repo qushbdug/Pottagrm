@@ -2660,6 +2660,8 @@ ADMIN_CALLBACKS.update({
     'offers_reports': lambda u, c: placeholder_handler(u, c, "تقارير العروض"),
     'view_all_networks': lambda u, c: placeholder_handler(u, c, "عرض جميع الشبكات"),
     'growth_analysis_report': lambda u, c: placeholder_handler(u, c, "تحليل النمو"),
+    'notification_settings': lambda u, c: placeholder_handler(u, c, "إعدادات الإشعارات"),
+    'user_analytics_report': lambda u, c: placeholder_handler(u, c, "تحليلات المستخدمين"),
 })
 
 # إضافة الدوال المفقودة كـ placeholders
