@@ -2639,6 +2639,7 @@ ADMIN_CALLBACKS.update({
     'sales_reports': lambda u, c: placeholder_handler(u, c, "تقارير المبيعات"),
     'offers_reports': lambda u, c: placeholder_handler(u, c, "تقارير العروض"),
     'view_all_networks': lambda u, c: placeholder_handler(u, c, "عرض جميع الشبكات"),
+    'growth_analysis_report': lambda u, c: placeholder_handler(u, c, "تحليل النمو"),
 })
 
 # إضافة الدوال المفقودة كـ placeholders
@@ -3482,9 +3483,11 @@ async def accounting_customers_handler(update: Update, context: CallbackContext)
         if active_customers_today:
             for i, customer in enumerate(active_customers_today, 1):
                 name, purchases, spent = customer
+                purchases_display = purchases if purchases else 0
+                spent_display = spent if spent else 0.0
                 customers_text += f"""
 {i}. 👤 **{name}**
-   🛒 {purchases} مشترى | 💰 {spent:,.2f} ريال
+   🛒 {purchases_display} مشترى | 💰 {spent_display:,.2f} ريال
 """
         else:
             customers_text += "\n• لا توجد مشتريات اليوم"
