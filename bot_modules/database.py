@@ -466,6 +466,11 @@ def init_db():
         migrations = [
             ('ALTER TABLE users ADD COLUMN wallet_number TEXT UNIQUE', 'wallet_number'),
             ('ALTER TABLE networks ADD COLUMN network_code TEXT UNIQUE', 'network_code'),
+            # Transactions enhancements for accounting
+            ('ALTER TABLE transactions ADD COLUMN provider_share REAL', 'provider_share'),
+            ('ALTER TABLE transactions ADD COLUMN admin_share REAL', 'admin_share'),
+            ('ALTER TABLE transactions ADD COLUMN commission_amount REAL', 'commission_amount'),
+            ('ALTER TABLE transactions ADD COLUMN idempotency_key TEXT', 'idempotency_key'),
         ]
 
         for migration_sql, column_name in migrations:
@@ -502,6 +507,82 @@ def init_db():
             pass
 
         # Enhanced supplier system tables
+        # Commission settings table (global or per network)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS commission_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                network_id INTEGER NULL,
+                provider_percent REAL NOT NULL DEFAULT 70.00,
+                admin_percent REAL NOT NULL DEFAULT 30.00,
+                effective_from TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(network_id) REFERENCES networks(id)
+            )
+        ''')
+        # Seed default commission if empty
+        cursor.execute('SELECT COUNT(*) FROM commission_settings')
+        if cursor.fetchone()[0] == 0:
+            cursor.execute('INSERT INTO commission_settings (network_id, provider_percent, admin_percent) VALUES (NULL, 70.00, 30.00)')
+
+        # Accounts payable table for suppliers
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS accounts_payable (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider_id INTEGER NOT NULL,
+                amount REAL NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                sale_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP,
+                FOREIGN KEY(provider_id) REFERENCES users(id),
+                FOREIGN KEY(sale_id) REFERENCES transactions(id)
+            )
+        ''')
+
+        # Outbox table for post-commit notifications (optional)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS outbox (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                transaction_id TEXT,
+                user_id INTEGER,
+                payload_json TEXT,
+                status TEXT DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(transaction_id) REFERENCES transactions(id),
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+        ''')
+
+        # Compatibility view for legacy 'network_cards' usage
+        try:
+            cursor.execute('''
+                CREATE VIEW IF NOT EXISTS network_cards AS
+                SELECT 
+                    c.id AS id,
+                    cc.network_id AS network_id,
+                    cc.value AS card_value,
+                    c.is_sold AS is_sold,
+                    c.sold_at AS sold_at,
+                    c.card_number AS card_code
+                FROM cards c
+                JOIN card_categories cc ON c.category_id = cc.id
+            ''')
+        except sqlite3.OperationalError:
+            pass
+
+        # INSTEAD OF UPDATE trigger to allow updating is_sold/sold_at on the view
+        try:
+            cursor.execute('''
+                CREATE TRIGGER IF NOT EXISTS trg_network_cards_update
+                INSTEAD OF UPDATE ON network_cards
+                BEGIN
+                    UPDATE cards
+                    SET is_sold = COALESCE(NEW.is_sold, is_sold),
+                        sold_at = COALESCE(NEW.sold_at, sold_at)
+                    WHERE id = OLD.id;
+                END;
+            ''')
+        except sqlite3.OperationalError:
+            pass
         # Add supplier codes table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS supplier_codes (

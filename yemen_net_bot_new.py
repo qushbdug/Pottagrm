@@ -6495,8 +6495,31 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
                 raise Exception("خطأ في استرداد بيانات الكرت")
             card_code = result[0]
             
-            # تسجيل القيد المحاسبي لشراء الكرت (معطل مؤقتاً لتحسين الأداء)
-            # record_purchase_accounting(card_price, user['id'], transaction_id)
+            # تحديث حصة المزود/الإدارة وفق إعدادات العمولة وتسجيل قيود محاسبية مبسطة
+            try:
+                cursor.execute('''
+                    SELECT provider_percent, admin_percent 
+                    FROM commission_settings 
+                    WHERE network_id IS NULL 
+                    ORDER BY effective_from DESC LIMIT 1
+                ''')
+                row = cursor.fetchone()
+                provider_percent = row[0] if row else 70.0
+                admin_percent = row[1] if row else 30.0
+                provider_share = card_price * (provider_percent / 100.0)
+                admin_share = card_price * (admin_percent / 100.0)
+                cursor.execute('''
+                    UPDATE transactions 
+                    SET provider_id = ?, total_amount = ?, provider_share = ?, admin_share = ?
+                    WHERE id = ?
+                ''', (supplier_id, card_price, provider_share, admin_share, transaction_id))
+                # إنشاء قيد تجميعي بسيط (Journal) عبر accounting_engine إذا لزم
+                try:
+                    record_purchase_accounting(card_price, user['id'], transaction_id)
+                except Exception:
+                    pass
+            except Exception as e:
+                logger.warning(f"Commission update failed: {e}")
             
             # تأكيد المعاملة
             cursor.execute('COMMIT')
