@@ -201,15 +201,37 @@
             font-weight: bold;
             border: 2px solid #e1e5e9;
             border-radius: 12px;
-            background: #fafbfc;
+            background: white;
             transition: all 0.3s ease;
+            color: #333;
+            font-family: 'Cairo', sans-serif;
+            direction: ltr;
         }
 
         .otp-input:focus {
             outline: none;
             border-color: #667eea;
-            background: white;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            background: #f0f4ff;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+            transform: scale(1.05);
+        }
+
+        .otp-input.filled {
+            border-color: #27ae60;
+            background: #f0fff4;
+            color: #27ae60;
+        }
+
+        .otp-input.error {
+            border-color: #e74c3c;
+            background: #fff5f5;
+            animation: shake 0.3s ease-in-out;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
         }
 
         .resend-otp {
@@ -392,18 +414,105 @@
 
         // OTP input handling
         otpInputs.forEach((input, index) => {
+            // Input event - للأرقام المدخلة
             input.addEventListener('input', (e) => {
-                if (e.target.value.length === 1 && index < otpInputs.length - 1) {
+                const value = e.target.value;
+                
+                // التأكد من أن القيمة رقم فقط
+                if (!/^\d$/.test(value)) {
+                    e.target.value = '';
+                    return;
+                }
+                
+                // إضافة تأثير بصري
+                e.target.style.borderColor = '#667eea';
+                e.target.style.backgroundColor = '#f0f4ff';
+                
+                // الانتقال للخانة التالية
+                if (value.length === 1 && index < otpInputs.length - 1) {
+                    otpInputs[index + 1].focus();
+                }
+                
+                // التحقق من اكتمال الكود
+                checkOtpComplete();
+            });
+
+            // Keydown event - للتحكم في المفاتيح
+            input.addEventListener('keydown', (e) => {
+                // السماح بالأرقام والمفاتيح الخاصة فقط
+                const allowedKeys = ['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight'];
+                const isNumber = /^\d$/.test(e.key);
+                
+                if (!isNumber && !allowedKeys.includes(e.key)) {
+                    e.preventDefault();
+                    return;
+                }
+                
+                // Backspace handling
+                if (e.key === 'Backspace') {
+                    if (e.target.value === '' && index > 0) {
+                        otpInputs[index - 1].focus();
+                        otpInputs[index - 1].value = '';
+                    }
+                    e.target.style.borderColor = '#e1e5e9';
+                    e.target.style.backgroundColor = 'white';
+                }
+                
+                // Delete handling
+                if (e.key === 'Delete') {
+                    e.target.value = '';
+                    e.target.style.borderColor = '#e1e5e9';
+                    e.target.style.backgroundColor = 'white';
+                }
+                
+                // Arrow keys navigation
+                if (e.key === 'ArrowLeft' && index > 0) {
+                    otpInputs[index - 1].focus();
+                }
+                if (e.key === 'ArrowRight' && index < otpInputs.length - 1) {
                     otpInputs[index + 1].focus();
                 }
             });
 
-            input.addEventListener('keydown', (e) => {
-                if (e.key === 'Backspace' && e.target.value === '' && index > 0) {
-                    otpInputs[index - 1].focus();
+            // Focus event
+            input.addEventListener('focus', (e) => {
+                e.target.select();
+            });
+
+            // Paste event - للصق الكود كاملاً
+            input.addEventListener('paste', (e) => {
+                e.preventDefault();
+                const pastedData = e.clipboardData.getData('text');
+                const digits = pastedData.replace(/\D/g, '').slice(0, 6);
+                
+                digits.split('').forEach((digit, i) => {
+                    if (otpInputs[i]) {
+                        otpInputs[i].value = digit;
+                        otpInputs[i].style.borderColor = '#667eea';
+                        otpInputs[i].style.backgroundColor = '#f0f4ff';
+                    }
+                });
+                
+                if (digits.length > 0) {
+                    const lastIndex = Math.min(digits.length - 1, otpInputs.length - 1);
+                    otpInputs[lastIndex].focus();
                 }
+                
+                checkOtpComplete();
             });
         });
+
+        // Function to check if OTP is complete
+        function checkOtpComplete() {
+            const otpCode = Array.from(otpInputs).map(input => input.value).join('');
+            if (otpCode.length === 6) {
+                verifyOtpBtn.style.backgroundColor = '#667eea';
+                verifyOtpBtn.style.transform = 'scale(1.02)';
+            } else {
+                verifyOtpBtn.style.backgroundColor = '';
+                verifyOtpBtn.style.transform = '';
+            }
+        }
 
         // Request OTP
         telegramForm.addEventListener('submit', async (e) => {
@@ -487,7 +596,11 @@
                 } else {
                     showAlert(data.error);
                     // Clear OTP inputs on error
-                    otpInputs.forEach(input => input.value = '');
+                    otpInputs.forEach(input => {
+                        input.value = '';
+                        input.style.borderColor = '#e1e5e9';
+                        input.style.backgroundColor = 'white';
+                    });
                     otpInputs[0].focus();
                 }
             } catch (error) {
@@ -500,7 +613,11 @@
         // Back button
         backBtn.addEventListener('click', () => {
             switchStep(step2, step1);
-            otpInputs.forEach(input => input.value = '');
+            otpInputs.forEach(input => {
+                input.value = '';
+                input.style.borderColor = '#e1e5e9';
+                input.style.backgroundColor = 'white';
+            });
         });
 
         // Resend OTP
