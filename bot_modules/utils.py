@@ -1007,11 +1007,11 @@ def get_provider_withdrawable_amount(provider_id: int):
         result = cursor.fetchone()
         total_earnings = result[0] if result else 0
         
-        # حساب المبالغ المسحوبة أو المعلقة
+        # حساب المبالغ المسحوبة (الموافق عليها فقط)
         cursor.execute('''
             SELECT COALESCE(SUM(amount), 0) as withdrawn_amount
             FROM withdrawals 
-            WHERE provider_id = ? AND status IN ('Approved', 'Pending')
+            WHERE provider_id = ? AND status = 'Approved'
         ''', (provider_id,))
         
         result = cursor.fetchone()

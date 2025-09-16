@@ -1941,9 +1941,18 @@ async def admin_withdrawals_handler(update: Update, context: CallbackContext):
             await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
             return
         
-        # الحصول على طلبات السحب المعلقة
+        # الحصول على طلبات السحب المعلقة مع ترقيم الصفحات
         conn = get_db_connection()
         cursor = conn.cursor()
+        
+        page = int(context.user_data.get('admin_wd_page', 0))
+        page_size = 10
+        offset = page * page_size
+        
+        cursor.execute('''
+            SELECT COUNT(*) FROM withdrawals WHERE status = 'Pending'
+        ''')
+        total_pending = cursor.fetchone()[0]
         
         cursor.execute('''
             SELECT w.withdrawal_id, w.provider_name, w.amount, w.method, w.requested_at,
@@ -1952,7 +1961,8 @@ async def admin_withdrawals_handler(update: Update, context: CallbackContext):
             JOIN users u ON w.provider_id = u.id
             WHERE w.status = 'Pending'
             ORDER BY w.requested_at ASC
-        ''')
+            LIMIT ? OFFSET ?
+        ''', (page_size, offset))
         
         pending_withdrawals = cursor.fetchall()
         
@@ -2018,6 +2028,15 @@ async def admin_withdrawals_handler(update: Update, context: CallbackContext):
                 InlineKeyboardButton(f'❌ رفض {provider_name[:10]}...', callback_data=f'reject_withdrawal_{w_id}')
             ])
         
+        # أزرار الترقيم
+        nav_buttons = []
+        if page > 0:
+            nav_buttons.append(InlineKeyboardButton('⬅️ السابق', callback_data='admin_wd_prev'))
+        if total_pending > offset + len(pending_withdrawals):
+            nav_buttons.append(InlineKeyboardButton('➡️ التالي', callback_data='admin_wd_next'))
+        if nav_buttons:
+            keyboard.append(nav_buttons)
+
         keyboard.extend([
             [InlineKeyboardButton('🔄 تحديث القائمة', callback_data='admin_withdrawals')],
             [InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel'),
@@ -2499,6 +2518,7 @@ ADMIN_CALLBACKS.update({
     'accounting_analytics': lambda u, c: accounting_analytics_handler(u, c),
     'accounting_export': lambda u, c: export_options_handler(u, c),
     'accounting_custom': lambda u, c: accounting_custom_reports_handler(u, c),
+    'accounting_withdrawals': lambda u, c: admin_withdrawals_handler(u, c),
     'accounting_search': lambda u, c: accounting_search_handler(u, c),
     'quick_stats': lambda u, c: quick_stats_handler(u, c),
     'quick_transaction_report': lambda u, c: quick_transaction_report_handler(u, c),
@@ -2779,6 +2799,7 @@ async def accounting_system_handler(update: Update, context: CallbackContext):
              InlineKeyboardButton('💸 تقارير المعاملات', callback_data='accounting_transactions')],
             [InlineKeyboardButton('🏪 تقارير المزودين', callback_data='accounting_suppliers'),
              InlineKeyboardButton('👥 تقارير العملاء', callback_data='accounting_customers')],
+            [InlineKeyboardButton('💰 سحوبات المزودين', callback_data='accounting_withdrawals')],
             [InlineKeyboardButton('📊 التحليلات المتقدمة', callback_data='accounting_analytics'),
              InlineKeyboardButton('📄 تقارير مخصصة', callback_data='accounting_custom')],
             [InlineKeyboardButton('💾 تصدير البيانات', callback_data='export_profits'),

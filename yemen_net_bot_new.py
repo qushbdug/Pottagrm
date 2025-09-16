@@ -323,6 +323,12 @@ async def button_click_handler(update: Update, context):
         elif callback_data.startswith('reject_withdrawal_'):
             withdrawal_id = callback_data.split('_', 2)[2]
             return await reject_withdrawal_handler(update, context, withdrawal_id)
+        elif callback_data == 'admin_wd_next':
+            context.user_data['admin_wd_page'] = int(context.user_data.get('admin_wd_page', 0)) + 1
+            return await admin_withdrawals_handler(update, context)
+        elif callback_data == 'admin_wd_prev':
+            context.user_data['admin_wd_page'] = max(0, int(context.user_data.get('admin_wd_page', 0)) - 1)
+            return await admin_withdrawals_handler(update, context)
         
         # Network and search handlers
         elif callback_data == 'search_networks':
@@ -2426,7 +2432,7 @@ async def approve_withdrawal_handler(update: Update, context: CallbackContext, w
                 f"{EMOJIS['info']} الموافقات تتم يوم الجمعة فقط. يرجى العودة يوم الجمعة.")
             return
         
-        # تحديث حالة الطلب
+        # تحديث حالة الطلب وإنشاء قيد خصم من رصيد المزود (ذرّي)
         conn = get_db_connection()
         cursor = conn.cursor()
         
@@ -2445,6 +2451,19 @@ async def approve_withdrawal_handler(update: Update, context: CallbackContext, w
         ''', (withdrawal_id,))
         
         result = cursor.fetchone()
+        
+        # إنشاء معاملة خصم من رصيد المزود وإثباتها
+        if result:
+            provider_id, provider_name, amount, provider_full_name = result
+            # خصم من رصيد المزود عبر إعادة احتساب الرصيد بعد تسجيل معاملة مدينة
+            payout_tx_id = str(uuid.uuid4())
+            cursor.execute('''
+                INSERT INTO transactions (id, from_user, to_user, amount, type, description, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+            ''', (payout_tx_id, provider_id, None, amount, 'withdrawal_payout', f'سحب أرباح بموافقة الإدارة - طلب {withdrawal_id}'))
+            # إعادة احتساب الرصيد
+            from bot_modules.utils import recalc_and_set_user_balance
+            recalc_and_set_user_balance(provider_id)
         
         conn.commit()
         conn.close()
