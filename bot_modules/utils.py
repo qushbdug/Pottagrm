@@ -143,6 +143,37 @@ def log_activity(user_id: int, activity_type: str, description: str, metadata: d
         logger.error(f"Error logging activity: {e}")
         pass
 
+# Structured admin invocation logging
+def log_admin_invocation(update, function_name: str, params: dict = None):
+    """Log structured info about admin handler invocations for diagnostics."""
+    try:
+        user_obj = None
+        callback_data = None
+        chat_id = None
+        if hasattr(update, 'effective_user') and update.effective_user:
+            user_obj = update.effective_user
+        elif hasattr(update, 'callback_query') and update.callback_query and update.callback_query.from_user:
+            user_obj = update.callback_query.from_user
+        if hasattr(update, 'callback_query') and update.callback_query:
+            callback_data = getattr(update.callback_query, 'data', None)
+        if hasattr(update, 'effective_chat') and update.effective_chat:
+            chat_id = update.effective_chat.id
+        user_id = getattr(user_obj, 'id', None)
+        username = getattr(user_obj, 'username', None)
+        first_name = getattr(user_obj, 'first_name', None)
+        payload = {
+            'function': function_name,
+            'user_id': user_id,
+            'username': username,
+            'first_name': first_name,
+            'chat_id': chat_id,
+            'callback_data': callback_data,
+            'params': params or {}
+        }
+        logger.info(f"[ADMIN_CALL] {json.dumps(payload, ensure_ascii=False)}")
+    except Exception as e:
+        logger.error(f"Error in log_admin_invocation: {e}")
+
 def create_wallet_transaction(user_id: int, transaction_type: str, amount: float, 
                             balance_before: float, balance_after: float, 
                             description: str = None, reference_id: str = None,

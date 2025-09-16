@@ -15,6 +15,7 @@ from telegram.ext import CallbackContext
 from bot_modules.config import EMOJIS, USER_ROLES, PERMISSIONS
 from bot_modules.database import get_db_connection
 from bot_modules.utils import get_user, get_user_by_id, update_user_activity
+from bot_modules.utils import log_admin_invocation
 from bot_modules.permissions import (
     AVAILABLE_PERMISSIONS, 
     has_permission, 
@@ -42,6 +43,10 @@ class AdminManagement:
             if not user or user['role'] != 'super_admin':
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
                 return
+            try:
+                log_admin_invocation(update, 'AdminManagement.get_admin_dashboard', {'user_role': user['role']})
+            except Exception:
+                pass
             
             # إحصائيات المشرفين
             conn = get_db_connection()
@@ -145,6 +150,10 @@ class AdminManagement:
         try:
             query = update.callback_query
             await query.answer()
+            try:
+                log_admin_invocation(update, 'AdminManagement.manage_admins')
+            except Exception:
+                pass
             
             conn = get_db_connection()
             cursor = conn.cursor()
@@ -570,6 +579,10 @@ class AdminManagement:
         try:
             query = update.callback_query
             await query.answer()
+            try:
+                log_admin_invocation(update, 'AdminManagement.edit_admin_permissions', {'admin_id': admin_id})
+            except Exception:
+                pass
             
             # التحقق من المشرف الأعلى
             user = get_user(query.from_user.id)
@@ -647,6 +660,10 @@ class AdminManagement:
         try:
             query = update.callback_query
             await query.answer()
+            try:
+                log_admin_invocation(update, 'AdminManagement.toggle_permission', {'action': action, 'admin_id': admin_id, 'permission': permission})
+            except Exception:
+                pass
             
             user = get_user(query.from_user.id)
             if not user or user['role'] != 'super_admin':
@@ -698,6 +715,10 @@ class AdminManagement:
         try:
             query = update.callback_query
             await query.answer()
+            try:
+                log_admin_invocation(update, 'AdminManagement.grant_all_permissions', {'admin_id': admin_id})
+            except Exception:
+                pass
             
             user = get_user(query.from_user.id)
             if not user or user['role'] != 'super_admin':
@@ -737,6 +758,10 @@ class AdminManagement:
         try:
             query = update.callback_query
             await query.answer()
+            try:
+                log_admin_invocation(update, 'AdminManagement.revoke_all_permissions', {'admin_id': admin_id})
+            except Exception:
+                pass
             
             user = get_user(query.from_user.id)
             if not user or user['role'] != 'super_admin':

@@ -262,6 +262,14 @@ async def button_click_handler(update: Update, context):
         
         # Admin callbacks
         elif callback_data in ADMIN_CALLBACKS:
+            # Strict gating: super admin routes must be invoked only by super admins
+            super_only_prefixes = (
+                'super_',
+            )
+            is_super_route = any(callback_data.startswith(p) for p in super_only_prefixes)
+            if is_super_route and user['role'] != 'super_admin':
+                await query.edit_message_text(f"{EMOJIS['error']} هذه العملية للمشرف الأعلى فقط.")
+                return
             if user['role'] in ['admin', 'super_admin']:
                 return await ADMIN_CALLBACKS[callback_data](update, context)
             else:

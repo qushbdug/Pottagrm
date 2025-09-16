@@ -39,6 +39,12 @@ async def admin_panel_handler(update: Update, context: CallbackContext):
         
         update_user_activity(user['id'])
         
+        # Structured call log
+        try:
+            log_admin_invocation(update, 'admin_panel_handler', {'role': user['role'] if user else None})
+        except Exception:
+            pass
+
         if user['role'] == 'super_admin':
             return await show_super_admin_panel(update, context, user)
         else:
@@ -51,6 +57,12 @@ async def admin_panel_handler(update: Update, context: CallbackContext):
 async def show_super_admin_panel(update: Update, context: CallbackContext, user):
     """Show super admin control panel"""
     try:
+        # Structured call log
+        try:
+            log_admin_invocation(update, 'show_super_admin_panel', {'user_id': user.get('id') if user else None})
+        except Exception:
+            pass
+
         # Get platform statistics
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -1921,6 +1933,10 @@ async def admin_withdrawals_handler(update: Update, context: CallbackContext):
         await query.answer()
         
         user = get_user(query.from_user.id)
+        try:
+            log_admin_invocation(update, 'admin_withdrawals_handler')
+        except Exception:
+            pass
         if not user or user['role'] != 'super_admin':
             await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
             return
