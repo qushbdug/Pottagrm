@@ -150,6 +150,80 @@ def login_page():
     """Login page"""
     return render_template('login.html')
 
+@app.route('/api/public/stats', methods=['GET'])
+def get_public_stats():
+    """Get basic dashboard statistics (no auth required)"""
+    try:
+        conn = get_dashboard_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        cursor = conn.cursor()
+        
+        # Get total customers
+        cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'customer'")
+        total_customers = cursor.fetchone()[0]
+        
+        # Get total admins
+        cursor.execute("SELECT COUNT(*) FROM users WHERE role IN ('admin', 'super_admin')")
+        total_admins = cursor.fetchone()[0]
+        
+        # Get total sales (from transactions)
+        cursor.execute("""
+            SELECT COALESCE(SUM(amount), 0) 
+            FROM transactions 
+            WHERE type = 'purchase' AND status = 'completed'
+        """)
+        total_sales = cursor.fetchone()[0]
+        
+        # Get total balance
+        cursor.execute("SELECT COALESCE(SUM(balance), 0) FROM users")
+        total_balance = cursor.fetchone()[0]
+        
+        # Get recent transactions (limited info)
+        cursor.execute("""
+            SELECT t.type, t.amount, t.created_at, u.full_name 
+            FROM transactions t
+            JOIN users u ON t.from_user = u.id
+            ORDER BY t.created_at DESC
+            LIMIT 5
+        """)
+        recent_transactions = cursor.fetchall()
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'stats': {
+                'total_customers': total_customers,
+                'total_admins': total_admins,
+                'total_sales': float(total_sales) if total_sales else 0,
+                'total_balance': float(total_balance) if total_balance else 0
+            },
+            'recent_transactions': [
+                {
+                    'type': row[0],
+                    'amount': float(row[1]) if row[1] else 0,
+                    'created_at': row[2],
+                    'user_name': row[3] if row[3] else 'غير معروف'
+                }
+                for row in recent_transactions
+            ]
+        })
+        
+    except Exception as e:
+        print(f"Error getting public stats: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'stats': {
+                'total_customers': 0,
+                'total_admins': 0,
+                'total_sales': 0,
+                'total_balance': 0
+            },
+            'recent_transactions': []
+        }), 200
+
 @app.route('/api/auth/request-otp', methods=['POST'])
 def request_otp():
     """Request OTP for authentication"""

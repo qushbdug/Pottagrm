@@ -16,9 +16,23 @@
 
         body {
             font-family: 'Cairo', sans-serif;
-            background: #f8fafc;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background-attachment: fixed;
             color: #333;
             overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        .container::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+            pointer-events: none;
+            z-index: -1;
         }
 
         .container {
@@ -29,13 +43,16 @@
         /* Sidebar */
         .sidebar {
             width: 280px;
-            background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            color: #333;
             position: fixed;
             height: 100vh;
             overflow-y: auto;
             z-index: 1000;
             transition: transform 0.3s ease;
+            border-right: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
         }
 
         .sidebar.mobile-hidden {
@@ -45,7 +62,9 @@
         .sidebar-header {
             padding: 30px 25px;
             text-align: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            border-bottom: 1px solid rgba(102, 126, 234, 0.1);
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
         }
 
         .sidebar-header .logo {
@@ -57,10 +76,12 @@
             align-items: center;
             justify-content: center;
             margin: 0 auto 15px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
         }
 
         .sidebar-header .logo i {
             font-size: 24px;
+            color: white;
         }
 
         .sidebar-header h2 {
@@ -86,17 +107,26 @@
             display: flex;
             align-items: center;
             padding: 15px 20px;
-            color: rgba(255, 255, 255, 0.9);
+            color: #666;
             text-decoration: none;
             border-radius: 12px;
             transition: all 0.3s ease;
             font-weight: 500;
+            margin-bottom: 5px;
         }
 
-        .nav-link:hover, .nav-link.active {
-            background: rgba(255, 255, 255, 0.15);
+        .nav-link:hover {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+            color: #667eea;
+            transform: translateX(-5px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.1);
+        }
+
+        .nav-link.active {
+            background: linear-gradient(135deg, #667eea, #764ba2);
             color: white;
             transform: translateX(-5px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
         }
 
         .nav-link i {
@@ -128,15 +158,17 @@
 
         /* Header */
         .header {
-            background: white;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
             padding: 20px 30px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
             display: flex;
             align-items: center;
             justify-content: space-between;
             position: sticky;
             top: 0;
             z-index: 100;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         .header-left {
@@ -259,17 +291,30 @@
         }
 
         .stat-card {
-            background: white;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
             padding: 25px;
-            border-radius: 16px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-            border: 1px solid #f1f3f9;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
         }
 
         .stat-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 15px 50px rgba(102, 126, 234, 0.2);
         }
 
         .stat-card-header {
@@ -1162,32 +1207,52 @@
         // Load dashboard statistics
         async function loadDashboardStats() {
             try {
-                const data = await apiCall('/api/dashboard/stats');
+                const response = await fetch('/api/public/stats');
+                const data = await response.json();
                 
                 if (data.success) {
                     document.getElementById('total-customers').textContent = formatNumber(data.stats.total_customers);
                     document.getElementById('total-admins').textContent = formatNumber(data.stats.total_admins);
                     document.getElementById('total-sales').textContent = formatCurrency(data.stats.total_sales);
                     document.getElementById('total-balance').textContent = formatCurrency(data.stats.total_balance);
+                } else {
+                    console.error('Failed to load stats:', data.error);
+                    // Show default values
+                    document.getElementById('total-customers').textContent = '0';
+                    document.getElementById('total-admins').textContent = '0';
+                    document.getElementById('total-sales').textContent = '0 ريال';
+                    document.getElementById('total-balance').textContent = '0 ريال';
                 }
             } catch (error) {
                 console.error('Error loading dashboard stats:', error);
+                // Show error message
+                document.getElementById('total-customers').textContent = 'خطأ';
+                document.getElementById('total-admins').textContent = 'خطأ';
+                document.getElementById('total-sales').textContent = 'خطأ';
+                document.getElementById('total-balance').textContent = 'خطأ';
             }
         }
 
         // Load recent transactions
         async function loadRecentTransactions() {
             try {
-                const data = await apiCall('/api/dashboard/stats');
+                const response = await fetch('/api/public/stats');
+                const data = await response.json();
                 
-                if (data.success) {
+                if (data.success && data.recent_transactions) {
                     const container = document.getElementById('recent-transactions');
                     container.innerHTML = '';
                     
-                    data.recent_transactions.forEach(transaction => {
-                        const transactionElement = createTransactionElement(transaction);
-                        container.appendChild(transactionElement);
-                    });
+                    if (data.recent_transactions.length === 0) {
+                        container.innerHTML = '<p style="text-align: center; padding: 20px; color: #666;">لا توجد معاملات حديثة</p>';
+                    } else {
+                        data.recent_transactions.forEach(transaction => {
+                            const transactionElement = createTransactionElement(transaction);
+                            container.appendChild(transactionElement);
+                        });
+                    }
+                } else {
+                    document.getElementById('recent-transactions').innerHTML = '<p style="text-align: center; padding: 20px; color: #666;">لا توجد معاملات متاحة</p>';
                 }
             } catch (error) {
                 console.error('Error loading recent transactions:', error);
