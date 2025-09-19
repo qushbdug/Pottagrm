@@ -5,7 +5,6 @@ Flask-SocketIO==5.3.6
 python-socketio==5.9.0
 python-engineio==4.7.1
 requests==2.31.0
-sqlite3
 python-telegram-bot==20.6
 bcrypt==4.0.1
 python-dotenv==1.0.0

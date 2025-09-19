@@ -12,3 +12,8 @@ db.sqlite3
 db.sqlite3-journal
 
 yemen_net.db
+
+__pycache__/
+*.pyc
+*.db-shm
+*.db-wal

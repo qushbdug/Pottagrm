@@ -1,1437 +1,500 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>لوحة التحكم - Yemen Net Bot Dashboard</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.css" rel="stylesheet">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Cairo', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            background-attachment: fixed;
-            color: #333;
-            overflow-x: hidden;
-            min-height: 100vh;
-        }
-
-        .container::before {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
-            pointer-events: none;
-            z-index: -1;
-        }
-
-        .container {
-            display: flex;
-            min-height: 100vh;
-        }
-
-        /* Sidebar */
-        .sidebar {
-            width: 280px;
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(20px);
-            color: #333;
-            position: fixed;
-            height: 100vh;
-            overflow-y: auto;
-            z-index: 1000;
-            transition: transform 0.3s ease;
-            border-right: 1px solid rgba(255, 255, 255, 0.2);
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-        }
-
-        .sidebar.mobile-hidden {
-            transform: translateX(100%);
-        }
-
-        .sidebar-header {
-            padding: 30px 25px;
-            text-align: center;
-            border-bottom: 1px solid rgba(102, 126, 234, 0.1);
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-        }
-
-        .sidebar-header .logo {
-            width: 60px;
-            height: 60px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 15px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-        }
-
-        .sidebar-header .logo i {
-            font-size: 24px;
-            color: white;
-        }
-
-        .sidebar-header h2 {
-            font-size: 20px;
-            font-weight: 700;
-            margin-bottom: 5px;
-        }
-
-        .sidebar-header p {
-            font-size: 14px;
-            opacity: 0.8;
-        }
-
-        .sidebar-nav {
-            padding: 20px 0;
-        }
-
-        .nav-item {
-            margin: 5px 15px;
-        }
-
-        .nav-link {
-            display: flex;
-            align-items: center;
-            padding: 15px 20px;
-            color: #666;
-            text-decoration: none;
-            border-radius: 12px;
-            transition: all 0.3s ease;
-            font-weight: 500;
-            margin-bottom: 5px;
-        }
-
-        .nav-link:hover {
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
-            color: #667eea;
-            transform: translateX(-5px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.1);
-        }
-
-        .nav-link.active {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            transform: translateX(-5px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
-        }
-
-        .nav-link i {
-            width: 24px;
-            margin-left: 15px;
-            font-size: 18px;
-        }
-
-        .nav-link .badge {
-            background: #ff4757;
-            color: white;
-            font-size: 12px;
-            padding: 4px 8px;
-            border-radius: 20px;
-            margin-right: auto;
-        }
-
-        /* Main Content */
-        .main-content {
-            flex: 1;
-            margin-right: 280px;
-            padding: 0;
-            transition: margin-right 0.3s ease;
-        }
-
-        .main-content.full-width {
-            margin-right: 0;
-        }
-
-        /* Header */
-        .header {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(20px);
-            padding: 20px 30px;
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        .header-left {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-
-        .mobile-menu-btn {
-            display: none;
-            background: none;
-            border: none;
-            font-size: 24px;
-            color: #667eea;
-            cursor: pointer;
-        }
-
-        .header-title {
-            font-size: 24px;
-            font-weight: 700;
-            color: #333;
-        }
-
-        .header-right {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-
-        .notification-btn {
-            position: relative;
-            background: none;
-            border: none;
-            font-size: 20px;
-            color: #667eea;
-            cursor: pointer;
-            padding: 10px;
-            border-radius: 50%;
-            transition: background-color 0.3s ease;
-        }
-
-        .notification-btn:hover {
-            background: #f1f3f9;
-        }
-
-        .notification-badge {
-            position: absolute;
-            top: 5px;
-            right: 5px;
-            background: #ff4757;
-            color: white;
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 10px;
-        }
-
-        .user-menu {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            cursor: pointer;
-            padding: 8px 15px;
-            border-radius: 25px;
-            transition: background-color 0.3s ease;
-        }
-
-        .user-menu:hover {
-            background: #f1f3f9;
-        }
-
-        .user-avatar {
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: 600;
-        }
-
-        .logout-btn {
-            background: #ff4757;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s ease;
-        }
-
-        .logout-btn:hover {
-            background: #ff3838;
-            transform: translateY(-1px);
-        }
-
-        /* Content */
-        .content {
-            padding: 30px;
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-
-        .page {
-            display: none;
-        }
-
-        .page.active {
-            display: block;
-        }
-
-        /* Stats Cards */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 25px;
-            margin-bottom: 30px;
-        }
-
-        .stat-card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(20px);
-            padding: 25px;
-            border-radius: 20px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .stat-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 3px;
-            background: linear-gradient(90deg, #667eea, #764ba2);
-        }
-
-        .stat-card:hover {
-            transform: translateY(-8px) scale(1.02);
-            box-shadow: 0 15px 50px rgba(102, 126, 234, 0.2);
-        }
-
-        .stat-card-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 15px;
-        }
-
-        .stat-card-icon {
-            width: 50px;
-            height: 50px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            color: white;
-        }
-
-        .stat-card-icon.customers {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-        }
-
-        .stat-card-icon.admins {
-            background: linear-gradient(135deg, #f093fb, #f5576c);
-        }
-
-        .stat-card-icon.sales {
-            background: linear-gradient(135deg, #4facfe, #00f2fe);
-        }
-
-        .stat-card-icon.balance {
-            background: linear-gradient(135deg, #43e97b, #38f9d7);
-        }
-
-        .stat-card-value {
-            font-size: 32px;
-            font-weight: 700;
-            color: #333;
-            margin-bottom: 5px;
-        }
-
-        .stat-card-label {
-            color: #666;
-            font-weight: 500;
-            font-size: 14px;
-        }
-
-        .stat-card-change {
-            font-size: 12px;
-            font-weight: 600;
-            margin-top: 10px;
-        }
-
-        .stat-card-change.positive {
-            color: #27ae60;
-        }
-
-        .stat-card-change.negative {
-            color: #e74c3c;
-        }
-
-        /* Charts Section */
-        .charts-section {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 25px;
-            margin-bottom: 30px;
-        }
-
-        .chart-card {
-            background: white;
-            padding: 25px;
-            border-radius: 16px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-            border: 1px solid #f1f3f9;
-        }
-
-        .chart-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 20px;
-        }
-
-        .chart-title {
-            font-size: 18px;
-            font-weight: 600;
-            color: #333;
-        }
-
-        .chart-container {
-            position: relative;
-            height: 300px;
-        }
-
-        /* Recent Transactions */
-        .transactions-section {
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-            border: 1px solid #f1f3f9;
-            overflow: hidden;
-        }
-
-        .section-header {
-            padding: 25px;
-            border-bottom: 1px solid #f1f3f9;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .section-title {
-            font-size: 18px;
-            font-weight: 600;
-            color: #333;
-        }
-
-        .transactions-list {
-            max-height: 400px;
-            overflow-y: auto;
-        }
-
-        .transaction-item {
-            display: flex;
-            align-items: center;
-            padding: 15px 25px;
-            border-bottom: 1px solid #f8fafc;
-            transition: background-color 0.3s ease;
-        }
-
-        .transaction-item:hover {
-            background: #f8fafc;
-        }
-
-        .transaction-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-left: 15px;
-            font-size: 16px;
-            color: white;
-        }
-
-        .transaction-icon.purchase {
-            background: #667eea;
-        }
-
-        .transaction-icon.transfer {
-            background: #f093fb;
-        }
-
-        .transaction-icon.coupon {
-            background: #43e97b;
-        }
-
-        .transaction-details {
-            flex: 1;
-        }
-
-        .transaction-user {
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 3px;
-        }
-
-        .transaction-type {
-            font-size: 12px;
-            color: #666;
-        }
-
-        .transaction-amount {
-            font-weight: 700;
-            color: #333;
-        }
-
-        .transaction-time {
-            font-size: 11px;
-            color: #999;
-            margin-top: 3px;
-        }
-
-        /* Tables */
-        .table-container {
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-            border: 1px solid #f1f3f9;
-            overflow: hidden;
-        }
-
-        .table-header {
-            padding: 25px;
-            border-bottom: 1px solid #f1f3f9;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 15px;
-        }
-
-        .search-box {
-            display: flex;
-            align-items: center;
-            background: #f8fafc;
-            border-radius: 10px;
-            padding: 10px 15px;
-            border: 1px solid #e1e5e9;
-            min-width: 300px;
-        }
-
-        .search-box input {
-            border: none;
-            background: none;
-            outline: none;
-            flex: 1;
-            font-family: 'Cairo', sans-serif;
-            margin-right: 10px;
-        }
-
-        .search-box i {
-            color: #666;
-        }
-
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 8px;
-            font-weight: 600;
-            font-family: 'Cairo', sans-serif;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
-        }
-
-        .btn-success {
-            background: #27ae60;
-            color: white;
-        }
-
-        .btn-danger {
-            background: #e74c3c;
-            color: white;
-        }
-
-        .btn-warning {
-            background: #f39c12;
-            color: white;
-        }
-
-        .table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .table th, .table td {
-            padding: 15px;
-            text-align: right;
-            border-bottom: 1px solid #f1f3f9;
-        }
-
-        .table th {
-            background: #f8fafc;
-            font-weight: 600;
-            color: #333;
-        }
-
-        .table tbody tr:hover {
-            background: #f8fafc;
-        }
-
-        .status-badge {
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-
-        .status-active {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .status-inactive {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        .status-pending {
-            background: #fff3cd;
-            color: #856404;
-        }
-
-        .status-completed {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .status-rejected {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        /* Forms */
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #333;
-        }
-
-        .form-control {
-            width: 100%;
-            padding: 12px 15px;
-            border: 2px solid #e1e5e9;
-            border-radius: 8px;
-            font-family: 'Cairo', sans-serif;
-            font-size: 14px;
-            transition: border-color 0.3s ease;
-        }
-
-        .form-control:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-
-        .textarea {
-            min-height: 120px;
-            resize: vertical;
-        }
-
-        /* Modal */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 2000;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal.active {
-            display: flex;
-        }
-
-        .modal-content {
-            background: white;
-            border-radius: 16px;
-            padding: 30px;
-            max-width: 500px;
-            width: 90%;
-            max-height: 80vh;
-            overflow-y: auto;
-        }
-
-        .modal-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 1px solid #f1f3f9;
-        }
-
-        .modal-title {
-            font-size: 20px;
-            font-weight: 600;
-            color: #333;
-        }
-
-        .close-btn {
-            background: none;
-            border: none;
-            font-size: 24px;
-            color: #999;
-            cursor: pointer;
-            padding: 5px;
-            border-radius: 50%;
-            transition: all 0.3s ease;
-        }
-
-        .close-btn:hover {
-            background: #f1f3f9;
-            color: #333;
-        }
-
-        /* Loading */
-        .loading {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 40px;
-            color: #666;
-        }
-
-        .spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #667eea;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-left: 15px;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-            .sidebar {
-                transform: translateX(100%);
-            }
-
-            .sidebar.mobile-visible {
-                transform: translateX(0);
-            }
-
-            .main-content {
-                margin-right: 0;
-            }
-
-            .mobile-menu-btn {
-                display: block;
-            }
-
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .charts-section {
-                grid-template-columns: 1fr;
-            }
-
-            .content {
-                padding: 20px 15px;
-            }
-
-            .header {
-                padding: 15px 20px;
-            }
-
-            .header-title {
-                font-size: 20px;
-            }
-
-            .search-box {
-                min-width: auto;
-                width: 100%;
-            }
-
-            .table-header {
-                flex-direction: column;
-                align-items: stretch;
-            }
-
-            .table {
-                font-size: 14px;
-            }
-
-            .table th, .table td {
-                padding: 10px 8px;
-            }
-        }
-
-        /* Alerts */
-        .alert {
-            padding: 15px 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: none;
-        }
-
-        .alert.show {
-            display: block;
-        }
-
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        .alert-error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-
-        .alert-warning {
-            background: #fff3cd;
-            color: #856404;
-            border: 1px solid #ffeaa7;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <!-- Sidebar -->
-        <nav class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <div class="logo">
-                    <i class="fas fa-robot"></i>
-                </div>
-                <h2>Yemen Net Bot</h2>
-                <p>لوحة التحكم</p>
-            </div>
-            
-            <div class="sidebar-nav">
-                <div class="nav-item">
-                    <a href="#" class="nav-link active" data-page="dashboard">
-                        <i class="fas fa-home"></i>
-                        الصفحة الرئيسية
-                    </a>
-                </div>
-                
-                <div class="nav-item">
-                    <a href="#" class="nav-link" data-page="customers">
-                        <i class="fas fa-users"></i>
-                        إدارة العملاء
-                    </a>
-                </div>
-                
-                <div class="nav-item">
-                    <a href="#" class="nav-link" data-page="admins">
-                        <i class="fas fa-user-shield"></i>
-                        إدارة المشرفين
-                    </a>
-                </div>
-                
-                <div class="nav-item">
-                    <a href="#" class="nav-link" data-page="withdrawals">
-                        <i class="fas fa-money-bill-wave"></i>
-                        طلبات السحب
-                        <span class="badge" id="withdrawal-badge">0</span>
-                    </a>
-                </div>
-                
-                <div class="nav-item">
-                    <a href="#" class="nav-link" data-page="broadcast">
-                        <i class="fas fa-bullhorn"></i>
-                        الرسائل الجماعية
-                    </a>
-                </div>
-                
-                <div class="nav-item">
-                    <a href="#" class="nav-link" data-page="accounting">
-                        <i class="fas fa-chart-line"></i>
-                        النظام المحاسبي
-                    </a>
-                </div>
-                
-                <div class="nav-item">
-                    <a href="#" class="nav-link" data-page="settings">
-                        <i class="fas fa-cog"></i>
-                        الإعدادات
-                    </a>
+{% extends "base.html" %}
+
+{% block title %}
+الصفحة الرئيسية
+{% endblock %}
+
+{% block content %}
+<!-- Alert Area -->
+<div class="alert alert-success" id="success-alert"></div>
+<div class="alert alert-error" id="error-alert"></div>
+<div class="alert alert-warning" id="warning-alert"></div>
+
+<!-- Dashboard Page -->
+<div class="page active" id="dashboard-page">
+    <!-- Stats Cards -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-card-header">
+                <div class="stat-card-icon customers">
+                    <i class="fas fa-users"></i>
                 </div>
             </div>
-        </nav>
+            <div class="stat-card-value" id="total-customers">-</div>
+            <div class="stat-card-label">إجمالي العملاء</div>
+            <div class="stat-card-change positive">+12% من الشهر الماضي</div>
+        </div>
 
-        <!-- Main Content -->
-        <div class="main-content" id="main-content">
-            <!-- Header -->
-            <header class="header">
-                <div class="header-left">
-                    <button class="mobile-menu-btn" id="mobile-menu-btn">
-                        <i class="fas fa-bars"></i>
-                    </button>
-                    <h1 class="header-title" id="page-title">الصفحة الرئيسية</h1>
+        <div class="stat-card">
+            <div class="stat-card-header">
+                <div class="stat-card-icon admins">
+                    <i class="fas fa-user-shield"></i>
                 </div>
-                
-                <div class="header-right">
-                    <button class="notification-btn">
-                        <i class="fas fa-bell"></i>
-                        <span class="notification-badge">3</span>
-                    </button>
-                    
-                    <div class="user-menu">
-                        <div class="user-avatar">
-                            <i class="fas fa-user-crown"></i>
-                        </div>
-                        <span id="user-name">المشرف الأعلى</span>
-                    </div>
-                    
-                    <button class="logout-btn" id="logout-btn">
-                        <i class="fas fa-sign-out-alt"></i>
-                        تسجيل الخروج
-                    </button>
+            </div>
+            <div class="stat-card-value" id="total-admins">-</div>
+            <div class="stat-card-label">المشرفين</div>
+            <div class="stat-card-change positive">+2 هذا الشهر</div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-card-header">
+                <div class="stat-card-icon sales">
+                    <i class="fas fa-chart-line"></i>
                 </div>
-            </header>
+            </div>
+            <div class="stat-card-value" id="total-sales">-</div>
+            <div class="stat-card-label">إجمالي المبيعات</div>
+            <div class="stat-card-change positive">+18% من الشهر الماضي</div>
+        </div>
 
-            <!-- Content Area -->
-            <div class="content">
-                <!-- Alert Area -->
-                <div class="alert alert-success" id="success-alert"></div>
-                <div class="alert alert-error" id="error-alert"></div>
-                <div class="alert alert-warning" id="warning-alert"></div>
-
-                <!-- Dashboard Page -->
-                <div class="page active" id="dashboard-page">
-                    <!-- Stats Cards -->
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <div class="stat-card-header">
-                                <div class="stat-card-icon customers">
-                                    <i class="fas fa-users"></i>
-                                </div>
-                            </div>
-                            <div class="stat-card-value" id="total-customers">-</div>
-                            <div class="stat-card-label">إجمالي العملاء</div>
-                            <div class="stat-card-change positive">+12% من الشهر الماضي</div>
-                        </div>
-                        
-                        <div class="stat-card">
-                            <div class="stat-card-header">
-                                <div class="stat-card-icon admins">
-                                    <i class="fas fa-user-shield"></i>
-                                </div>
-                            </div>
-                            <div class="stat-card-value" id="total-admins">-</div>
-                            <div class="stat-card-label">المشرفين</div>
-                            <div class="stat-card-change positive">+2 هذا الشهر</div>
-                        </div>
-                        
-                        <div class="stat-card">
-                            <div class="stat-card-header">
-                                <div class="stat-card-icon sales">
-                                    <i class="fas fa-chart-line"></i>
-                                </div>
-                            </div>
-                            <div class="stat-card-value" id="total-sales">-</div>
-                            <div class="stat-card-label">إجمالي المبيعات</div>
-                            <div class="stat-card-change positive">+18% من الشهر الماضي</div>
-                        </div>
-                        
-                        <div class="stat-card">
-                            <div class="stat-card-header">
-                                <div class="stat-card-icon balance">
-                                    <i class="fas fa-wallet"></i>
-                                </div>
-                            </div>
-                            <div class="stat-card-value" id="total-balance">-</div>
-                            <div class="stat-card-label">إجمالي الأرصدة</div>
-                            <div class="stat-card-change positive">+8% من الأسبوع الماضي</div>
-                        </div>
-                    </div>
-
-                    <!-- Charts Section -->
-                    <div class="charts-section">
-                        <div class="chart-card">
-                            <div class="chart-header">
-                                <h3 class="chart-title">إحصائيات المبيعات</h3>
-                                <select class="form-control" style="width: auto;">
-                                    <option>آخر 7 أيام</option>
-                                    <option>آخر 30 يوم</option>
-                                    <option>آخر 3 شهور</option>
-                                </select>
-                            </div>
-                            <div class="chart-container">
-                                <canvas id="salesChart"></canvas>
-                            </div>
-                        </div>
-                        
-                        <div class="chart-card">
-                            <div class="chart-header">
-                                <h3 class="chart-title">توزيع المعاملات</h3>
-                            </div>
-                            <div class="chart-container">
-                                <canvas id="transactionsChart"></canvas>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Recent Transactions -->
-                    <div class="transactions-section">
-                        <div class="section-header">
-                            <h3 class="section-title">آخر المعاملات</h3>
-                            <a href="#" class="btn btn-primary">عرض الكل</a>
-                        </div>
-                        <div class="transactions-list" id="recent-transactions">
-                            <div class="loading">
-                                <span>جاري التحميل...</span>
-                                <div class="spinner"></div>
-                            </div>
-                        </div>
-                    </div>
+        <div class="stat-card">
+            <div class="stat-card-header">
+                <div class="stat-card-icon balance">
+                    <i class="fas fa-wallet"></i>
                 </div>
+            </div>
+            <div class="stat-card-value" id="total-balance">-</div>
+            <div class="stat-card-label">إجمالي الأرصدة</div>
+            <div class="stat-card-change positive">+8% من الأسبوع الماضي</div>
+        </div>
+    </div>
 
-                <!-- Other pages will be loaded dynamically -->
-                <div class="page" id="customers-page">
-                    <div class="table-container">
-                        <div class="table-header">
-                            <h3 class="section-title">إدارة العملاء</h3>
-                            <div style="display: flex; gap: 15px; align-items: center;">
-                                <div class="search-box">
-                                    <input type="text" placeholder="البحث عن عميل..." id="customer-search">
-                                    <i class="fas fa-search"></i>
-                                </div>
-                                <select class="form-control" id="customer-role-filter" style="width: auto;">
-                                    <option value="">جميع الأدوار</option>
-                                    <option value="customer">عميل</option>
-                                    <option value="supplier">مزود</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div id="customers-table-container">
-                            <div class="loading">
-                                <span>جاري التحميل...</span>
-                                <div class="spinner"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+    <!-- Charts Section -->
+    <div class="charts-section">
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3 class="chart-title">إحصائيات المبيعات</h3>
+                <select class="form-control" style="width: auto;">
+                    <option>آخر 7 أيام</option>
+                    <option>آخر 30 يوم</option>
+                    <option>آخر 3 شهور</option>
+                </select>
+            </div>
+            <div class="chart-container">
+                <canvas id="salesChart"></canvas>
+            </div>
+        </div>
 
-                <!-- Add other pages here -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3 class="chart-title">توزيع المعاملات</h3>
+            </div>
+            <div class="chart-container">
+                <canvas id="transactionsChart"></canvas>
             </div>
         </div>
     </div>
 
-    <!-- Modals will be added dynamically -->
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
-    <script>
-        // Global variables
-        let accessToken = localStorage.getItem('access_token');
-        let currentPage = 'dashboard';
+    <!-- Recent Transactions -->
+    <div class="transactions-section">
+        <div class="section-header">
+            <h3 class="section-title">آخر المعاملات</h3>
+            <a href="#" class="btn btn-primary">عرض الكل</a>
+        </div>
+        <div class="transactions-list" id="recent-transactions">
+            <div class="loading">
+                <span>جاري التحميل...</span>
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+</div>
 
-        // Check authentication
-        if (!accessToken) {
-            window.location.href = '/login';
-        }
+<!-- Other pages will be loaded dynamically -->
+<div class="page" id="customers-page">
+    <div class="table-container">
+        <div class="table-header">
+            <h3 class="section-title">إدارة العملاء</h3>
+            <div style="display: flex; gap: 15px; align-items: center;">
+                <div class="search-box">
+                    <input type="text" placeholder="البحث عن عميل..." id="customer-search">
+                    <i class="fas fa-search"></i>
+                </div>
+                <select class="form-control" id="customer-role-filter" style="width: auto;">
+                    <option value="">جميع الأدوار</option>
+                    <option value="customer">عميل</option>
+                    <option value="supplier">مزود</option>
+                </select>
+            </div>
+        </div>
+        <div id="customers-table-container">
+            <div class="loading">
+                <span>جاري التحميل...</span>
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+</div>
 
-        // API helper
-        async function apiCall(endpoint, options = {}) {
-            const defaultOptions = {
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json',
-                    ...options.headers
-                }
-            };
+<!-- Add other pages here -->
+{% endblock %}
 
-            try {
-                const response = await fetch(endpoint, { ...options, ...defaultOptions });
-                
-                if (response.status === 401) {
-                    localStorage.removeItem('access_token');
-                    window.location.href = '/login';
-                    return;
-                }
+{% block scripts %}
+<script>
+    // Global variables
+    let accessToken = localStorage.getItem('access_token');
+    let currentPage = 'dashboard';
 
-                const data = await response.json();
-                
-                if (!response.ok) {
-                    throw new Error(data.error || 'API call failed');
-                }
-                
-                return data;
-            } catch (error) {
-                console.error('API call error:', error);
-                showAlert(error.message, 'error');
-                throw error;
+    // Check authentication
+    if (!accessToken) {
+        window.location.href = '/login';
+    }
+
+    // API helper
+    async function apiCall(endpoint, options = {}) {
+        const defaultOptions = {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+                ...options.headers
             }
-        }
+        };
 
-        // Utility functions
-        function showAlert(message, type = 'error') {
-            const alertId = type === 'success' ? 'success-alert' : 
-                           type === 'warning' ? 'warning-alert' : 'error-alert';
-            const alert = document.getElementById(alertId);
+        try {
+            const response = await fetch(endpoint, { ...options, ...defaultOptions });
+
+            if (response.status === 401) {
+                localStorage.removeItem('access_token');
+                window.location.href = '/login';
+                return;
+            }
+
+            const data = await response.json();
             
-            alert.textContent = message;
-            alert.classList.add('show');
+            if (!response.ok) {
+                throw new Error(data.error || 'API call failed');
+            }
             
-            setTimeout(() => {
-                alert.classList.remove('show');
-            }, 5000);
+            return data;
+        } catch (error) {
+            console.error('API call error:', error);
+            showAlert(error.message, 'error');
+            throw error;
         }
+    }
 
-        function formatNumber(num) {
-            return new Intl.NumberFormat('ar-EG').format(num);
-        }
+    // Utility functions
+    function showAlert(message, type = 'error') {
+        const alertId = type === 'success' ? 'success-alert' :
+                       type === 'warning' ? 'warning-alert' : 'error-alert';
+        const alert = document.getElementById(alertId);
 
-        function formatCurrency(amount) {
-            return formatNumber(amount) + ' ريال';
-        }
+        alert.textContent = message;
+        alert.classList.add('show');
 
-        // Navigation
-        document.addEventListener('DOMContentLoaded', function() {
-            // Mobile menu toggle
-            const mobileMenuBtn = document.getElementById('mobile-menu-btn');
-            const sidebar = document.getElementById('sidebar');
-            const mainContent = document.getElementById('main-content');
+        setTimeout(() => {
+            alert.classList.remove('show');
+        }, 5000);
+    }
 
-            mobileMenuBtn.addEventListener('click', () => {
-                sidebar.classList.toggle('mobile-visible');
-                mainContent.classList.toggle('full-width');
-            });
+    function formatNumber(num) {
+        return new Intl.NumberFormat('ar-EG').format(num);
+    }
 
-            // Navigation links
-            const navLinks = document.querySelectorAll('.nav-link');
-            const pages = document.querySelectorAll('.page');
-            const pageTitle = document.getElementById('page-title');
+    function formatCurrency(amount) {
+        return formatNumber(amount) + ' ريال';
+    }
 
-            navLinks.forEach(link => {
-                link.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    
-                    const targetPage = link.getAttribute('data-page');
-                    
-                    // Update active nav link
-                    navLinks.forEach(nl => nl.classList.remove('active'));
-                    link.classList.add('active');
-                    
-                    // Show target page
-                    pages.forEach(page => page.classList.remove('active'));
-                    const targetPageElement = document.getElementById(targetPage + '-page');
-                    if (targetPageElement) {
-                        targetPageElement.classList.add('active');
-                    }
-                    
-                    // Update page title
-                    const titles = {
-                        'dashboard': 'الصفحة الرئيسية',
-                        'customers': 'إدارة العملاء',
-                        'admins': 'إدارة المشرفين',
-                        'withdrawals': 'طلبات السحب',
-                        'broadcast': 'الرسائل الجماعية',
-                        'accounting': 'النظام المحاسبي',
-                        'settings': 'الإعدادات'
-                    };
-                    pageTitle.textContent = titles[targetPage] || 'لوحة التحكم';
-                    
-                    currentPage = targetPage;
-                    
-                    // Load page data
-                    loadPageData(targetPage);
-                    
-                    // Hide mobile menu on mobile
-                    if (window.innerWidth <= 768) {
-                        sidebar.classList.remove('mobile-visible');
-                        mainContent.classList.remove('full-width');
-                    }
-                });
-            });
+    // Navigation
+    document.addEventListener('DOMContentLoaded', function() {
+        // Mobile menu toggle
+        const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+        const sidebar = document.getElementById('sidebar');
+        const mainContent = document.getElementById('main-content');
 
-            // Logout
-            document.getElementById('logout-btn').addEventListener('click', () => {
-                if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
-                    localStorage.removeItem('access_token');
-                    localStorage.removeItem('telegram_id');
-                    window.location.href = '/login';
-                }
-            });
-
-            // Load initial data
-            loadDashboardStats();
-            loadRecentTransactions();
+        mobileMenuBtn.addEventListener('click', () => {
+            sidebar.classList.toggle('mobile-visible');
+            mainContent.classList.toggle('full-width');
         });
 
-        // Load dashboard statistics
-        async function loadDashboardStats() {
-            try {
-                const response = await fetch('/api/public/stats');
-                const data = await response.json();
-                
-                if (data.success) {
-                    document.getElementById('total-customers').textContent = formatNumber(data.stats.total_customers);
-                    document.getElementById('total-admins').textContent = formatNumber(data.stats.total_admins);
-                    document.getElementById('total-sales').textContent = formatCurrency(data.stats.total_sales);
-                    document.getElementById('total-balance').textContent = formatCurrency(data.stats.total_balance);
-                } else {
-                    console.error('Failed to load stats:', data.error);
-                    // Show default values
-                    document.getElementById('total-customers').textContent = '0';
-                    document.getElementById('total-admins').textContent = '0';
-                    document.getElementById('total-sales').textContent = '0 ريال';
-                    document.getElementById('total-balance').textContent = '0 ريال';
+        // Navigation links
+        const navLinks = document.querySelectorAll('.nav-link');
+        const pages = document.querySelectorAll('.page');
+        const pageTitle = document.getElementById('page-title');
+
+        navLinks.forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+
+                const targetPage = link.getAttribute('data-page');
+
+                // Update active nav link
+                navLinks.forEach(nl => nl.classList.remove('active'));
+                link.classList.add('active');
+
+                // Show target page
+                pages.forEach(page => page.classList.remove('active'));
+                const targetPageElement = document.getElementById(targetPage + '-page');
+                if (targetPageElement) {
+                    targetPageElement.classList.add('active');
                 }
-            } catch (error) {
-                console.error('Error loading dashboard stats:', error);
-                // Show error message
-                document.getElementById('total-customers').textContent = 'خطأ';
-                document.getElementById('total-admins').textContent = 'خطأ';
-                document.getElementById('total-sales').textContent = 'خطأ';
-                document.getElementById('total-balance').textContent = 'خطأ';
-            }
-        }
 
-        // Load recent transactions
-        async function loadRecentTransactions() {
-            try {
-                const response = await fetch('/api/public/stats');
-                const data = await response.json();
-                
-                if (data.success && data.recent_transactions) {
-                    const container = document.getElementById('recent-transactions');
-                    container.innerHTML = '';
-                    
-                    if (data.recent_transactions.length === 0) {
-                        container.innerHTML = '<p style="text-align: center; padding: 20px; color: #666;">لا توجد معاملات حديثة</p>';
-                    } else {
-                        data.recent_transactions.forEach(transaction => {
-                            const transactionElement = createTransactionElement(transaction);
-                            container.appendChild(transactionElement);
-                        });
-                    }
-                } else {
-                    document.getElementById('recent-transactions').innerHTML = '<p style="text-align: center; padding: 20px; color: #666;">لا توجد معاملات متاحة</p>';
+                // Update page title
+                const titles = {
+                    'dashboard': 'الصفحة الرئيسية',
+                    'customers': 'إدارة العملاء',
+                    'admins': 'إدارة المشرفين',
+                    'withdrawals': 'طلبات السحب',
+                    'broadcast': 'الرسائل الجماعية',
+                    'accounting': 'النظام المحاسبي',
+                    'settings': 'الإعدادات'
+                };
+                pageTitle.textContent = titles[targetPage] || 'لوحة التحكم';
+
+                currentPage = targetPage;
+
+                // Load page data
+                loadPageData(targetPage);
+
+                // Hide mobile menu on mobile
+                if (window.innerWidth <= 768) {
+                    sidebar.classList.remove('mobile-visible');
+                    mainContent.classList.remove('full-width');
                 }
-            } catch (error) {
-                console.error('Error loading recent transactions:', error);
-                document.getElementById('recent-transactions').innerHTML = '<p style="text-align: center; padding: 20px; color: #666;">حدث خطأ في تحميل المعاملات</p>';
-            }
-        }
-
-        function createTransactionElement(transaction) {
-            const div = document.createElement('div');
-            div.className = 'transaction-item';
-            
-            const typeIcons = {
-                'purchase': 'fas fa-shopping-cart',
-                'transfer': 'fas fa-exchange-alt',
-                'coupon_redeem': 'fas fa-gift'
-            };
-            
-            const typeLabels = {
-                'purchase': 'شراء كرت',
-                'transfer': 'تحويل رصيد',
-                'coupon_redeem': 'شحن بكوبون'
-            };
-            
-            div.innerHTML = `
-                <div class="transaction-icon ${transaction.type}">
-                    <i class="${typeIcons[transaction.type] || 'fas fa-circle'}"></i>
-                </div>
-                <div class="transaction-details">
-                    <div class="transaction-user">${transaction.user_name}</div>
-                    <div class="transaction-type">${typeLabels[transaction.type] || transaction.type}</div>
-                    <div class="transaction-time">${new Date(transaction.created_at).toLocaleString('ar-EG')}</div>
-                </div>
-                <div class="transaction-amount">${formatCurrency(transaction.amount)}</div>
-            `;
-            
-            return div;
-        }
-
-        // Load page data based on current page
-        function loadPageData(page) {
-            switch(page) {
-                case 'customers':
-                    loadCustomers();
-                    break;
-                case 'withdrawals':
-                    loadWithdrawals();
-                    break;
-                // Add other cases as needed
-            }
-        }
-
-        // Load customers data
-        async function loadCustomers() {
-            try {
-                const data = await apiCall('/api/users?page=1&per_page=20');
-                
-                if (data.success) {
-                    const container = document.getElementById('customers-table-container');
-                    container.innerHTML = createCustomersTable(data.users, data.pagination);
-                }
-            } catch (error) {
-                console.error('Error loading customers:', error);
-            }
-        }
-
-        function createCustomersTable(users, pagination) {
-            let tableHTML = `
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>الاسم</th>
-                            <th>رقم الهاتف</th>
-                            <th>الدور</th>
-                            <th>الرصيد</th>
-                            <th>الحالة</th>
-                            <th>تاريخ التسجيل</th>
-                            <th>الإجراءات</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-            
-            users.forEach(user => {
-                const statusClass = user.status === 'active' ? 'status-active' : 'status-inactive';
-                const statusText = user.status === 'active' ? 'نشط' : 'غير نشط';
-                
-                tableHTML += `
-                    <tr>
-                        <td>${user.full_name}</td>
-                        <td>${user.phone}</td>
-                        <td>${user.role}</td>
-                        <td>${formatCurrency(user.balance)}</td>
-                        <td><span class="status-badge ${statusClass}">${statusText}</span></td>
-                        <td>${new Date(user.created_at).toLocaleDateString('ar-EG')}</td>
-                        <td>
-                            <button class="btn btn-primary" onclick="editUser(${user.id})">تعديل</button>
-                            <button class="btn btn-danger" onclick="toggleUserStatus(${user.id}, '${user.status}')">
-                                ${user.status === 'active' ? 'إيقاف' : 'تفعيل'}
-                            </button>
-                        </td>
-                    </tr>
-                `;
             });
+        });
+
+        // Logout
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('telegram_id');
+                window.location.href = '/login';
+            }
+        });
+
+        // Load initial data
+        loadDashboardStats();
+        loadRecentTransactions();
+    });
+
+    // Load dashboard statistics
+    async function loadDashboardStats() {
+        try {
+            const response = await fetch('/api/public/stats');
+            const data = await response.json();
+
+            if (data.success) {
+                document.getElementById('total-customers').textContent = formatNumber(data.stats.total_customers);
+                document.getElementById('total-admins').textContent = formatNumber(data.stats.total_admins);
+                document.getElementById('total-sales').textContent = formatCurrency(data.stats.total_sales);
+                document.getElementById('total-balance').textContent = formatCurrency(data.stats.total_balance);
+            } else {
+                console.error('Failed to load stats:', data.error);
+                // Show default values
+                document.getElementById('total-customers').textContent = '0';
+                document.getElementById('total-admins').textContent = '0';
+                document.getElementById('total-sales').textContent = '0 ريال';
+                document.getElementById('total-balance').textContent = '0 ريال';
+            }
+        } catch (error) {
+            console.error('Error loading dashboard stats:', error);
+            // Show error message
+            document.getElementById('total-customers').textContent = 'خطأ';
+            document.getElementById('total-admins').textContent = 'خطأ';
+            document.getElementById('total-sales').textContent = 'خطأ';
+            document.getElementById('total-balance').textContent = 'خطأ';
+        }
+    }
+
+    // Load recent transactions
+    async function loadRecentTransactions() {
+        try {
+            const response = await fetch('/api/public/stats');
+            const data = await response.json();
+
+            if (data.success && data.recent_transactions) {
+                const container = document.getElementById('recent-transactions');
+                container.innerHTML = '';
+                
+                if (data.recent_transactions.length === 0) {
+                    container.innerHTML = '<p style="text-align: center; padding: 20px; color: #666;">لا توجد معاملات حديثة</p>';
+                } else {
+                    data.recent_transactions.forEach(transaction => {
+                        const transactionElement = createTransactionElement(transaction);
+                        container.appendChild(transactionElement);
+                    });
+                }
+            } else {
+                document.getElementById('recent-transactions').innerHTML = '<p style="text-align: center; padding: 20px; color: #666;">لا توجد معاملات متاحة</p>';
+            }
+        } catch (error) {
+            console.error('Error loading recent transactions:', error);
+            document.getElementById('recent-transactions').innerHTML = '<p style="text-align: center; padding: 20px; color: #666;">حدث خطأ في تحميل المعاملات</p>';
+        }
+    }
+
+    function createTransactionElement(transaction) {
+        const div = document.createElement('div');
+        div.className = 'transaction-item';
+
+        const typeIcons = {
+            'purchase': 'fas fa-shopping-cart',
+            'transfer': 'fas fa-exchange-alt',
+            'coupon_redeem': 'fas fa-gift'
+        };
+
+        const typeLabels = {
+            'purchase': 'شراء كرت',
+            'transfer': 'تحويل رصيد',
+            'coupon_redeem': 'شحن بكوبون'
+        };
+
+        div.innerHTML = `
+            <div class="transaction-icon ${transaction.type}">
+                <i class="${typeIcons[transaction.type] || 'fas fa-circle'}"></i>
+            </div>
+            <div class="transaction-details">
+                <div class="transaction-user">${transaction.user_name}</div>
+                <div class="transaction-type">${typeLabels[transaction.type] || transaction.type}</div>
+                <div class="transaction-time">${new Date(transaction.created_at).toLocaleString('ar-EG')}</div>
+            </div>
+            <div class="transaction-amount">${formatCurrency(transaction.amount)}</div>
+        `;
+
+        return div;
+    }
+
+    // Load page data based on current page
+    function loadPageData(page) {
+        switch(page) {
+            case 'customers':
+                loadCustomers();
+                break;
+            case 'withdrawals':
+                loadWithdrawals();
+                break;
+            // Add other cases as needed
+        }
+    }
+
+    // Load customers data
+    async function loadCustomers() {
+        try {
+            const data = await apiCall('/api/users?page=1&per_page=20');
+
+            if (data.success) {
+                const container = document.getElementById('customers-table-container');
+                container.innerHTML = createCustomersTable(data.users, data.pagination);
+            }
+        } catch (error) {
+            console.error('Error loading customers:', error);
+        }
+    }
+
+    function createCustomersTable(users, pagination) {
+        let tableHTML = `
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>الاسم</th>
+                        <th>رقم الهاتف</th>
+                        <th>الدور</th>
+                        <th>الرصيد</th>
+                        <th>الحالة</th>
+                        <th>تاريخ التسجيل</th>
+                        <th>الإجراءات</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        users.forEach(user => {
+            const statusClass = user.status === 'active' ? 'status-active' : 'status-inactive';
+            const statusText = user.status === 'active' ? 'نشط' : 'غير نشط';
             
             tableHTML += `
-                    </tbody>
-                </table>
-                <div style="padding: 20px; text-align: center;">
-                    <span>الصفحة ${pagination.page} من ${pagination.pages}</span>
-                    <span style="margin: 0 20px;">إجمالي النتائج: ${pagination.total}</span>
-                </div>
+                <tr>
+                    <td>${user.full_name}</td>
+                    <td>${user.phone}</td>
+                    <td>${user.role}</td>
+                    <td>${formatCurrency(user.balance)}</td>
+                    <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                    <td>${new Date(user.created_at).toLocaleDateString('ar-EG')}</td>
+                    <td>
+                        <button class="btn btn-primary" onclick="editUser(${user.id})">تعديل</button>
+                        <button class="btn btn-danger" onclick="toggleUserStatus(${user.id}, '${user.status}')">
+                            ${user.status === 'active' ? 'إيقاف' : 'تفعيل'}
+                        </button>
+                    </td>
+                </tr>
             `;
-            
-            return tableHTML;
-        }
+        });
 
-        // Initialize charts
-        function initCharts() {
-            // Sales Chart
-            const salesCtx = document.getElementById('salesChart');
-            if (salesCtx) {
-                new Chart(salesCtx, {
-                    type: 'line',
-                    data: {
-                        labels: ['السبت', 'الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'],
-                        datasets: [{
-                            label: 'المبيعات',
-                            data: [12000, 19000, 3000, 5000, 2000, 3000, 20000],
-                            borderColor: '#667eea',
-                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                            tension: 0.4,
-                            fill: true
-                        }]
+        tableHTML += `
+                </tbody>
+            </table>
+            <div style="padding: 20px; text-align: center;">
+                <span>الصفحة ${pagination.page} من ${pagination.pages}</span>
+                <span style="margin: 0 20px;">إجمالي النتائج: ${pagination.total}</span>
+            </div>
+        `;
+
+        return tableHTML;
+    }
+
+    // Initialize charts
+    function initCharts() {
+        // Sales Chart
+        const salesCtx = document.getElementById('salesChart');
+        if (salesCtx) {
+            new Chart(salesCtx, {
+                type: 'line',
+                data: {
+                    labels: ['السبت', 'الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'],
+                    datasets: [{
+                        label: 'المبيعات',
+                        data: [12000, 19000, 3000, 5000, 2000, 3000, 20000],
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
                     },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                display: false
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true
-                            }
+                    scales: {
+                        y: {
+                            beginAtZero: true
                         }
                     }
-                });
-            }
-
-            // Transactions Chart
-            const transactionsCtx = document.getElementById('transactionsChart');
-            if (transactionsCtx) {
-                new Chart(transactionsCtx, {
-                    type: 'doughnut',
-                    data: {
-                        labels: ['شراء كروت', 'تحويلات', 'كوبونات'],
-                        datasets: [{
-                            data: [60, 25, 15],
-                            backgroundColor: ['#667eea', '#f093fb', '#43e97b'],
-                            borderWidth: 0
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                position: 'bottom'
-                            }
-                        }
-                    }
-                });
-            }
+                }
+            });
         }
 
-        // Initialize charts when page loads
-        setTimeout(initCharts, 1000);
-    </script>
-</body>
-</html>
+        // Transactions Chart
+        const transactionsCtx = document.getElementById('transactionsChart');
+        if (transactionsCtx) {
+            new Chart(transactionsCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['شراء كروت', 'تحويلات', 'كوبونات'],
+                    datasets: [{
+                        data: [60, 25, 15],
+                        backgroundColor: ['#667eea', '#f093fb', '#43e97b'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    // Initialize charts when page loads
+    setTimeout(initCharts, 1000);
+</script>
+{% endblock %}
