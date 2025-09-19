@@ -7,6 +7,7 @@ Contains all main bot handlers and command processors
 import logging
 import random
 import sqlite3
+import uuid
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext, ConversationHandler
 from bot_modules.config import *
@@ -20,11 +21,43 @@ async def start(update: Update, context: CallbackContext) -> int:
     """Handle /start command"""
     try:
         user = get_user(update.effective_user.id)
+        
+        # معالجة الروابط المباشرة
+        if context.args:
+            arg = context.args[0]
+            
+            # رابط الشبكة المباشر
+            if arg.startswith('network_'):
+                network_id = arg.split('_')[1]
+                if user:
+                    update_user_activity(user['id'])
+                    # توجيه المستخدم مباشرة للشبكة
+                    from yemen_net_bot_new import show_network_categories
+                    return await show_network_categories(update, context, network_id)
+                else:
+                    # إذا لم يكن مسجلاً، حفظ الشبكة للتوجيه بعد التسجيل
+                    context.user_data['redirect_to_network'] = network_id
+                    return await register_new_user(update, context)
+            
+            # رابط الإحالة
+            elif arg.startswith('ref_'):
+                invite_code = arg.split('_')[1]
+                if not user:
+                    # حفظ كود الإحالة للتسجيل
+                    context.user_data['referral_code'] = invite_code
+                    return await register_new_user(update, context)
+                else:
+                    # المستخدم مسجل بالفعل، توجيه للقائمة الرئيسية
+                    update_user_activity(user['id'])
+                    return await show_main_menu(update, context, user['role'])
+        
+        # التعامل العادي
         if user:
             update_user_activity(user['id'])
             return await show_main_menu(update, context, user['role'])
         else:
             return await register_new_user(update, context)
+            
     except Exception as e:
         logger.error(f"Error in start handler: {e}")
         await update.message.reply_text(unexpected_error("العملية المطلوبة", "النظام"))
@@ -207,29 +240,52 @@ async def choose_role(update: Update, context: CallbackContext) -> int:
                 invite_code = trial
                 break
         
+        # معالجة الإحالة
+        referrer_id = None
+        if 'referral_code' in context.user_data:
+            referral_code = context.user_data['referral_code']
+            # البحث عن المحيل
+            cursor.execute('SELECT id FROM users WHERE invite_code = ?', (referral_code,))
+            referrer_result = cursor.fetchone()
+            if referrer_result:
+                referrer_id = referrer_result[0]
+        
         # Insert new user
         cursor.execute('''
-            INSERT INTO users (telegram_id, full_name, phone, role, wallet_number, invite_code, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO users (telegram_id, full_name, phone, role, wallet_number, invite_code, is_active, referred_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ''', (update.effective_user.id, context.user_data['full_name'], 
               context.user_data['phone'], role, wallet_number, invite_code, 
-              1 if role == 'customer' else 0))  # Auto-activate customers only
+              1 if role == 'customer' else 0, referrer_id))  # Auto-activate customers only
         
         user_id = cursor.lastrowid
         
-        # Log the registration
-        log_activity(user_id, 'user_registration', f'New user registered as {role}', {
-            'telegram_id': update.effective_user.id,
-            'role': role,
-            'wallet_number': wallet_number
-        })
+        # إنشاء سجل الإحالة إذا كان هناك محيل
+        if referrer_id:
+            import uuid
+            referral_id = str(uuid.uuid4())
+            cursor.execute('''
+                INSERT INTO referrals (id, referrer_id, referred_id, created_at)
+                VALUES (?, ?, ?, datetime('now'))
+            ''', (referral_id, referrer_id, user_id))
         
         conn.commit()
         conn.close()
         
+        # Log the registration (after commit to avoid SQLite locks)
+        try:
+            log_activity(user_id, 'user_registration', f'New user registered as {role}', {
+                'telegram_id': update.effective_user.id,
+                'role': role,
+                'wallet_number': wallet_number
+            })
+        except Exception as e:
+            logger.debug(f"Registration activity log skipped: {e}")
+        
         # Store data before clearing
         full_name = context.user_data.get('full_name', 'المستخدم')
         phone = context.user_data.get('phone', 'غير محدد')
+        redirect_network = context.user_data.get('redirect_to_network')
         
         # Clear registration data
         context.user_data.clear()
@@ -271,7 +327,15 @@ async def choose_role(update: Update, context: CallbackContext) -> int:
 🏪 **كمزود يمكنك رفع وإدارة الشبكات والكروت**
 """
         
-        keyboard = [[InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]]
+        # إعداد الأزرار
+        if redirect_network and role == 'customer':
+            keyboard = [
+                [InlineKeyboardButton('🛒 تصفح الشبكة', callback_data=f'buy_from_network_{redirect_network}')],
+                [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+            ]
+            welcome_message += f"\n\n🔗 **تم توجيهك من رابط مباشر لشبكة معينة!**\nيمكنك تصفحها والشراء منها مباشرة."
+        else:
+            keyboard = [[InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]]
         
         await query.edit_message_text(welcome_message, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
@@ -340,9 +404,9 @@ def create_main_keyboard(role: str):
              InlineKeyboardButton('🔍 البحث عن شبكات', callback_data='search_networks')],
             [InlineKeyboardButton('📊 تقاريري الشخصية', callback_data='personal_reports'),
              InlineKeyboardButton('🎁 العروض والخصومات', callback_data='promotions')],
-            [InlineKeyboardButton('🔔 إشعاراتي', callback_data='my_notifications'),
-             InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings')],
-            [InlineKeyboardButton('⭐ تقييماتي', callback_data='my_ratings')]
+            [InlineKeyboardButton('🎟️ كشف الحساب', callback_data='account_statement'),
+             InlineKeyboardButton('🔔 إشعاراتي', callback_data='my_notifications')],
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
         # Role-specific features
@@ -366,6 +430,8 @@ def create_main_keyboard(role: str):
                 ])
         
         # Add help and support
+        # إضافة زر مشاركة رابط الإحالة إلى الصفحة الرئيسية
+        base_buttons.append([InlineKeyboardButton('🔗 رابط الإحالة', callback_data='referral_stats')])
         base_buttons.append([InlineKeyboardButton('❓ المساعدة والدعم', callback_data='help')])
         
         return base_buttons
@@ -431,7 +497,7 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
 💳 **محفظتي المطورة** 💳
 
 👤 **{user['full_name']}**
-🏷️ نوع الحساب: **{USER_ROLES.get(user['role'] if 'role' in user.keys() else 'customer', 'عميل')}**
+🏷️ نوع الحساب: **{USER_ROLES.get(user['role'], 'عميل')}**
 ⚡ حالة الحساب: **{"✅ مفعل" if user['is_active'] else "⏳ في انتظار التفعيل"}**
 
 💰 **الرصيد والإحصائيات:**
@@ -450,15 +516,44 @@ async def enhanced_wallet_handler(update: Update, context: CallbackContext):
         
         if recent_transactions:
             for tx in recent_transactions[:5]:
-                tx_type = "➕" if tx['transaction_type'] == 'credit' else "➖"
+                # تحديد اتجاه المعاملة
+                if tx['transaction_type'] == 'credit':
+                    direction_color = "🟢"
+                    direction_text = "مستلم"
+                    amount_prefix = "+"
+                else:
+                    direction_color = "🔴"
+                    direction_text = "مرسل"
+                    amount_prefix = "-"
+                
                 description = tx['description'] or 'معاملة'
                 try:
                     amount = float(tx['amount']) if tx['amount'] is not None else 0.0
                 except (ValueError, TypeError):
                     amount = 0.0
-                wallet_text += f"\n{tx_type} {amount:.2f} ريال - {description[:30]}..."
+                
+                # تحديد أيقونة نوع المعاملة من الوصف
+                type_icon = "💼"
+                if "تحويل" in description:
+                    type_icon = "🔄"
+                elif "شراء" in description:
+                    type_icon = "🛒"
+                elif "كوبون" in description:
+                    type_icon = "🎟️"
+                elif "عمولة" in description:
+                    type_icon = "🎯"
+                
+                # تنسيق التاريخ - استخدام الفهرسة المباشرة بدلاً من .get()
+                created_at = tx['created_at'] if 'created_at' in tx.keys() else 'غير محدد'
+                date_formatted = created_at[:16] if created_at != 'غير محدد' else 'غير محدد'
+                
+                wallet_text += f"""
+📅 {date_formatted}
+{direction_color} {direction_text} | {type_icon} {description[:15]} | 💰 {amount_prefix}{amount:,.0f} ريال
+
+"""
         else:
-            wallet_text += "\nلا توجد معاملات بعد"
+            wallet_text += "\n📭 لا توجد معاملات بعد"
         
         keyboard = [
             [InlineKeyboardButton('📊 تفاصيل المعاملات', callback_data='transaction_details'),
@@ -1368,44 +1463,7 @@ async def my_notifications_handler(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in my_notifications_handler: {e}")
 
-async def account_settings_handler(update: Update, context: CallbackContext):
-    try:
-        user = get_user(update.effective_user.id)
-        if not user:
-            if update.message:
-                await update.message.reply_text("❌ يرجى التسجيل أولاً /start")
-            else:
-                await update.callback_query.edit_message_text("❌ يرجى التسجيل أولاً /start")
-            return
-        text = f"""
-⚙️ إعدادات الحساب
-
-👤 الاسم: {user['full_name']}
-📱 الهاتف: {user.get('phone','غير محدد')}
-👑 الدور: {user['role']}
-"""
-        kb = [[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]
-        if update.message:
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
-        else:
-            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
-    except Exception as e:
-        logger.error(f"Error in account_settings_handler: {e}")
-
-async def my_ratings_handler(update: Update, context: CallbackContext):
-    try:
-        text = """
-⭐ تقييماتي
-
-لا توجد تقييمات متاحة حالياً.
-"""
-        kb = [[InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]]
-        if update.message:
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb))
-        else:
-            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
-    except Exception as e:
-        logger.error(f"Error in my_ratings_handler: {e}")
+# account_settings_handler and my_ratings_handler removed as requested
 
 async def help_handler(update: Update, context: CallbackContext):
     """Enhanced help and support"""
@@ -1459,7 +1517,7 @@ async def help_handler(update: Update, context: CallbackContext):
         keyboard = [
             [InlineKeyboardButton('📞 التواصل مع الإدارة', callback_data='contact_admin'),
              InlineKeyboardButton('🔔 الإشعارات', callback_data='my_notifications')],
-            [InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings'),
+            [
              InlineKeyboardButton('📊 حالة الحساب', callback_data='account_status')],
             [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
@@ -2307,8 +2365,6 @@ COMMAND_HANDLERS = {
     'personal_reports': personal_reports_handler,
     # promotions now handled by enhanced system in main bot
     'my_notifications': my_notifications_handler,
-    'account_settings': account_settings_handler,
-    'my_ratings': my_ratings_handler,
 
     'supplier_panel': lambda u, c: enhanced_placeholder_handler(u, c, "🏪 لوحة المزود", "لوحة تحكم خاصة بالمزودين"),
     'manage_networks': lambda u, c: supplier_manage_networks(u, c),
@@ -3039,9 +3095,9 @@ async def redeem_coupon_handler(update: Update, context: CallbackContext):
 💰 رصيدك الحالي: **{user['balance']:,.2f}** ريال
 
 📝 **كيفية الاستخدام:**
-🔸 أدخل رقم الكوبون المكون من 9 أرقام
-🔸 يجب أن يبدأ الكوبون بالحرف A
-🔸 مثال: A12345678
+🔸 أدخل رقم الكوبون 
+🔸 التنسيق الجديد: A + 8 أرقام (مثال: A12345678)
+🔸 التنسيق القديم: 8 أحرف مختلطة (مثال: KBSSCENZ)
 
 ⚠️ **ملاحظات مهمة:**
 • كل كوبون يُستخدم مرة واحدة فقط
@@ -3099,10 +3155,9 @@ async def process_coupon_redemption(update: Update, context: CallbackContext):
         if not validate_coupon_format(coupon_code):
             await update.message.reply_text(
                 "❌ **تنسيق الكوبون غير صحيح** ❌\n\n"
-                "📝 **التنسيق المطلوب:**\n"
-                "🔸 يجب أن يبدأ بالحرف A\n"
-                "🔸 متبوع بـ 8 أرقام\n"
-                "🔸 مثال: A12345678\n\n"
+                "📝 **التنسيقات المقبولة:**\n"
+                "🔸 التنسيق الجديد: A + 8 أرقام (مثال: A12345678)\n"
+                "🔸 التنسيق القديم: 8 أحرف مختلطة (مثال: KBSSCENZ)\n\n"
                 "💡 **يرجى إدخال رقم صحيح:**",
                 parse_mode='Markdown'
             )
@@ -3198,13 +3253,18 @@ async def process_coupon_redemption(update: Update, context: CallbackContext):
         ''', (user['id'], coupon['id']))
         
         # إنشاء معاملة في سجل المعاملات
+        transaction_id = str(uuid.uuid4())
         cursor.execute('''
-            INSERT INTO transactions (from_user, to_user, amount, type, description, created_at)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ''', (None, user['id'], coupon_amount, 'coupon_redeem', f"شحن بكوبون {coupon_code}"))
+            INSERT INTO transactions (id, from_user, to_user, amount, type, description, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ''', (transaction_id, None, user['id'], coupon_amount, 'coupon_redeem', f"شحن بكوبون {coupon_code}"))
         
         conn.commit()
         conn.close()
+        
+        # تسجيل القيد المحاسبي لشحن الكوبون
+        from accounting_engine import record_coupon_accounting
+        record_coupon_accounting(coupon_amount, user['id'], transaction_id)
         
         # رسالة النجاح
         success_text = f"""
@@ -3257,21 +3317,17 @@ async def process_coupon_redemption(update: Update, context: CallbackContext):
         context.user_data.clear()
 
 def validate_coupon_format(coupon_code: str) -> bool:
-    """التحقق من صحة تنسيق الكوبون"""
+    """التحقق من صحة تنسيق الكوبون - يدعم تنسيقين"""
     try:
-        # يجب أن يكون 9 أحرف: A + 8 أرقام
-        if len(coupon_code) != 9:
-            return False
+        # التنسيق الجديد: A + 8 أرقام (9 أحرف)
+        if len(coupon_code) == 9 and coupon_code.startswith('A') and coupon_code[1:].isdigit():
+            return True
         
-        # يجب أن يبدأ بالحرف A
-        if not coupon_code.startswith('A'):
-            return False
+        # التنسيق القديم: 8 أحرف مختلطة (للكوبونات الموجودة)
+        if len(coupon_code) == 8 and coupon_code.isalnum():
+            return True
         
-        # الباقي يجب أن يكون أرقام
-        if not coupon_code[1:].isdigit():
-            return False
-        
-        return True
+        return False
         
     except Exception:
         return False

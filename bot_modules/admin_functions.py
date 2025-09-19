@@ -6,15 +6,28 @@ Contains super admin and admin specific functions
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext
 from bot_modules.config import *
 from bot_modules.database import get_db_connection
 from bot_modules.utils import *
 from bot_modules.enhanced_error_messages import ErrorMessages, perm_error, db_error, unexpected_error, menu_error, wallet_error, coupon_error
+from bot_modules.export_system import (
+    export_options_handler, export_profits_handler, export_customers_handler,
+    export_suppliers_handler, export_comprehensive_handler, quick_export_handler
+)
+from bot_modules.accounting_search import accounting_search_handler, quick_stats_handler, quick_transaction_report_handler
 
 logger = logging.getLogger(__name__)
+
+# Escape minimal markdown characters for safe rendering in Markdown
+def md_safe(text):
+    try:
+        s = str(text)
+        return s.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('`', '\\`')
+    except Exception:
+        return str(text)
 
 async def admin_panel_handler(update: Update, context: CallbackContext):
     """Handle admin panel access"""
@@ -26,6 +39,12 @@ async def admin_panel_handler(update: Update, context: CallbackContext):
         
         update_user_activity(user['id'])
         
+        # Structured call log
+        try:
+            log_admin_invocation(update, 'admin_panel_handler', {'role': user['role'] if user else None})
+        except Exception:
+            pass
+
         if user['role'] == 'super_admin':
             return await show_super_admin_panel(update, context, user)
         else:
@@ -38,25 +57,36 @@ async def admin_panel_handler(update: Update, context: CallbackContext):
 async def show_super_admin_panel(update: Update, context: CallbackContext, user):
     """Show super admin control panel"""
     try:
+        # Structured call log
+        try:
+            log_admin_invocation(update, 'show_super_admin_panel', {'user_id': user.get('id') if user else None})
+        except Exception:
+            pass
+
         # Get platform statistics
         conn = get_db_connection()
         cursor = conn.cursor()
         
         # Basic stats
-        cursor.execute('SELECT COUNT(*) as total_users FROM users')
-        total_users = cursor.fetchone()['total_users']
+        cursor.execute('SELECT COUNT(*) FROM users')
+        result = cursor.fetchone()
+        total_users = result[0] if result else 0
         
-        cursor.execute('SELECT COUNT(*) as active_users FROM users WHERE is_active = 1')
-        active_users = cursor.fetchone()['active_users']
+        cursor.execute('SELECT COUNT(*) FROM users WHERE is_active = 1')
+        result = cursor.fetchone()
+        active_users = result[0] if result else 0
         
-        cursor.execute('SELECT SUM(balance) as total_balance FROM users')
-        total_balance = cursor.fetchone()['total_balance'] or 0
+        cursor.execute('SELECT SUM(balance) FROM users')
+        result = cursor.fetchone()
+        total_balance = result[0] if result and result[0] is not None else 0
         
-        cursor.execute('SELECT COUNT(*) as pending_suppliers FROM users WHERE role = "supplier" AND is_active = 0')
-        pending_suppliers = cursor.fetchone()['pending_suppliers']
+        cursor.execute('SELECT COUNT(*) FROM users WHERE role = "supplier" AND is_active = 0')
+        result = cursor.fetchone()
+        pending_suppliers = result[0] if result else 0
         
-        cursor.execute('SELECT COUNT(*) as total_transactions FROM transactions')
-        total_transactions = cursor.fetchone()['total_transactions']
+        cursor.execute('SELECT COUNT(*) FROM transactions')
+        result = cursor.fetchone()
+        total_transactions = result[0] if result else 0
         
         conn.close()
         
@@ -86,10 +116,9 @@ async def show_super_admin_panel(update: Update, context: CallbackContext, user)
             [InlineKeyboardButton(f'🎁 إضافة عروض', callback_data='admin_add_offers'),
              InlineKeyboardButton(f'✅ تفعيل مزودين', callback_data='super_activate_suppliers')],
             [InlineKeyboardButton(f'📊 النظام المحاسبي', callback_data='accounting_system'),
-             InlineKeyboardButton(f'📄 تنزيل كشوف حسابات', callback_data='download_statements')],
-            [InlineKeyboardButton(f'🔧 إعدادات النظام', callback_data='super_system_settings')],
-            [InlineKeyboardButton(f'💾 النسخ الاحتياطي', callback_data='super_backup'),
-             InlineKeyboardButton(f'🚨 مراقبة الأمان', callback_data='super_security_monitoring')],
+             InlineKeyboardButton(f'💰 طلبات السحب', callback_data='admin_withdrawals')],
+            [InlineKeyboardButton(f'📄 تنزيل كشوف حسابات', callback_data='download_statements'),
+             InlineKeyboardButton(f'⚡ تصدير سريع', callback_data='quick_export')],
             [InlineKeyboardButton(f'🎟️ إنشاء كوبونات', callback_data='super_create_coupons')],
             [InlineKeyboardButton(f'📢 إرسال رسالة جماعية', callback_data='super_broadcast_message'),
              InlineKeyboardButton(f'🔄 تحديث أوامر البوت', callback_data='super_update_commands')],
@@ -608,80 +637,7 @@ async def placeholder_handler(update, context, feature_name):
 # Placeholder handlers for missing features
 
 
-async def backup_handler(update, context):
-    """Handle backup management"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        user = get_user(query.from_user.id)
-        if not user or user['role'] != 'super_admin':
-            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
-            return
-        
-        import os
-        from datetime import datetime
-        
-        # Check backup directory and get backup info
-        backup_dir = '/workspace/backups'
-        if not os.path.exists(backup_dir):
-            os.makedirs(backup_dir)
-        
-        # Get backup files
-        backup_files = []
-        try:
-            for f in os.listdir(backup_dir):
-                if f.endswith('.db') or f.endswith('.sql'):
-                    full_path = os.path.join(backup_dir, f)
-                    size = os.path.getsize(full_path)
-                    mtime = os.path.getmtime(full_path)
-                    backup_files.append({
-                        'name': f,
-                        'size': size,
-                        'date': datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M')
-                    })
-        except Exception:
-            pass
-        
-        # Sort by date (newest first)
-        backup_files.sort(key=lambda x: x['date'], reverse=True)
-        
-        text = f"""
-💾 **إدارة النسخ الاحتياطي** 💾
-
-📊 **معلومات النسخ الاحتياطي:**
-📁 مجلد النسخ: `/workspace/backups`
-📈 عدد النسخ المتاحة: **{len(backup_files)}**
-
-📋 **آخر النسخ الاحتياطية:**
-"""
-        
-        for backup in backup_files[:3]:
-            size_mb = backup['size'] / (1024 * 1024)
-            text += f"\n• {backup['name']}"
-            text += f"\n  📅 {backup['date']} | 📊 {size_mb:.1f} MB"
-        
-        if not backup_files:
-            text += "\nلا توجد نسخ احتياطية حالياً"
-        
-        text += "\n\n🔧 **العمليات المتاحة:**"
-        
-        keyboard = [
-            [InlineKeyboardButton('💾 إنشاء نسخة كاملة', callback_data='backup_full'),
-             InlineKeyboardButton('📋 نسخ البيانات فقط', callback_data='backup_data_only')],
-            [InlineKeyboardButton('🔄 استعادة نسخة', callback_data='backup_restore'),
-             InlineKeyboardButton('📂 عرض جميع النسخ', callback_data='backup_list')],
-            [InlineKeyboardButton('⏰ جدولة تلقائية', callback_data='backup_schedule'),
-             InlineKeyboardButton('⚙️ إعدادات النسخ', callback_data='backup_settings')],
-            [InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel'),
-             InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
-        ]
-        
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in backup handler: {e}")
-        await query.edit_message_text(ErrorMessages.admin_error("تحميل إدارة النسخ الاحتياطي"))
+# Backup handler removed as requested
 async def executive_reports_handler(update: Update, context: CallbackContext):
     """التقارير التنفيذية الشاملة"""
     try:
@@ -758,7 +714,7 @@ async def executive_reports_handler(update: Update, context: CallbackContext):
                 COUNT(t.id) as transaction_count,
                 SUM(t.amount) as total_amount
             FROM users u
-            LEFT JOIN transactions t ON u.id = t.user_id
+            LEFT JOIN transactions t ON (u.id = t.from_user OR u.id = t.to_user)
             WHERE u.balance > 0
             GROUP BY u.id, u.full_name, u.role, u.balance
             ORDER BY u.balance DESC, total_amount DESC
@@ -768,13 +724,18 @@ async def executive_reports_handler(update: Update, context: CallbackContext):
         
         conn.close()
         
-        # حساب المعدلات والنسب المهمة
-        growth_rate_daily = (growth_stats[0] / max(growth_stats[3] - growth_stats[0], 1) * 100)
-        growth_rate_weekly = (growth_stats[1] / max(growth_stats[3] - growth_stats[1], 1) * 100)
-        growth_rate_monthly = (growth_stats[2] / max(growth_stats[3] - growth_stats[2], 1) * 100)
-        
-        avg_transaction_value = (revenue_stats[4] / max(revenue_stats[5], 1)) if revenue_stats[5] > 0 else 0
-        sales_conversion = (sales_stats[3] / max(sales_stats[2], 1) * 100) if sales_stats[2] > 0 else 0
+        # حساب المعدلات والنسب المهمة (مع حماية ضد القسمة على صفر)
+        try:
+            growth_rate_daily = (growth_stats[0] / max(growth_stats[3] - growth_stats[0], 1) * 100) if growth_stats[3] > 0 else 0
+            growth_rate_weekly = (growth_stats[1] / max(growth_stats[3] - growth_stats[1], 1) * 100) if growth_stats[3] > 0 else 0
+            growth_rate_monthly = (growth_stats[2] / max(growth_stats[3] - growth_stats[2], 1) * 100) if growth_stats[3] > 0 else 0
+            
+            avg_transaction_value = (revenue_stats[4] / max(revenue_stats[5], 1)) if revenue_stats[5] > 0 else 0
+            sales_conversion = (sales_stats[3] / max(sales_stats[2], 1) * 100) if sales_stats[2] > 0 else 0
+        except (TypeError, ZeroDivisionError, IndexError) as calc_error:
+            logger.warning(f"Calculation error in executive reports: {calc_error}")
+            growth_rate_daily = growth_rate_weekly = growth_rate_monthly = 0
+            avg_transaction_value = sales_conversion = 0
         
         from datetime import datetime
         
@@ -820,11 +781,20 @@ async def executive_reports_handler(update: Update, context: CallbackContext):
             text += f"\n   💰 متوسط الرصيد: **{role_data[2] or 0:,.2f}** ريال"
 
         text += f"\n\n🏆 **أفضل المؤدين:**"
-        for i, performer in enumerate(top_performers[:3], 1):
-            role_emoji = "👤" if performer[1] == 'customer' else "🏪" if performer[1] == 'supplier' else "💼"
-            text += f"\n{i}️⃣ {role_emoji} {performer[0]}: **{performer[2]:,.2f}** ريال"
-            if performer[3] > 0:
-                text += f" ({performer[3]} معاملة)"
+        if top_performers:
+            for i, performer in enumerate(top_performers[:3], 1):
+                try:
+                    role_emoji = "👤" if performer[1] == 'customer' else "🏪" if performer[1] == 'supplier' else "💼"
+                    balance = performer[2] if performer[2] is not None else 0
+                    transaction_count = performer[3] if performer[3] is not None else 0
+                    text += f"\n{i}️⃣ {role_emoji} {performer[0]}: **{balance:,.2f}** ريال"
+                    if transaction_count > 0:
+                        text += f" ({transaction_count} معاملة)"
+                except (IndexError, TypeError) as performer_error:
+                    logger.warning(f"Error processing performer data: {performer_error}")
+                    text += f"\n{i}️⃣ 💼 بيانات غير مكتملة"
+        else:
+            text += "\nلا توجد بيانات أداء متاحة"
 
         text += f"""
 
@@ -854,11 +824,10 @@ async def executive_reports_handler(update: Update, context: CallbackContext):
 
 
 
-async def security_monitoring_handler(update, context):
-    return await placeholder_handler(update, context, "مراقبة الأمان")
+# Security monitoring handler removed as requested
 
 async def manage_admins_handler(update, context):
-    """Handle admin management"""
+    """Handle admin management (schema-safe version)"""
     try:
         query = update.callback_query
         await query.answer()
@@ -868,47 +837,45 @@ async def manage_admins_handler(update, context):
             await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
             return
         
-        # Get admin statistics
+        # Get admin statistics (use existing columns only)
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute("SELECT COUNT(*) as total_admins FROM users WHERE role = 'admin'")
-        total_admins = cursor.fetchone()['total_admins']
+        cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'")
+        total_admins = cursor.fetchone()[0] or 0
         
-        cursor.execute("SELECT COUNT(*) as active_admins FROM users WHERE role = 'admin' AND is_active = 1")
-        active_admins = cursor.fetchone()['active_admins']
+        cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = 1")
+        active_admins = cursor.fetchone()[0] or 0
         
-        cursor.execute("SELECT COUNT(*) as super_admins FROM users WHERE role = 'super_admin'")
-        super_admins = cursor.fetchone()['super_admins']
+        cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'super_admin'")
+        super_admins = cursor.fetchone()[0] or 0
         
-        # Get recent admin activities
+        # Recent admin activity by last_activity
         cursor.execute('''
-            SELECT u.full_name, u.last_activity_at 
-            FROM users u 
-            WHERE u.role IN ('admin', 'super_admin') 
-            ORDER BY u.last_activity_at DESC 
+            SELECT full_name, last_activity 
+            FROM users 
+            WHERE role IN ('admin', 'super_admin') 
+            ORDER BY last_activity DESC 
             LIMIT 5
         ''')
         recent_activities = cursor.fetchall()
         
         conn.close()
         
-        text = f"""
-👑 **إدارة المشرفين** 👑
-
-📊 **إحصائيات المشرفين:**
-👥 إجمالي المشرفين: **{total_admins}**
-🟢 المشرفين النشطين: **{active_admins}**
-👑 المشرفين الأعلى: **{super_admins}**
-
-👥 **آخر نشاط للمشرفين:**
-"""
+        text = (
+            "👑 **إدارة المشرفين** 👑\n\n"
+            "📊 **إحصائيات المشرفين:**\n"
+            f"👥 إجمالي المشرفين: **{total_admins}**\n"
+            f"🟢 المشرفين النشطين: **{active_admins}**\n"
+            f"👑 المشرفين الأعلى: **{super_admins}**\n\n"
+            "👥 **آخر نشاط للمشرفين:**"
+        )
         
         for activity in recent_activities[:3]:
-            last_activity = activity['last_activity_at'] or 'لم يسجل دخول'
-            if isinstance(last_activity, str) and last_activity != 'لم يسجل دخول':
-                last_activity = last_activity[:16]
-            text += f"\n• {activity['full_name']}: {last_activity}"
+            last_activity = activity['last_activity'] if isinstance(activity, sqlite3.Row) else activity[1]
+            last_activity_str = (last_activity[:16] if isinstance(last_activity, str) else 'غير متوفر') if last_activity else 'لم يسجل دخول'
+            name = activity['full_name'] if isinstance(activity, sqlite3.Row) else activity[0]
+            text += f"\n• {md_safe(name)}: {md_safe(last_activity_str)}"
         
         text += "\n\n🔧 **إدارة شاملة للمشرفين:**"
         
@@ -927,7 +894,7 @@ async def manage_admins_handler(update, context):
         
     except Exception as e:
         logger.error(f"Error in manage admins handler: {e}")
-        await query.edit_message_text(ErrorMessages.admin_error("تحميل إدارة المشرفين"))
+        await query.edit_message_text(ErrorMessages.admin_error("إدارة المشرفين"))
 
 async def dashboard_handler(update, context):
     """Handle dashboard display"""
@@ -945,34 +912,43 @@ async def dashboard_handler(update, context):
         cursor = conn.cursor()
         
         # Users statistics
-        cursor.execute('SELECT COUNT(*) as total_users FROM users')
-        total_users = cursor.fetchone()['total_users']
+        cursor.execute('SELECT COUNT(*) FROM users')
+        result = cursor.fetchone()
+        total_users = result[0] if result else 0
         
-        cursor.execute("SELECT COUNT(*) as active_users FROM users WHERE is_active = 1")
-        active_users = cursor.fetchone()['active_users']
+        cursor.execute("SELECT COUNT(*) FROM users WHERE is_active = 1")
+        result = cursor.fetchone()
+        active_users = result[0] if result else 0
         
-        cursor.execute("SELECT COUNT(*) as new_users_today FROM users WHERE date(created_at) = date('now')")
-        new_users_today = cursor.fetchone()['new_users_today']
+        cursor.execute("SELECT COUNT(*) FROM users WHERE date(created_at) = date('now')")
+        result = cursor.fetchone()
+        new_users_today = result[0] if result else 0
         
         # Financial statistics
-        cursor.execute('SELECT SUM(amount) as total_transactions FROM transactions')
-        total_transactions = cursor.fetchone()['total_transactions'] or 0
+        cursor.execute('SELECT SUM(amount) FROM transactions')
+        result = cursor.fetchone()
+        total_transactions = result[0] if result and result[0] is not None else 0
         
-        cursor.execute('SELECT SUM(balance) as total_balances FROM users')
-        total_balances = cursor.fetchone()['total_balances'] or 0
+        cursor.execute('SELECT SUM(balance) FROM users')
+        result = cursor.fetchone()
+        total_balances = result[0] if result and result[0] is not None else 0
         
-        cursor.execute("SELECT COUNT(*) as transactions_today FROM transactions WHERE date(created_at) = date('now')")
-        transactions_today = cursor.fetchone()['transactions_today']
+        cursor.execute("SELECT COUNT(*) FROM transactions WHERE date(created_at) = date('now')")
+        result = cursor.fetchone()
+        transactions_today = result[0] if result else 0
         
         # Networks statistics
-        cursor.execute('SELECT COUNT(*) as total_networks FROM networks')
-        total_networks = cursor.fetchone()['total_networks']
+        cursor.execute('SELECT COUNT(*) FROM networks')
+        result = cursor.fetchone()
+        total_networks = result[0] if result else 0
         
-        cursor.execute("SELECT COUNT(*) as active_networks FROM networks WHERE is_active = 1")
-        active_networks = cursor.fetchone()['active_networks']
+        cursor.execute("SELECT COUNT(*) FROM networks WHERE is_active = 1")
+        result = cursor.fetchone()
+        active_networks = result[0] if result else 0
         
-        cursor.execute("SELECT COUNT(*) as pending_networks FROM networks WHERE is_approved = 0")
-        pending_networks = cursor.fetchone()['pending_networks']
+        cursor.execute("SELECT COUNT(*) FROM networks WHERE is_approved = 0")
+        result = cursor.fetchone()
+        pending_networks = result[0] if result else 0
         
         conn.close()
         
@@ -1014,8 +990,86 @@ async def dashboard_handler(update, context):
         logger.error(f"Error in dashboard handler: {e}")
         await query.edit_message_text(menu_error("لوحة المعلومات", "تحميل البيانات"))
 
-async def view_all_suppliers_handler(update, context):
-    return await placeholder_handler(update, context, "عرض جميع المزودين")
+async def view_all_suppliers_handler(update: Update, context: CallbackContext):
+    """عرض جميع المزودين مع ترقيم صفحات بسيط"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+
+        # استخراج الصفحة من callback إن وجدت
+        data = query.data or 'super_view_all_suppliers'
+        parts = data.split('_')
+        page = 1
+        if len(parts) >= 5 and parts[-2] == 'page':
+            try:
+                page = max(1, int(parts[-1]))
+            except Exception:
+                page = 1
+
+        page_size = 10
+        offset = (page - 1) * page_size
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # إجمالي المزودين
+        cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'supplier'")
+        total_suppliers = cursor.fetchone()[0]
+
+        # جلب الصفحة الحالية
+        cursor.execute('''
+            SELECT id, full_name, phone, is_active, balance
+            FROM users
+            WHERE role = 'supplier'
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+        ''', (page_size, offset))
+        rows = cursor.fetchall()
+        conn.close()
+
+        total_pages = max(1, (total_suppliers + page_size - 1) // page_size)
+
+        text = f"""
+👥 **جميع المزودين** (صفحة {page}/{total_pages})
+
+إجمالي المزودين: **{total_suppliers}**
+"""
+
+        if rows:
+            for sid, name, phone, is_active, balance in rows:
+                status = '✅ مفعل' if is_active else '⏸️ موقوف'
+                text += f"""
+━━━━━━━━━━━━━━━━
+👤 {name or 'غير معروف'}
+📱 {phone or 'غير متوفر'}
+💰 الرصيد: {balance or 0:.2f} ريال
+🔰 الحالة: {status}
+🆔 {sid}
+"""
+        else:
+            text += "\n❌ لا توجد بيانات."
+
+        # أزرار الترقيم
+        nav_buttons = []
+        if page > 1:
+            nav_buttons.append(InlineKeyboardButton('⬅️ السابق', callback_data=f'super_view_all_suppliers_page_{page-1}'))
+        if page < total_pages:
+            nav_buttons.append(InlineKeyboardButton('التالي ➡️', callback_data=f'super_view_all_suppliers_page_{page+1}'))
+
+        keyboard = []
+        if nav_buttons:
+            keyboard.append(nav_buttons)
+        keyboard.append([InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel')])
+
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+    except Exception as e:
+        logger.error(f"Error in view_all_suppliers_handler: {e}")
+        await query.edit_message_text(menu_error('إدارة المزودين', 'عرض جميع المزودين'))
 
 async def view_supplier_details_handler(update, context):
     return await placeholder_handler(update, context, "تفاصيل المزودين")
@@ -1174,15 +1228,18 @@ async def admin_wallet_handler(update: Update, context: CallbackContext):
         
         # Get total money created
         cursor.execute('SELECT SUM(amount) FROM transactions WHERE type = "money_creation" AND to_user = ?', (user['id'],))
-        total_created = cursor.fetchone()[0] or 0
+        result = cursor.fetchone()
+        total_created = result[0] if result and result[0] is not None else 0
         
         # Get total sent to users
         cursor.execute('SELECT SUM(amount) FROM transactions WHERE type = "admin_transfer" AND from_user = ?', (user['id'],))
-        total_sent = cursor.fetchone()[0] or 0
+        result = cursor.fetchone()
+        total_sent = result[0] if result and result[0] is not None else 0
         
         # Get number of users
         cursor.execute('SELECT COUNT(*) FROM users WHERE role != "super_admin"')
-        total_users = cursor.fetchone()[0] or 0
+        result = cursor.fetchone()
+        total_users = result[0] if result else 0
         
         conn.close()
         
@@ -1402,43 +1459,7 @@ def generate_serial_number():
 
 # Missing Admin Functions Implementation
 
-async def system_settings_handler(update: Update, context: CallbackContext):
-    """Handle system settings management"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        user = get_user(query.from_user.id)
-        if not user or user['role'] != 'super_admin':
-            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
-            return
-        
-        text = f"""
-⚙️ **إدارة إعدادات النظام** ⚙️
-
-{EMOJIS['admin']} مرحباً **{user['full_name']}**
-
-📊 **الإعدادات الحالية:**
-💳 نسبة عمولة البطاقات: **{CARD_COMMISSION_RATE * 100:.1f}%**
-👥 نسبة عمولة الوكلاء: **{AGENT_COMMISSION_RATE * 100:.1f}%**
-🗄️ مسار قاعدة البيانات: `{DB_PATH}`
-
-🔧 **الخيارات المتاحة:**
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('💳 تعديل عمولة البطاقات', callback_data='system_edit_card_commission'),
-             InlineKeyboardButton('👥 تعديل عمولة الوكلاء', callback_data='system_edit_agent_commission')],
-            [InlineKeyboardButton('🔄 إعادة تحميل الإعدادات', callback_data='system_reload_config'),
-             InlineKeyboardButton('📊 عرض إحصائيات النظام', callback_data='system_stats')],
-            [InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]
-        ]
-        
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in system settings handler: {e}")
-        await query.edit_message_text(ErrorMessages.settings_error("النظام"))
+# System settings handler removed as requested
 
 async def dashboard_handler(update: Update, context: CallbackContext):
     """Handle dashboard view"""
@@ -1456,65 +1477,68 @@ async def dashboard_handler(update: Update, context: CallbackContext):
         cursor = conn.cursor()
         
         # Users statistics
-        cursor.execute('SELECT COUNT(*) as total_users FROM users')
-        total_users = cursor.fetchone()['total_users']
+        cursor.execute('SELECT COUNT(*) FROM users')
+        total_users = cursor.fetchone()[0]
         
-        cursor.execute('SELECT COUNT(*) as active_users FROM users WHERE is_active = 1')
-        active_users = cursor.fetchone()['active_users']
+        cursor.execute('SELECT COUNT(*) FROM users WHERE is_active = 1')
+        active_users = cursor.fetchone()[0]
         
-        cursor.execute('SELECT COUNT(*) as customers FROM users WHERE role = "customer"')
-        customers = cursor.fetchone()['customers']
+        cursor.execute('SELECT COUNT(*) FROM users WHERE role = "customer"')
+        customers = cursor.fetchone()[0]
         
-        cursor.execute('SELECT COUNT(*) as agents FROM users WHERE role = "agent"')
-        agents = cursor.fetchone()['agents']
+        cursor.execute('SELECT COUNT(*) FROM users WHERE role = "agent"')
+        agents = cursor.fetchone()[0]
         
-        cursor.execute('SELECT COUNT(*) as suppliers FROM users WHERE role = "supplier"')
-        suppliers = cursor.fetchone()['suppliers']
+        cursor.execute('SELECT COUNT(*) FROM users WHERE role = "supplier"')
+        suppliers = cursor.fetchone()[0]
         
         # Financial statistics
-        cursor.execute('SELECT SUM(balance) as total_balance FROM users')
-        total_balance = cursor.fetchone()['total_balance'] or 0
+        cursor.execute('SELECT SUM(balance) FROM users')
+        result = cursor.fetchone()[0]
+        total_balance = result if result is not None else 0
         
-        cursor.execute('SELECT COUNT(*) as total_transactions FROM transactions')
-        total_transactions = cursor.fetchone()['total_transactions']
+        cursor.execute('SELECT COUNT(*) FROM transactions')
+        total_transactions = cursor.fetchone()[0]
         
-        cursor.execute('SELECT SUM(amount) as total_volume FROM transactions WHERE type IN ("purchase", "transfer")')
-        total_volume = cursor.fetchone()['total_volume'] or 0
+        cursor.execute('SELECT SUM(amount) FROM transactions WHERE type IN ("purchase", "transfer")')
+        result = cursor.fetchone()[0]
+        total_volume = result if result is not None else 0
         
-        cursor.execute('SELECT SUM(amount) as total_commissions FROM transactions WHERE type = "commission"')
-        total_commissions = cursor.fetchone()['total_commissions'] or 0
+        cursor.execute('SELECT SUM(amount) FROM transactions WHERE type = "commission"')
+        result = cursor.fetchone()[0]
+        total_commissions = result if result is not None else 0
         
         # Networks and cards statistics
-        cursor.execute('SELECT COUNT(*) as total_networks FROM networks WHERE is_active = 1')
-        total_networks = cursor.fetchone()['total_networks']
+        cursor.execute('SELECT COUNT(*) FROM networks WHERE is_active = 1')
+        total_networks = cursor.fetchone()[0]
         
-        cursor.execute('SELECT COUNT(*) as total_cards FROM cards WHERE is_used = 0')
-        available_cards = cursor.fetchone()['total_cards']
+        cursor.execute('SELECT COUNT(*) FROM cards WHERE is_used = 0')
+        available_cards = cursor.fetchone()[0]
         
-        cursor.execute('SELECT COUNT(*) as sold_cards FROM cards WHERE is_used = 1')
-        sold_cards = cursor.fetchone()['sold_cards']
+        cursor.execute('SELECT COUNT(*) FROM cards WHERE is_used = 1')
+        sold_cards = cursor.fetchone()[0]
         
         # Recharge cards statistics
-        cursor.execute('SELECT COUNT(*) as available_recharge_cards FROM recharge_cards WHERE status = "available"')
-        available_recharge_cards = cursor.fetchone()['available_recharge_cards']
+        cursor.execute('SELECT COUNT(*) FROM recharge_cards WHERE status = "available"')
+        available_recharge_cards = cursor.fetchone()[0]
         
-        cursor.execute('SELECT COUNT(*) as sold_recharge_cards FROM recharge_cards WHERE status = "sold"')
-        sold_recharge_cards = cursor.fetchone()['sold_recharge_cards']
+        cursor.execute('SELECT COUNT(*) FROM recharge_cards WHERE status = "sold"')
+        sold_recharge_cards = cursor.fetchone()[0]
         
         # Recent activity
         cursor.execute('''
-            SELECT COUNT(*) as recent_transactions 
+            SELECT COUNT(*) 
             FROM transactions 
             WHERE created_at >= datetime('now', '-24 hours')
         ''')
-        recent_transactions = cursor.fetchone()['recent_transactions']
+        recent_transactions = cursor.fetchone()[0]
         
         cursor.execute('''
-            SELECT COUNT(*) as new_users_today 
+            SELECT COUNT(*) 
             FROM users 
             WHERE created_at >= datetime('now', '-24 hours')
         ''')
-        new_users_today = cursor.fetchone()['new_users_today']
+        new_users_today = cursor.fetchone()[0]
         
         conn.close()
         
@@ -1585,43 +1609,38 @@ async def manage_admins_handler(update: Update, context: CallbackContext):
             await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
             return
         
-        # Get comprehensive admin statistics
+        # Get comprehensive admin statistics using existing columns
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # إحصائيات المشرفين المفصلة
         cursor.execute('''
             SELECT 
                 COUNT(*) as total_admins,
-                COUNT(CASE WHEN is_active = 1 THEN 1 END) as active_admins,
-                COUNT(CASE WHEN role = 'super_admin' THEN 1 END) as super_admins,
-                COUNT(CASE WHEN role = 'admin' THEN 1 END) as regular_admins,
-                COUNT(CASE WHEN created_at >= datetime('now', '-30 days') THEN 1 END) as new_admins,
-                COUNT(CASE WHEN updated_at >= datetime('now', '-24 hours') THEN 1 END) as active_today
+                SUM(CASE WHEN role = 'admin' AND is_active = 1 THEN 1 ELSE 0 END) as active_admins,
+                SUM(CASE WHEN role = 'super_admin' THEN 1 ELSE 0 END) as super_admins
             FROM users WHERE role IN ('admin', 'super_admin')
         ''')
-        admin_stats = cursor.fetchone()
+        row = cursor.fetchone()
+        total_admins = row[0] or 0
+        active_admins = row[1] or 0
+        super_admins = row[2] or 0
         
-        # نشاط المشرفين
+        # Top admins by inferred activity proxy: recent last_activity
         cursor.execute('''
-            SELECT 
-                u.id, u.full_name, u.role, u.is_active, u.created_at, u.updated_at,
-                COUNT(t.id) as total_actions
-            FROM users u
-            LEFT JOIN transactions t ON u.id = t.created_by AND t.created_at >= datetime('now', '-7 days')
-            WHERE u.role IN ('admin', 'super_admin')
-            GROUP BY u.id, u.full_name, u.role, u.is_active, u.created_at, u.updated_at
-            ORDER BY total_actions DESC, u.updated_at DESC
+            SELECT id, full_name, role, is_active, created_at, last_activity
+            FROM users
+            WHERE role IN ('admin', 'super_admin')
+            ORDER BY COALESCE(last_activity, created_at) DESC
             LIMIT 5
         ''')
         top_admins = cursor.fetchall()
         
-        # أحدث المشرفين
+        # Recent admins
         cursor.execute('''
             SELECT full_name, role, created_at, is_active
-            FROM users 
+            FROM users
             WHERE role IN ('admin', 'super_admin')
-            ORDER BY created_at DESC 
+            ORDER BY created_at DESC
             LIMIT 3
         ''')
         recent_admins = cursor.fetchall()
@@ -1631,43 +1650,37 @@ async def manage_admins_handler(update: Update, context: CallbackContext):
         text = f"""
 👑 **إدارة المشرفين المتقدمة** 👑
 
-{EMOJIS['admin']} مرحباً **{user['full_name']}**
+{EMOJIS['admin']} مرحباً **{md_safe(user['full_name'])}**
 
 📊 **إحصائيات شاملة للمشرفين:**
-👥 إجمالي المشرفين: **{admin_stats[0]:,}**
-✅ النشطين: **{admin_stats[1]:,}** ({admin_stats[1]/max(admin_stats[0], 1)*100:.1f}%)
-👑 المشرفين الأعلى: **{admin_stats[2]:,}**
-🛡️ المشرفين العاديين: **{admin_stats[3]:,}**
-🆕 جدد هذا الشهر: **{admin_stats[4]:,}**
-⚡ نشطين اليوم: **{admin_stats[5]:,}**
+👥 إجمالي المشرفين: **{total_admins:,}**
+✅ النشطين: **{active_admins:,}** ({(active_admins/max(total_admins or 1, 1))*100:.1f}%)
+👑 المشرفين الأعلى: **{super_admins:,}**
 
-🏆 **أكثر المشرفين نشاطاً (آخر 7 أيام):**"""
-
+🏆 **أكثر المشرفين نشاطاً (آخر تحديث):**"""
         for i, admin in enumerate(top_admins[:3], 1):
             role_emoji = "👑" if admin[2] == 'super_admin' else "🛡️"
             status = "✅" if admin[3] else "❌"
-            text += f"\n{i}️⃣ {role_emoji} {admin[1]} {status} - **{admin[6]}** عملية"
-
+            text += f"\n{i}️⃣ {role_emoji} {md_safe(admin[1])} {status}"
+        
         text += f"\n\n🆕 **أحدث المشرفين:**"
         for admin in recent_admins[:2]:
             role_emoji = "👑" if admin[1] == 'super_admin' else "🛡️"
             status = "✅" if admin[3] else "❌"
             date = admin[2][:10] if admin[2] else "غير معروف"
-            text += f"\n• {role_emoji} {admin[0]} {status} - انضم: {date}"
-
+            text += f"\n• {role_emoji} {md_safe(admin[0])} {status} - انضم: {md_safe(date)}"
+        
         text += "\n\n🔧 **عمليات الإدارة المتقدمة:**"
         
         keyboard = [
             [InlineKeyboardButton('👥 قائمة المشرفين', callback_data='admin_list_all'),
-             InlineKeyboardButton('🔍 البحث المتقدم', callback_data='advanced_admin_search')],
+             InlineKeyboardButton('🔍 البحث المتقدم', callback_data='admin_search')],
             [InlineKeyboardButton('➕ إضافة مشرف جديد', callback_data='admin_add_new'),
-             InlineKeyboardButton('📊 تقارير شاملة', callback_data='comprehensive_admin_reports')],
+             InlineKeyboardButton('📊 تقارير شاملة', callback_data='admin_reports')],
             [InlineKeyboardButton('⚙️ إدارة الصلاحيات', callback_data='admin_permissions_management'),
              InlineKeyboardButton('🏆 تقييم الأداء', callback_data='admin_performance_evaluation')],
             [InlineKeyboardButton('🚫 إدارة المحظورين', callback_data='admin_banned_management'),
              InlineKeyboardButton('📈 تحليل النشاط', callback_data='admin_activity_analysis')],
-            [InlineKeyboardButton('🔄 عمليات جماعية', callback_data='bulk_admin_operations'),
-             InlineKeyboardButton('⚡ المراقبة المباشرة', callback_data='admin_live_monitoring')],
             [InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]
         ]
         
@@ -1793,40 +1806,7 @@ async def manage_users_handler(update: Update, context: CallbackContext):
         logger.error(f"Error in manage users handler: {e}")
         await query.edit_message_text(ErrorMessages.admin_error("إدارة المستخدمين"))
 
-async def backup_handler(update: Update, context: CallbackContext):
-    """Handle backup operations"""
-    try:
-        query = update.callback_query
-        await query.answer()
-        
-        user = get_user(query.from_user.id)
-        if not user or user['role'] != 'super_admin':
-            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
-            return
-        
-        text = f"""
-💾 **النسخ الاحتياطي** 💾
-
-{EMOJIS['admin']} مرحباً **{user['full_name']}**
-
-📋 **خيارات النسخ الاحتياطي:**
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('💾 إنشاء نسخة احتياطية كاملة', callback_data='backup_full'),
-             InlineKeyboardButton('📊 نسخة احتياطية للبيانات فقط', callback_data='backup_data_only')],
-            [InlineKeyboardButton('📥 استعادة من نسخة احتياطية', callback_data='backup_restore'),
-             InlineKeyboardButton('📋 عرض النسخ المتاحة', callback_data='backup_list')],
-            [InlineKeyboardButton('🕐 جدولة النسخ التلقائي', callback_data='backup_schedule'),
-             InlineKeyboardButton('⚙️ إعدادات النسخ', callback_data='backup_settings')],
-            [InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]
-        ]
-        
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in backup handler: {e}")
-        await query.edit_message_text(ErrorMessages.admin_error("إدارة النسخ الاحتياطي"))
+# Second backup handler removed as requested
 
 # Placeholder functions for features that need detailed implementation
 async def platform_management_handler(update, context):
@@ -1863,15 +1843,11 @@ async def platform_management_handler(update, context):
 💰 إجمالي المعاملات: **{total_transactions:,.2f}** ريال
 
 🔧 **إدارة المنصة:**
-⚙️ إعدادات النظام العامة
-🔒 إدارة الأمان والصلاحيات
 📊 مراقبة الأداء والاستقرار
 🔄 إدارة الصيانة والتحديثات
 """
     
     keyboard = [
-        [InlineKeyboardButton('⚙️ إعدادات النظام', callback_data='super_system_settings'),
-         InlineKeyboardButton('🔒 إدارة الأمان', callback_data='super_security_management')],
         [InlineKeyboardButton('📊 مراقبة الأداء', callback_data='super_performance_monitor'),
          InlineKeyboardButton('🔄 إدارة الصيانة', callback_data='super_maintenance')],
         [InlineKeyboardButton('📈 تقارير المنصة', callback_data='super_platform_reports'),
@@ -1903,26 +1879,7 @@ async def commission_settings_handler(update, context):
     keyboard = [[InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
-async def security_monitoring_handler(update, context):
-    """Handle security monitoring"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-🚨 **مراقبة الأمان** 🚨
-
-🚨 **نظام مراقبة الأمان النشط:**
-
-🔒 **مراقبة تسجيلات الدخول المشبوهة**
-🛡️ **كشف المحاولات الاحتيالية**
-⚠️ **تنبيهات الأمان**
-📋 **سجلات الأنشطة الحساسة**
-
-🏠 العودة للوحة الإدارة
-"""
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة للوحة الإدارة', callback_data='super_admin_panel')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+# Security monitoring handler removed as requested
 
 # Export functions for callback routing
 ADMIN_CALLBACKS = {
@@ -1932,13 +1889,10 @@ ADMIN_CALLBACKS = {
     'activate_all_suppliers': activate_all_suppliers,
     'super_platform_management': platform_management_handler,
     'super_commission_settings': commission_settings_handler,
-    'super_backup': backup_handler,
     'executive_reports': executive_reports_handler,
     'super_manage_users': manage_users_handler,
     'super_executive_reports': executive_reports_handler,
-    'super_system_settings': system_settings_handler,
-    'super_security_monitoring': security_monitoring_handler,
-    'super_manage_admins': manage_admins_handler,
+    'super_manage_admins': lambda u, c: __import__('bot_modules.admin_management', fromlist=['AdminManagement']).AdminManagement.manage_admins(u, c),
     'super_dashboard': dashboard_handler,
     'super_view_all_suppliers': view_all_suppliers_handler,
     'view_supplier_details': view_supplier_details_handler,
@@ -1953,202 +1907,147 @@ ADMIN_CALLBACKS = {
 
 # Missing handler implementations
 
-async def backup_full_handler(update, context):
-    """Handle full backup creation"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-💾 **إنشاء نسخة احتياطية كاملة** 💾
+# backup_full_handler removed as requested
 
-🔄 جاري إنشاء النسخة الاحتياطية...
+# backup_data_only_handler removed as requested
 
-⚠️ قد تستغرق هذه العملية بضع دقائق.
+# backup_restore_handler removed as requested
 
-🏠 العودة لإدارة النسخ
+# backup_list_handler removed as requested
+# backup_schedule_handler removed as requested
+
+# backup_settings_handler removed as requested
+
+# System settings handlers removed as requested
+
+# system_edit_agent_commission_handler removed as requested
+
+# system_reload_config_handler removed as requested
+
+# system_stats_handler removed as requested
+
+async def admin_withdrawals_handler(update: Update, context: CallbackContext):
+    """معالج طلبات السحب للمشرف الأعلى"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        try:
+            log_admin_invocation(update, 'admin_withdrawals_handler')
+        except Exception:
+            pass
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # الحصول على طلبات السحب المعلقة مع ترقيم الصفحات
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        page = int(context.user_data.get('admin_wd_page', 0))
+        page_size = 10
+        offset = page * page_size
+        
+        cursor.execute('''
+            SELECT COUNT(*) FROM withdrawals WHERE status = 'Pending'
+        ''')
+        total_pending = cursor.fetchone()[0]
+        
+        cursor.execute('''
+            SELECT w.withdrawal_id, w.provider_name, w.amount, w.method, w.requested_at,
+                   u.full_name, u.phone
+            FROM withdrawals w
+            JOIN users u ON w.provider_id = u.id
+            WHERE w.status = 'Pending'
+            ORDER BY w.requested_at ASC
+            LIMIT ? OFFSET ?
+        ''', (page_size, offset))
+        
+        pending_withdrawals = cursor.fetchall()
+        
+        # إحصائيات إضافية
+        cursor.execute("SELECT COUNT(*) FROM withdrawals WHERE status = 'Pending'")
+        result = cursor.fetchone()
+        pending_count = result[0] if result else 0
+        
+        cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM withdrawals WHERE status = 'Pending'")
+        result = cursor.fetchone()
+        pending_amount = result[0] if result else 0
+        
+        cursor.execute("SELECT COUNT(*) FROM withdrawals WHERE status = 'Approved' AND DATE(confirmed_at) = DATE('now')")
+        result = cursor.fetchone()
+        approved_today = result[0] if result else 0
+        
+        conn.close()
+        
+        withdrawals_text = f"""
+💰 **إدارة طلبات السحب** 💰
+
+👑 **{user['full_name']}**
+
+📊 **ملخص الطلبات:**
+⏳ طلبات معلقة: **{pending_count}** طلب
+💰 إجمالي المبالغ المعلقة: **{pending_amount:,.2f}** ريال
+✅ تم الموافقة عليها اليوم: **{approved_today}** طلب
+
+📋 **الطلبات المعلقة:**
 """
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة النسخ', callback_data='super_backup')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+        if pending_withdrawals:
+            for withdrawal in pending_withdrawals:
+                w_id, provider_name, amount, method, requested_at, full_name, phone = withdrawal
+                date_str = requested_at[:10] if requested_at else 'غير محدد'
+                
+                withdrawals_text += f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+👤 **{full_name}** ({provider_name})
+📱 {phone}
+💰 المبلغ: **{amount:,.2f}** ريال
+🏦 الطريقة: {method}
+📅 تاريخ الطلب: {date_str}
+🆔 `{w_id[:8]}...`
 
-async def backup_data_only_handler(update, context):
-    """Handle data-only backup"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-📊 **نسخة احتياطية للبيانات فقط** 📊
-
-📊 **نسخ احتياطي ذكي:**
-• نسخ تلقائي للبيانات الحساسة
-• ضغط وتشفير البيانات
-• استعادة سريعة وآمنة
-• جدولة مرنة للنسخ
-
-🏠 العودة لإدارة النسخ
+[الموافقة] [الرفض]
 """
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة النسخ', callback_data='super_backup')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        else:
+            withdrawals_text += """
+✅ **لا توجد طلبات معلقة حالياً**
 
-async def backup_restore_handler(update, context):
-    """Handle backup restore"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-📥 **استعادة من نسخة احتياطية** 📥
-
-✅ **استعادة النسخ الاحتياطية:**
-• استعادة انتقائية للبيانات
-• معاينة المحتوى قبل الاستعادة
-• حماية من فقدان البيانات
-• نقاط استعادة متعددة
-
-⚠️ **تحذير:** استعادة النسخة الاحتياطية ستحل محل جميع البيانات الحالية.
-
-🏠 العودة لإدارة النسخ
+💡 ستظهر هنا طلبات السحب من المزودين عند تقديمها.
 """
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة النسخ', callback_data='super_backup')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+        keyboard = []
+        
+        # إضافة أزرار الموافقة والرفض لكل طلب
+        for withdrawal in pending_withdrawals:
+            w_id = withdrawal[0]
+            provider_name = withdrawal[1]
+            keyboard.append([
+                InlineKeyboardButton(f'✅ موافقة {provider_name[:10]}...', callback_data=f'approve_withdrawal_{w_id}'),
+                InlineKeyboardButton(f'❌ رفض {provider_name[:10]}...', callback_data=f'reject_withdrawal_{w_id}')
+            ])
+        
+        # أزرار الترقيم
+        nav_buttons = []
+        if page > 0:
+            nav_buttons.append(InlineKeyboardButton('⬅️ السابق', callback_data='admin_wd_prev'))
+        if total_pending > offset + len(pending_withdrawals):
+            nav_buttons.append(InlineKeyboardButton('➡️ التالي', callback_data='admin_wd_next'))
+        if nav_buttons:
+            keyboard.append(nav_buttons)
 
-async def backup_list_handler(update, context):
-    """Handle backup list"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-📋 **عرض النسخ المتاحة** 📋
-
-لا توجد نسخ احتياطية متاحة حالياً.
-
-🏠 العودة لإدارة النسخ
-"""
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة النسخ', callback_data='super_backup')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-async def backup_schedule_handler(update, context):
-    """Handle backup scheduling"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-🕐 **جدولة النسخ التلقائي** 🕐
-
-🕐 **جدولة النسخ التلقائي:**
-• نسخ يومي/أسبوعي/شهري
-• تنبيهات حالة النسخ
-• إدارة مساحة التخزين
-• نسخ متزايد وكامل
-
-🏠 العودة لإدارة النسخ
-"""
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة النسخ', callback_data='super_backup')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-
-async def backup_settings_handler(update, context):
-    """Handle backup settings"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-⚙️ **إعدادات النسخ** ⚙️
-
-⚙️ **إعدادات النسخ المتقدمة:**
-• اختيار البيانات للنسخ
-• مواقع تخزين متعددة
-• تشفير متقدم
-• ضغط تكيفي
-
-🏠 العودة لإدارة النسخ
-"""
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة لإدارة النسخ', callback_data='super_backup')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-
-# System settings handlers
-async def system_edit_card_commission_handler(update, context):
-    """Handle card commission editing"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-💳 **تعديل عمولة البطاقات** 💳
-
-العمولة الحالية: **{CARD_COMMISSION_RATE * 100:.1f}%**
-
-💳 **إدارة عمولات البطاقات:**
-• نسب عمولة مخصصة لكل شبكة
-• عمولات متدرجة حسب الحجم
-• تتبع الأرباح في الوقت الفعلي
-• تقارير مالية مفصلة
-
-🏠 العودة لإعدادات النظام
-"""
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة لإعدادات النظام', callback_data='super_system_settings')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-
-async def system_edit_agent_commission_handler(update, context):
-    """Handle agent commission editing"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-👥 **تعديل عمولة الوكلاء** 👥
-
-العمولة الحالية: **{AGENT_COMMISSION_RATE * 100:.1f}%**
-
-🤝 **إدارة عمولات الوكلاء:**
-• هيكل عمولات متعدد المستويات
-• مكافآت الأداء
-• تتبع المبيعات والعمولات
-• دفعات تلقائية للعمولات
-
-🏠 العودة لإعدادات النظام
-"""
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة لإعدادات النظام', callback_data='super_system_settings')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-
-async def system_reload_config_handler(update, context):
-    """Handle config reload"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-🔄 **إعادة تحميل الإعدادات** 🔄
-
-تم إعادة تحميل إعدادات النظام بنجاح.
-
-🏠 العودة لإعدادات النظام
-"""
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة لإعدادات النظام', callback_data='super_system_settings')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-
-async def system_stats_handler(update, context):
-    """Handle system stats"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = f"""
-📊 **إحصائيات النظام** 📊
-
-📊 **إحصائيات النظام الشاملة:**
-• أداء الخادم والذاكرة
-• إحصائيات المستخدمين النشطين
-• معدلات المعاملات
-• تحليل الأخطاء والمشاكل
-• رسوم بيانية تفاعلية
-
-🏠 العودة لإعدادات النظام
-"""
-    
-    keyboard = [[InlineKeyboardButton('🏠 العودة لإعدادات النظام', callback_data='super_system_settings')]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        keyboard.extend([
+            [InlineKeyboardButton('🔄 تحديث القائمة', callback_data='admin_withdrawals')],
+            [InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ])
+        
+        await query.edit_message_text(withdrawals_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in admin withdrawals handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض طلبات السحب")
 
 # Dashboard handlers
 async def dashboard_users_handler(update, context):
@@ -2580,11 +2479,9 @@ ADMIN_CALLBACKS.update({
     'admin_wallet': admin_wallet_handler,
     'admin_send_money': admin_send_money_handler,
   # Keep for compatibility
-    'super_system_settings': system_settings_handler,
-    'super_manage_admins': manage_admins_handler,
+    'super_manage_admins': lambda u, c: __import__('bot_modules.admin_management', fromlist=['AdminManagement']).AdminManagement.manage_admins(u, c),
     'super_manage_users': manage_users_handler,
     'super_dashboard': dashboard_handler,
-    'super_backup': backup_handler,
     'super_executive_reports': executive_reports_handler,
     'super_platform_management': platform_management_handler,
     'super_commission_settings': commission_settings_handler,
@@ -2593,7 +2490,7 @@ ADMIN_CALLBACKS.update({
     'commission_management': commission_management_handler,
     'edit_commission': edit_commission_handler,
     'manage_users': manage_users_handler,
-    'manage_admins': manage_admins_handler,
+    'manage_admins': lambda u, c: __import__('bot_modules.admin_management', fromlist=['AdminManagement']).AdminManagement.manage_admins(u, c),
     'dashboard': dashboard_handler,
     'executive_reports': executive_reports_handler,
     
@@ -2601,11 +2498,17 @@ ADMIN_CALLBACKS.update({
 
     'admin_add_offers': lambda u, c: admin_add_offers_handler(u, c),
     'accounting_system': lambda u, c: accounting_system_handler(u, c),
-    'download_statements': lambda u, c: download_statements_handler(u, c),
+    'fix_missing_entries': lambda u, c: fix_missing_entries_handler(u, c),
     'trial_balance': lambda u, c: trial_balance_handler(u, c),
+    'download_statements': lambda u, c: download_statements_handler(u, c),
     'income_statement': lambda u, c: income_statement_handler(u, c),
     'balance_sheet': lambda u, c: balance_sheet_handler(u, c),
     'general_ledger': lambda u, c: general_ledger_handler(u, c),
+    
+    # Download statements submenu aliases
+    'customer_statements': lambda u, c: accounting_customers_handler(u, c),
+    'supplier_statements': lambda u, c: accounting_suppliers_handler(u, c),
+    'export_all_data': lambda u, c: export_options_handler(u, c),
     
     # Accounting reports handlers
     'accounting_transactions': lambda u, c: accounting_transactions_handler(u, c),
@@ -2613,97 +2516,94 @@ ADMIN_CALLBACKS.update({
     'accounting_suppliers': lambda u, c: accounting_suppliers_handler(u, c),
     'accounting_customers': lambda u, c: accounting_customers_handler(u, c),
     'accounting_analytics': lambda u, c: accounting_analytics_handler(u, c),
-    'accounting_export': lambda u, c: accounting_export_handler(u, c),
+    'accounting_export': lambda u, c: export_options_handler(u, c),
     'accounting_custom': lambda u, c: accounting_custom_reports_handler(u, c),
+    'accounting_withdrawals': lambda u, c: admin_withdrawals_handler(u, c),
     'accounting_search': lambda u, c: accounting_search_handler(u, c),
+    'quick_stats': lambda u, c: quick_stats_handler(u, c),
+    'quick_transaction_report': lambda u, c: quick_transaction_report_handler(u, c),
     
     # Sub-handlers for transactions
-    'transactions_detailed': lambda u, c: transactions_detailed_handler(u, c),
-    'transactions_purchases': lambda u, c: transactions_purchases_handler(u, c),
-    'transactions_transfers': lambda u, c: transactions_transfers_handler(u, c),
-    'transactions_coupons': lambda u, c: placeholder_handler(u, c, "معاملات الكوبونات"),
-    'export_transactions': lambda u, c: placeholder_handler(u, c, "تصدير المعاملات"),
-    'transactions_search': lambda u, c: placeholder_handler(u, c, "البحث في المعاملات"),
+    'transactions_detailed': lambda u, c: quick_transaction_report_handler(u, c),
+    'transactions_purchases': lambda u, c: quick_stats_handler(u, c),
+    'transactions_transfers': lambda u, c: quick_stats_handler(u, c),
+    'transactions_coupons': lambda u, c: quick_stats_handler(u, c),
+    'export_transactions': lambda u, c: export_profits_handler(u, c),
+    'transactions_search': lambda u, c: accounting_search_handler(u, c),
     
     # Sub-handlers for profits
-    'profits_detailed': lambda u, c: placeholder_handler(u, c, "تقرير الأرباح المفصل"),
-    'profits_trends': lambda u, c: placeholder_handler(u, c, "تحليل اتجاهات الأرباح"),
-    'profits_suppliers': lambda u, c: placeholder_handler(u, c, "أرباح المزودين"),
-    'profits_comparison': lambda u, c: placeholder_handler(u, c, "مقارنة فترات الأرباح"),
-    'export_profits': lambda u, c: placeholder_handler(u, c, "تصدير تقرير الأرباح"),
-    'profits_custom_period': lambda u, c: placeholder_handler(u, c, "فترة مخصصة للأرباح"),
+    'profits_detailed': lambda u, c: export_profits_handler(u, c),
+    'profits_trends': lambda u, c: accounting_profits_handler(u, c),
+    'profits_suppliers': lambda u, c: export_suppliers_handler(u, c),
+    'profits_comparison': lambda u, c: accounting_profits_handler(u, c),
+    'export_profits': lambda u, c: export_profits_handler(u, c),
+    'profits_custom_period': lambda u, c: export_profits_handler(u, c),
     
     # Sub-handlers for suppliers
-    'suppliers_detailed': lambda u, c: placeholder_handler(u, c, "تقرير المزودين المفصل"),
-    'suppliers_performance': lambda u, c: placeholder_handler(u, c, "أداء المزودين"),
-    'suppliers_commissions': lambda u, c: placeholder_handler(u, c, "عمولات المزودين"),
-    'suppliers_networks': lambda u, c: placeholder_handler(u, c, "إحصائيات الشبكات"),
-    'export_suppliers': lambda u, c: placeholder_handler(u, c, "تصدير تقرير المزودين"),
-    'suppliers_search': lambda u, c: placeholder_handler(u, c, "البحث عن مزود"),
+    'suppliers_detailed': lambda u, c: accounting_suppliers_handler(u, c),
+    'suppliers_performance': lambda u, c: accounting_suppliers_handler(u, c),
+    'suppliers_commissions': lambda u, c: accounting_suppliers_handler(u, c),
+    'suppliers_networks': lambda u, c: accounting_suppliers_handler(u, c),
+    'export_suppliers': lambda u, c: export_suppliers_handler(u, c),
+    'suppliers_search': lambda u, c: accounting_search_handler(u, c),
     
     # Sub-handlers for customers
-    'customers_detailed': lambda u, c: placeholder_handler(u, c, "تقرير العملاء المفصل"),
-    'customers_activity': lambda u, c: placeholder_handler(u, c, "نشاط العملاء"),
-    'customers_behavior': lambda u, c: placeholder_handler(u, c, "سلوك الشراء"),
-    'customers_spending': lambda u, c: placeholder_handler(u, c, "تحليل الإنفاق"),
-    'export_customers': lambda u, c: placeholder_handler(u, c, "تصدير تقرير العملاء"),
-    'customers_search': lambda u, c: placeholder_handler(u, c, "البحث عن عميل"),
+    'customers_detailed': lambda u, c: accounting_customers_handler(u, c),
+    'customers_activity': lambda u, c: accounting_customers_handler(u, c),
+    'customers_behavior': lambda u, c: accounting_customers_handler(u, c),
+    'customers_spending': lambda u, c: accounting_customers_handler(u, c),
+    'export_customers': lambda u, c: export_customers_handler(u, c),
+    'customers_search': lambda u, c: accounting_search_handler(u, c),
     
     # Sub-handlers for analytics
-    'analytics_trends': lambda u, c: placeholder_handler(u, c, "تحليل الاتجاهات"),
-    'analytics_timing': lambda u, c: placeholder_handler(u, c, "تحليل الأوقات"),
-    'analytics_products': lambda u, c: placeholder_handler(u, c, "تحليل المنتجات"),
-    'analytics_geographical': lambda u, c: placeholder_handler(u, c, "التحليل الجغرافي"),
-    'analytics_kpi': lambda u, c: placeholder_handler(u, c, "مؤشرات الأداء"),
-    'analytics_forecasting': lambda u, c: placeholder_handler(u, c, "التنبؤات"),
+    'analytics_trends': lambda u, c: accounting_analytics_handler(u, c),
+    'analytics_timing': lambda u, c: quick_stats_handler(u, c),
+    'analytics_products': lambda u, c: accounting_analytics_handler(u, c),
+    'analytics_geographical': lambda u, c: accounting_analytics_handler(u, c),
+    'analytics_kpi': lambda u, c: quick_stats_handler(u, c),
+    'analytics_forecasting': lambda u, c: accounting_analytics_handler(u, c),
     
     # Sub-handlers for export
-    'export_transactions_file': lambda u, c: placeholder_handler(u, c, "تصدير ملف المعاملات"),
-    'export_profits_file': lambda u, c: placeholder_handler(u, c, "تصدير ملف الأرباح"),
-    'export_suppliers_file': lambda u, c: placeholder_handler(u, c, "تصدير ملف المزودين"),
-    'export_customers_file': lambda u, c: placeholder_handler(u, c, "تصدير ملف العملاء"),
-    'export_comprehensive': lambda u, c: placeholder_handler(u, c, "التصدير الشامل"),
-    'export_custom': lambda u, c: placeholder_handler(u, c, "التصدير المخصص"),
-    'export_date_range': lambda u, c: placeholder_handler(u, c, "اختيار فترة التصدير"),
-    'export_advanced': lambda u, c: placeholder_handler(u, c, "خيارات التصدير المتقدمة"),
+    'export_transactions_file': lambda u, c: export_profits_handler(u, c),
+    'export_profits_file': lambda u, c: export_profits_handler(u, c),
+    'export_suppliers_file': lambda u, c: export_suppliers_handler(u, c),
+    'export_customers_file': lambda u, c: export_customers_handler(u, c),
+    'export_comprehensive': lambda u, c: export_comprehensive_handler(u, c),
+    'quick_export': lambda u, c: quick_export_handler(u, c),
+    'export_custom': lambda u, c: export_profits_handler(u, c),
+    'export_date_range': lambda u, c: export_profits_handler(u, c),
+    'export_advanced': lambda u, c: quick_export_handler(u, c),
     
     # Sub-handlers for custom reports
-    'custom_date_range': lambda u, c: placeholder_handler(u, c, "تقرير فترة محددة"),
-    'custom_supplier': lambda u, c: placeholder_handler(u, c, "تقرير مزود محدد"),
-    'custom_customer': lambda u, c: placeholder_handler(u, c, "تقرير عميل محدد"),
-    'custom_transaction_type': lambda u, c: placeholder_handler(u, c, "تقرير نوع معاملة"),
-    'custom_comparison': lambda u, c: placeholder_handler(u, c, "مقارنة فترتين"),
-    'custom_growth_analysis': lambda u, c: placeholder_handler(u, c, "تحليل النمو"),
-    'custom_recurring': lambda u, c: placeholder_handler(u, c, "التقرير الدوري"),
-    'custom_advanced': lambda u, c: placeholder_handler(u, c, "الخيارات المتقدمة"),
+    'custom_date_range': lambda u, c: export_profits_handler(u, c),
+    'custom_supplier': lambda u, c: export_suppliers_handler(u, c),
+    'custom_customer': lambda u, c: export_customers_handler(u, c),
+    'custom_transaction_type': lambda u, c: quick_stats_handler(u, c),
+    'custom_comparison': lambda u, c: accounting_analytics_handler(u, c),
+    'custom_growth_analysis': lambda u, c: executive_reports_handler(u, c),
+    'custom_recurring': lambda u, c: export_comprehensive_handler(u, c),
+    'custom_advanced': lambda u, c: quick_export_handler(u, c),
     
     # Sub-handlers for search
-    'search_by_user': lambda u, c: placeholder_handler(u, c, "البحث بالمستخدم"),
-    'search_by_transaction': lambda u, c: placeholder_handler(u, c, "البحث بالمعاملة"),
-    'search_by_date': lambda u, c: placeholder_handler(u, c, "البحث بالتاريخ"),
-    'search_by_network': lambda u, c: placeholder_handler(u, c, "البحث بالشبكة"),
-    'search_by_amount': lambda u, c: placeholder_handler(u, c, "البحث بالمبلغ"),
-    'search_advanced': lambda u, c: placeholder_handler(u, c, "البحث المتقدم"),
-    'search_statistics': lambda u, c: placeholder_handler(u, c, "إحصائيات البحث"),
-    'search_export': lambda u, c: placeholder_handler(u, c, "تصدير نتائج البحث"),
+    'search_by_user': lambda u, c: accounting_search_handler(u, c),
+    'search_by_transaction': lambda u, c: accounting_search_handler(u, c),
+    'search_by_date': lambda u, c: accounting_search_handler(u, c),
+    'search_by_network': lambda u, c: accounting_search_handler(u, c),
+    'search_by_amount': lambda u, c: accounting_search_handler(u, c),
+    'search_advanced': lambda u, c: accounting_search_handler(u, c),
+    'search_statistics': lambda u, c: quick_stats_handler(u, c),
+    'search_export': lambda u, c: export_profits_handler(u, c),
     
     # Coupon management
     'super_create_coupons': lambda u, c: create_coupons_handler(u, c),
+    'create_single_coupon': lambda u, c: create_single_coupon_start(u, c),
+    'create_bulk_coupons': lambda u, c: create_bulk_coupons_start(u, c),
     'super_coupons_stats': lambda u, c: coupons_stats_handler(u, c),
     'super_list_coupons': lambda u, c: list_coupons_handler(u, c),
     
-    # Backup handlers
-    'backup_full': backup_full_handler,
-    'backup_data_only': backup_data_only_handler,
-    'backup_restore': backup_restore_handler,
-    'backup_list': backup_list_handler,
-    'backup_schedule': backup_schedule_handler,
-    'backup_settings': backup_settings_handler,
-    # System settings handlers
-    'system_edit_card_commission': system_edit_card_commission_handler,
-    'system_edit_agent_commission': system_edit_agent_commission_handler,
-    'system_reload_config': system_reload_config_handler,
-    'system_stats': system_stats_handler,
+    # Backup and system handlers removed as requested
+    # Additional cleanup
+    'admin_withdrawals': admin_withdrawals_handler,
     # Dashboard handlers
     'dashboard_users': dashboard_users_handler,
     'dashboard_financial': dashboard_financial_handler,
@@ -2715,6 +2615,21 @@ ADMIN_CALLBACKS.update({
     'admin_reports': admin_reports_handler,
     'admin_permissions': admin_permissions_handler,
     'admin_banned': admin_banned_handler,
+
+    # Extended admin management shortcuts
+    # Route admin management to the new AdminManagement module
+    'admin_dashboard': lambda u, c: __import__('bot_modules.admin_management', fromlist=['AdminManagement']).AdminManagement.get_admin_dashboard(u, c),
+    'admin_manage_admins': lambda u, c: __import__('bot_modules.admin_management', fromlist=['AdminManagement']).AdminManagement.manage_admins(u, c),
+    'admin_permissions_management': admin_permissions_handler,
+    'admin_performance_evaluation': admin_reports_handler,
+    'admin_banned_management': admin_banned_handler,
+    'admin_activity_analysis': admin_reports_handler,
+    'admin_live_monitoring': lambda u, c: placeholder_handler(u, c, "المراقبة المباشرة"),
+    'admin_export_analytics': admin_reports_handler,
+    'admin_charts': lambda u, c: placeholder_handler(u, c, "الرسوم البيانية"),
+    'admin_custom_report': admin_reports_handler,
+    'admin_analytics_settings': lambda u, c: placeholder_handler(u, c, "إعدادات التحليل"),
+    'admin_send_report': admin_reports_handler,
     # User management handlers
     'users_list_all': users_list_all_handler,
     'users_search': users_search_handler,
@@ -2724,10 +2639,7 @@ ADMIN_CALLBACKS.update({
     'users_top': users_top_handler,
     # Additional handlers for improved functionality
     'super_detailed_report': lambda u, c: placeholder_handler(u, c, "التقرير المفصل"),
-    'system_edit_transfer_fee': lambda u, c: placeholder_handler(u, c, "تعديل رسوم التحويل"),
-    'system_security': lambda u, c: placeholder_handler(u, c, "إعدادات الأمان"),
-    'system_notifications': lambda u, c: placeholder_handler(u, c, "إعدادات الإشعارات"),
-    'system_maintenance_toggle': lambda u, c: placeholder_handler(u, c, "تبديل وضع الصيانة"),
+    # System handlers removed as requested
     'dashboard_networks': lambda u, c: placeholder_handler(u, c, "تقرير الشبكات"),
     'dashboard_charts': lambda u, c: placeholder_handler(u, c, "الرسوم البيانية"),
     'users_list_all': lambda u, c: placeholder_handler(u, c, "عرض جميع المستخدمين"),
@@ -2744,6 +2656,12 @@ ADMIN_CALLBACKS.update({
     'report_monthly': lambda u, c: placeholder_handler(u, c, "تقرير شهري"),
     'export_pdf_report': lambda u, c: placeholder_handler(u, c, "تصدير PDF"),
     'export_excel': lambda u, c: placeholder_handler(u, c, "تصدير Excel"),
+    'sales_reports': lambda u, c: placeholder_handler(u, c, "تقارير المبيعات"),
+    'offers_reports': lambda u, c: placeholder_handler(u, c, "تقارير العروض"),
+    'view_all_networks': lambda u, c: placeholder_handler(u, c, "عرض جميع الشبكات"),
+    'growth_analysis_report': lambda u, c: placeholder_handler(u, c, "تحليل النمو"),
+    'notification_settings': lambda u, c: placeholder_handler(u, c, "إعدادات الإشعارات"),
+    'user_analytics_report': lambda u, c: placeholder_handler(u, c, "تحليلات المستخدمين"),
 })
 
 # إضافة الدوال المفقودة كـ placeholders
@@ -2883,10 +2801,13 @@ async def accounting_system_handler(update: Update, context: CallbackContext):
              InlineKeyboardButton('💸 تقارير المعاملات', callback_data='accounting_transactions')],
             [InlineKeyboardButton('🏪 تقارير المزودين', callback_data='accounting_suppliers'),
              InlineKeyboardButton('👥 تقارير العملاء', callback_data='accounting_customers')],
+            [InlineKeyboardButton('💰 سحوبات المزودين', callback_data='accounting_withdrawals')],
             [InlineKeyboardButton('📊 التحليلات المتقدمة', callback_data='accounting_analytics'),
              InlineKeyboardButton('📄 تقارير مخصصة', callback_data='accounting_custom')],
-            [InlineKeyboardButton('💾 تصدير البيانات', callback_data='accounting_export'),
+            [InlineKeyboardButton('💾 تصدير البيانات', callback_data='export_profits'),
              InlineKeyboardButton('🔍 بحث في السجلات', callback_data='accounting_search')],
+            [InlineKeyboardButton('🔧 إصلاح القيود المفقودة', callback_data='fix_missing_entries'),
+             InlineKeyboardButton('⚖️ ميزان المراجعة', callback_data='trial_balance')],
             [InlineKeyboardButton('🔙 العودة للوحة الإدارة', callback_data='super_admin_panel')]
         ]
         
@@ -2899,6 +2820,210 @@ async def accounting_system_handler(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in accounting system handler: {e}")
         await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في النظام المحاسبي.")
+
+async def fix_missing_entries_handler(update: Update, context: CallbackContext):
+    """إصلاح القيود المحاسبية المفقودة"""
+    try:
+        query = update.callback_query
+        await query.answer("🔧 جاري إصلاح القيود المفقودة...")
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} هذه العملية مقتصرة على المشرف الأعلى.")
+            return
+        
+        # استيراد محرك المحاسبة
+        from accounting_engine import AccountingEngine
+        
+        # ملء القيود المفقودة
+        success_count, total_missing = AccountingEngine.backfill_missing_entries()
+        
+        # التحقق من توازن الميزان بعد الإصلاح
+        balance_check = AccountingEngine.verify_balance_integrity()
+        
+        fix_text = f"""
+🔧 **تقرير إصلاح القيود المحاسبية** 🔧
+
+✅ **تم الإصلاح بنجاح!**
+
+📊 **النتائج:**
+• المعاملات المفقودة: **{total_missing}**
+• تم إصلاحها: **{success_count}**
+• نسبة النجاح: **{(success_count/max(total_missing,1)*100):.1f}%**
+
+⚖️ **حالة الميزان بعد الإصلاح:**
+• إجمالي المدين: **{balance_check['total_debit']:,.2f}** ريال
+• إجمالي الدائن: **{balance_check['total_credit']:,.2f}** ريال
+• الفرق: **{balance_check['difference']:,.2f}** ريال
+• الحالة: **{'✅ متوازن' if balance_check['is_balanced'] else '❌ غير متوازن'}**
+
+💡 **ملاحظة:** جميع المعاملات الجديدة ستُسجل تلقائياً
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('⚖️ عرض ميزان المراجعة', callback_data='trial_balance'),
+             InlineKeyboardButton('📊 التقارير المحاسبية', callback_data='accounting_system')],
+            [InlineKeyboardButton('🔙 العودة للنظام المحاسبي', callback_data='accounting_system')]
+        ]
+        
+        await query.edit_message_text(fix_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error fixing missing entries: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في إصلاح القيود المفقودة.")
+
+async def trial_balance_handler(update: Update, context: CallbackContext):
+    """عرض ميزان المراجعة"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} هذه العملية مقتصرة على المشرف الأعلى.")
+            return
+        
+        # استيراد محرك المحاسبة
+        from accounting_engine import AccountingEngine
+        
+        # الحصول على ميزان المراجعة
+        accounts = AccountingEngine.get_trial_balance()
+        balance_check = AccountingEngine.verify_balance_integrity()
+        
+        trial_balance_text = f"""
+⚖️ **ميزان المراجعة** ⚖️
+
+📅 **التاريخ:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+📊 **ملخص الحسابات:**
+"""
+        
+        # تجميع الحسابات حسب النوع
+        account_types = {}
+        for account in accounts:
+            acc_type = account['account_type']
+            if acc_type not in account_types:
+                account_types[acc_type] = []
+            account_types[acc_type].append(account)
+        
+        type_names = {
+            'asset': '🏦 الأصول',
+            'liability': '💳 الخصوم', 
+            'equity': '👑 حقوق الملكية',
+            'revenue': '💰 الإيرادات',
+            'expense': '💸 المصروفات'
+        }
+        
+        total_debits = 0
+        total_credits = 0
+        
+        for acc_type, type_accounts in account_types.items():
+            if type_accounts:  # فقط إذا كان هناك حسابات
+                trial_balance_text += f"\n{type_names.get(acc_type, acc_type)}:\n"
+                for account in type_accounts:
+                    if account['total_debit'] > 0 or account['total_credit'] > 0:
+                        trial_balance_text += f"• {account['account_code']} - {account['account_name'][:25]}\n"
+                        trial_balance_text += f"  مدين: {account['total_debit']:,.2f} | دائن: {account['total_credit']:,.2f}\n"
+                        total_debits += account['total_debit']
+                        total_credits += account['total_credit']
+        
+        trial_balance_text += f"""
+
+📊 **الإجماليات:**
+📈 إجمالي المدين: **{total_debits:,.2f}** ريال
+📉 إجمالي الدائن: **{total_credits:,.2f}** ريال
+⚖️ الفرق: **{abs(total_debits - total_credits):,.2f}** ريال
+
+🎯 **حالة الميزان:** {'✅ متوازن' if balance_check['is_balanced'] else '❌ غير متوازن'}
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('🔧 إصلاح القيود', callback_data='fix_missing_entries'),
+             InlineKeyboardButton('📊 تقارير مفصلة', callback_data='accounting_transactions')],
+            [InlineKeyboardButton('🔙 العودة للنظام المحاسبي', callback_data='accounting_system')]
+        ]
+        
+        await query.edit_message_text(trial_balance_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in trial balance handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض ميزان المراجعة.")
+
+async def download_statements_handler(update: Update, context: CallbackContext):
+    """تنزيل كشوف الحسابات للإدارة"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user or user['role'] not in ['admin', 'super_admin']:
+            await query.edit_message_text(f"{EMOJIS['error']} هذه الميزة مقتصرة على الإدارة.")
+            return
+        
+        # حساب الإحصائيات للعرض
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # حساب أرباح المشرف الأعلى
+        cursor.execute("SELECT COALESCE(SUM(admin_share), 0) FROM transactions WHERE admin_share IS NOT NULL")
+        result = cursor.fetchone()
+        admin_earnings = result[0] if result else 0
+        
+        # عدد المزودين النشطين
+        cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'supplier' AND is_active = 1")
+        result = cursor.fetchone()
+        active_suppliers = result[0] if result else 0
+        
+        # عدد العملاء النشطين
+        cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'customer' AND is_active = 1")
+        result = cursor.fetchone()
+        active_customers = result[0] if result else 0
+        
+        conn.close()
+        
+        statements_text = f"""
+📄 **تنزيل كشوف الحسابات** 📄
+
+👑 **المشرف:** {user['full_name']}
+
+📊 **إحصائيات سريعة:**
+💰 إجمالي الأرباح المحصلة: **{admin_earnings:,.2f}** ريال (حصة الإدارة 30%)
+🏪 عدد المزودين النشطين: **{active_suppliers}** مزود
+👥 عدد العملاء النشطين: **{active_customers}** عميل
+
+📋 **الخيارات المتاحة:**
+
+🎯 **كشوف العملاء:**
+• تنزيل كشوف جميع العملاء
+• العملاء ذوي الأرصدة العالية
+• العملاء الجدد (آخر 30 يوم)
+
+🏪 **كشوف المزودين:**
+• تنزيل كشوف جميع المزودين
+• تقرير أرباح المزودين (70%)
+• أداء المبيعات حسب المزود
+
+📊 **التقارير الإجمالية:**
+• تقرير شامل لجميع المعاملات
+• تقرير تقسيم الأرباح (70%-30%)
+• تقرير طلبات السحب
+
+✅ **جميع التقارير تشمل النظام المحاسبي الجديد**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('👥 كشوف العملاء', callback_data='customer_statements'),
+             InlineKeyboardButton('🏪 كشوف المزودين', callback_data='supplier_statements')],
+            [InlineKeyboardButton('📊 التقارير الإجمالية', callback_data='admin_reports'),
+             InlineKeyboardButton('💾 تصدير البيانات', callback_data='export_all_data')],
+            [InlineKeyboardButton('🔙 العودة للوحة الإدارة', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(statements_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in download statements handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تنزيل كشوف الحسابات.")
 
 # ===== معالجات التقارير المحاسبية =====
 
@@ -2949,9 +3074,11 @@ async def accounting_transactions_handler(update: Update, context: CallbackConte
         
         # أحدث المعاملات
         cursor.execute("""
-            SELECT t.transaction_type, t.amount, t.created_at, u.full_name
+            SELECT t.type, t.amount, t.created_at, 
+                   COALESCE(uf.full_name, ut.full_name, 'غير محدد') as user_name
             FROM transactions t
-            LEFT JOIN users u ON t.user_id = u.id
+            LEFT JOIN users uf ON t.from_user = uf.id
+            LEFT JOIN users ut ON t.to_user = ut.id
             ORDER BY t.created_at DESC
             LIMIT 5
         """)
@@ -2959,25 +3086,20 @@ async def accounting_transactions_handler(update: Update, context: CallbackConte
         
         conn.close()
         
-        transactions_text = f"""
-💸 **تقارير المعاملات** 💸
-
-📊 **إحصائيات سريعة:**
-
-📅 **اليوم:**
-• العدد: {today_count:,} معاملة
-• المبلغ: {today_amount:,.2f} ريال
-
-📅 **آخر 7 أيام:**
-• العدد: {week_count:,} معاملة  
-• المبلغ: {week_amount:,.2f} ريال
-
-📅 **آخر 30 يوم:**
-• العدد: {month_count:,} معاملة
-• المبلغ: {month_amount:,.2f} ريال
-
-🔄 **أحدث المعاملات:**
-"""
+        transactions_text = (
+            "💸 **تقارير المعاملات** 💸\n\n"
+            "📊 **إحصائيات سريعة:**\n\n"
+            "📅 **اليوم:**\n"
+            f"• العدد: {today_count:,} معاملة\n"
+            f"• المبلغ: {today_amount:,.2f} ريال\n\n"
+            "📅 **آخر 7 أيام:**\n"
+            f"• العدد: {week_count:,} معاملة\n"
+            f"• المبلغ: {week_amount:,.2f} ريال\n\n"
+            "📅 **آخر 30 يوم:**\n"
+            f"• العدد: {month_count:,} معاملة\n"
+            f"• المبلغ: {month_amount:,.2f} ريال\n\n"
+            "🔄 **أحدث المعاملات:**"
+        )
         
         if recent_transactions:
             for i, transaction in enumerate(recent_transactions, 1):
@@ -2995,10 +3117,10 @@ async def accounting_transactions_handler(update: Update, context: CallbackConte
                     "withdrawal": "سحب"
                 }.get(trans_type, trans_type)
                 
-                transactions_text += f"""
-{i}. {type_emoji} **{type_name}** - {amount:,.2f} ريال
-   👤 {user_display} | 📅 {date_str}
-"""
+                transactions_text += (
+                    f"\n{i}. {type_emoji} **{type_name}** - {amount:,.2f} ريال\n"
+                    f"   👤 {md_safe(user_display)} | 📅 {md_safe(date_str)}"
+                )
         else:
             transactions_text += "\n• لا توجد معاملات حديثة"
         
@@ -3048,7 +3170,7 @@ async def accounting_profits_handler(update: Update, context: CallbackContext):
         cursor.execute("""
             SELECT COUNT(*), SUM(amount * 0.1) as commission
             FROM transactions 
-            WHERE transaction_type = 'purchase' 
+            WHERE type = 'card_purchase' 
             AND DATE(created_at) = DATE('now')
         """)
         today_profits = cursor.fetchone()
@@ -3059,7 +3181,7 @@ async def accounting_profits_handler(update: Update, context: CallbackContext):
         cursor.execute("""
             SELECT COUNT(*), SUM(amount * 0.1) as commission
             FROM transactions 
-            WHERE transaction_type = 'purchase' 
+            WHERE type = 'card_purchase' 
             AND DATE(created_at) >= DATE('now', '-7 days')
         """)
         week_profits = cursor.fetchone()
@@ -3070,26 +3192,25 @@ async def accounting_profits_handler(update: Update, context: CallbackContext):
         cursor.execute("""
             SELECT COUNT(*), SUM(amount * 0.1) as commission
             FROM transactions 
-            WHERE transaction_type = 'purchase' 
+            WHERE type = 'card_purchase' 
             AND DATE(created_at) >= DATE('now', '-30 days')
         """)
         month_profits = cursor.fetchone()
         month_sales_count = month_profits[0] if month_profits[0] else 0
         month_commission = month_profits[1] if month_profits[1] else 0.0
         
-        # أرباح المزودين اليوم
-        cursor.execute("""
+        # أرباح المزودين اليوم (تقريب: ربط المزود عبر to_user)
+        cursor.execute('''
             SELECT u.full_name, COUNT(*) as sales, SUM(t.amount) as revenue
             FROM transactions t
-            JOIN network_cards nc ON t.description LIKE '%' || nc.network_id || '%'
-            JOIN networks n ON nc.network_id = n.id  
-            JOIN users u ON n.supplier_id = u.id
-            WHERE t.transaction_type = 'purchase'
+            JOIN users u ON t.to_user = u.id
+            WHERE t.type = 'card_purchase'
+            AND u.role = 'supplier'
             AND DATE(t.created_at) = DATE('now')
-            GROUP BY u.id, u.full_name
+            GROUP BY u.id
             ORDER BY revenue DESC
             LIMIT 5
-        """)
+        ''')
         top_suppliers_today = cursor.fetchall()
         
         conn.close()
@@ -3132,7 +3253,7 @@ async def accounting_profits_handler(update: Update, context: CallbackContext):
             cursor.execute("""
                 SELECT SUM(amount * 0.1) as commission
                 FROM transactions 
-                WHERE transaction_type = 'purchase' 
+                WHERE type = 'card_purchase' 
                 AND DATE(created_at) BETWEEN DATE('now', '-14 days') AND DATE('now', '-7 days')
             """)
             prev_week = cursor.fetchone()
@@ -3201,17 +3322,14 @@ async def accounting_suppliers_handler(update: Update, context: CallbackContext)
         
         # أفضل المزودين حسب المبيعات
         cursor.execute("""
-            SELECT u.full_name, u.phone, COUNT(t.id) as sales_count, 
-                   SUM(t.amount) as revenue, n.name as network_name
+            SELECT u.full_name, u.phone, u.balance,
+                   COUNT(t.id) as sales_count, 
+                   SUM(t.amount) as revenue
             FROM users u
-            LEFT JOIN networks n ON u.id = n.supplier_id
-            LEFT JOIN network_cards nc ON n.id = nc.network_id
-            LEFT JOIN transactions t ON t.description LIKE '%' || n.id || '%' 
-                                    AND t.transaction_type = 'purchase'
-                                    AND DATE(t.created_at) >= DATE('now', '-30 days')
+            LEFT JOIN transactions t ON (u.id = t.to_user AND t.type = 'card_purchase')
             WHERE u.role = 'supplier' AND u.is_active = 1
-            GROUP BY u.id, u.full_name, u.phone, n.name
-            ORDER BY revenue DESC
+            GROUP BY u.id, u.full_name, u.phone, u.balance
+            ORDER BY revenue DESC, u.balance DESC
             LIMIT 10
         """)
         top_suppliers = cursor.fetchall()
@@ -3220,10 +3338,8 @@ async def accounting_suppliers_handler(update: Update, context: CallbackContext)
         cursor.execute("""
             SELECT u.full_name, COUNT(t.id) as today_sales, SUM(t.amount) as today_revenue
             FROM users u
-            LEFT JOIN networks n ON u.id = n.supplier_id
-            LEFT JOIN transactions t ON t.description LIKE '%' || n.id || '%' 
-                                    AND t.transaction_type = 'purchase'
-                                    AND DATE(t.created_at) = DATE('now')
+            LEFT JOIN transactions t ON (u.id = t.to_user AND t.type = 'card_purchase'
+                                       AND DATE(t.created_at) = DATE('now'))
             WHERE u.role = 'supplier' AND u.is_active = 1
             GROUP BY u.id, u.full_name
             HAVING today_sales > 0
@@ -3343,9 +3459,8 @@ async def accounting_customers_handler(update: Update, context: CallbackContext)
             SELECT u.full_name, u.phone, COUNT(t.id) as purchases, 
                    SUM(t.amount) as total_spent, u.balance, u.created_at
             FROM users u
-            LEFT JOIN transactions t ON u.id = t.user_id 
-                                    AND t.transaction_type = 'purchase'
-                                    AND DATE(t.created_at) >= DATE('now', '-30 days')
+            LEFT JOIN transactions t ON (u.id = t.from_user AND t.type = 'card_purchase'
+                                       AND DATE(t.created_at) >= DATE('now', '-30 days'))
             WHERE u.role = 'customer' AND u.is_active = 1
             GROUP BY u.id, u.full_name, u.phone, u.balance, u.created_at
             ORDER BY total_spent DESC
@@ -3357,10 +3472,9 @@ async def accounting_customers_handler(update: Update, context: CallbackContext)
         cursor.execute("""
             SELECT u.full_name, COUNT(t.id) as today_purchases, SUM(t.amount) as today_spent
             FROM users u
-            JOIN transactions t ON u.id = t.user_id 
-            WHERE t.transaction_type = 'purchase'
-            AND DATE(t.created_at) = DATE('now')
-            AND u.role = 'customer'
+            LEFT JOIN transactions t ON (u.id = t.from_user AND t.type = 'card_purchase'
+                                       AND DATE(t.created_at) = DATE('now'))
+            WHERE u.role = 'customer' AND u.is_active = 1
             GROUP BY u.id, u.full_name
             ORDER BY today_spent DESC
             LIMIT 5
@@ -3392,9 +3506,11 @@ async def accounting_customers_handler(update: Update, context: CallbackContext)
         if active_customers_today:
             for i, customer in enumerate(active_customers_today, 1):
                 name, purchases, spent = customer
+                purchases_display = purchases if purchases else 0
+                spent_display = spent if spent else 0.0
                 customers_text += f"""
 {i}. 👤 **{name}**
-   🛒 {purchases} مشترى | 💰 {spent:,.2f} ريال
+   🛒 {purchases_display} مشترى | 💰 {spent_display:,.2f} ريال
 """
         else:
             customers_text += "\n• لا توجد مشتريات اليوم"
@@ -3470,7 +3586,7 @@ async def accounting_analytics_handler(update: Update, context: CallbackContext)
                 COUNT(*) as transactions,
                 SUM(amount) as revenue
             FROM transactions 
-            WHERE transaction_type = 'purchase'
+            WHERE type = 'card_purchase'
             AND DATE(created_at) >= DATE('now', '-6 months')
             GROUP BY strftime('%Y-%m', created_at)
             ORDER BY month DESC
@@ -3484,7 +3600,7 @@ async def accounting_analytics_handler(update: Update, context: CallbackContext)
                 strftime('%H', created_at) as hour,
                 COUNT(*) as transactions
             FROM transactions 
-            WHERE transaction_type = 'purchase'
+            WHERE type = 'card_purchase'
             AND DATE(created_at) >= DATE('now', '-7 days')
             GROUP BY strftime('%H', created_at)
             ORDER BY transactions DESC
@@ -3500,7 +3616,7 @@ async def accounting_analytics_handler(update: Update, context: CallbackContext)
                 SUM(t.amount) as total_revenue
             FROM transactions t
             JOIN network_cards nc ON t.description LIKE '%' || nc.network_id || '%'
-            WHERE t.transaction_type = 'purchase'
+            WHERE t.type = 'card_purchase'
             AND DATE(t.created_at) >= DATE('now', '-30 days')
             GROUP BY nc.card_value
             ORDER BY sales_count DESC
@@ -3687,7 +3803,7 @@ async def transactions_detailed_handler(update: Update, context: CallbackContext
         
         # تقرير مفصل آخر 20 معاملة
         cursor.execute("""
-            SELECT t.id, t.transaction_type, t.amount, t.description, 
+            SELECT t.id, t.type, t.amount, t.description, 
                    t.created_at, u.full_name, u.phone
             FROM transactions t
             LEFT JOIN users u ON t.user_id = u.id
@@ -3773,7 +3889,7 @@ async def transactions_purchases_handler(update: Update, context: CallbackContex
         cursor.execute("""
             SELECT COUNT(*), SUM(amount), AVG(amount)
             FROM transactions 
-            WHERE transaction_type = 'purchase'
+            WHERE type = 'card_purchase'
             AND DATE(created_at) >= DATE('now', '-30 days')
         """)
         purchase_stats = cursor.fetchone()
@@ -3786,7 +3902,7 @@ async def transactions_purchases_handler(update: Update, context: CallbackContex
             SELECT t.amount, t.created_at, u.full_name, t.description
             FROM transactions t
             LEFT JOIN users u ON t.user_id = u.id
-            WHERE t.transaction_type = 'purchase'
+            WHERE t.type = 'card_purchase'
             ORDER BY t.created_at DESC
             LIMIT 10
         """)
@@ -3859,7 +3975,7 @@ async def transactions_transfers_handler(update: Update, context: CallbackContex
         cursor.execute("""
             SELECT COUNT(*), SUM(amount), AVG(amount)
             FROM transactions 
-            WHERE transaction_type = 'transfer'
+            WHERE type = 'transfer'
             AND DATE(created_at) >= DATE('now', '-30 days')
         """)
         transfer_stats = cursor.fetchone()
@@ -3872,7 +3988,7 @@ async def transactions_transfers_handler(update: Update, context: CallbackContex
             SELECT t.amount, t.created_at, u.full_name, t.description
             FROM transactions t
             LEFT JOIN users u ON t.user_id = u.id
-            WHERE t.transaction_type = 'transfer'
+            WHERE t.type = 'transfer'
             ORDER BY t.created_at DESC
             LIMIT 10
         """)
@@ -4140,9 +4256,9 @@ async def create_coupons_handler(update: Update, context: CallbackContext):
 
 📋 **تعليمات إنشاء الكوبون:**
 1. اختر نوع الكوبون المطلوب
-2. حدد القيمة والكمية
-3. أضف وصف اختياري
-4. تأكيد الإنشاء
+2. حدد القيمة والكمية  
+3. سيتم إنشاء كود بتنسيق A + 8 أرقام
+4. الكوبون صالح لمدة 30 يوم
 
 🎯 **أنواع الكوبونات المتاحة:**
 """
@@ -4150,10 +4266,6 @@ async def create_coupons_handler(update: Update, context: CallbackContext):
         keyboard = [
             [InlineKeyboardButton('💰 كوبون فردي', callback_data='create_single_coupon'),
              InlineKeyboardButton('📦 كوبونات متعددة', callback_data='create_bulk_coupons')],
-            [InlineKeyboardButton('⚡ كوبون سريع (10 ريال)', callback_data='create_quick_coupon_10'),
-             InlineKeyboardButton('⚡ كوبون سريع (25 ريال)', callback_data='create_quick_coupon_25')],
-            [InlineKeyboardButton('⚡ كوبون سريع (50 ريال)', callback_data='create_quick_coupon_50'),
-             InlineKeyboardButton('⚡ كوبون سريع (100 ريال)', callback_data='create_quick_coupon_100')],
             [InlineKeyboardButton('📊 إحصائيات الكوبونات', callback_data='coupons_stats'),
              InlineKeyboardButton('📋 قائمة الكوبونات', callback_data='list_coupons')],
             [InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
@@ -4165,27 +4277,62 @@ async def create_coupons_handler(update: Update, context: CallbackContext):
         logger.error(f"Error in create coupons handler: {e}")
         await query.edit_message_text(coupon_error("عرض واجهة إنشاء الكوبونات"))
 
-async def create_quick_coupon_handler(update: Update, context: CallbackContext, amount: int):
-    """إنشاء كوبون سريع بقيمة محددة"""
+async def create_single_coupon_start(update: Update, context: CallbackContext):
+    """بدء إنشاء كوبون فردي: يطلب إدخال المبلغ فقط (بدون صلاحية)"""
     try:
         query = update.callback_query
         await query.answer()
-        
         user = get_user(query.from_user.id)
         if not user or user['role'] != 'super_admin':
-            await query.edit_message_text("❌ ليس لديك صلاحية لهذه العملية.")
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
             return
-        
-        # إنشاء كود كوبون عشوائي
-        import random
-        import string
-        coupon_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
-        
-        # إدراج الكوبون في قاعدة البيانات
+        text = (
+            "💰 إدخال قيمة الكوبون\n\n"
+            "✍️ اكتب قيمة الكوبون بالريال فقط (مثال: 50 أو 75.5)"
+        )
+        context.user_data['awaiting_single_coupon'] = True
+        await query.edit_message_text(text)
+    except Exception as e:
+        logger.error(f"Error in single coupon start: {e}")
+        await query.edit_message_text(coupon_error("بدء إنشاء كوبون فردي"))
+
+async def process_single_coupon_input(update: Update, context: CallbackContext):
+    """معالجة إدخال إنشاء كوبون فردي (المبلغ فقط)"""
+    try:
+        if not context.user_data.get('awaiting_single_coupon'):
+            return
+        user = get_user(update.effective_user.id)
+        if not user or user['role'] != 'super_admin':
+            await update.message.reply_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        parts = update.message.text.strip().split()
+        if len(parts) == 0:
+            await update.message.reply_text(f"{EMOJIS['error']} أدخل قيمة صحيحة.")
+            return
+        try:
+            amount = float(parts[0].replace(',', '.'))
+            if amount <= 0:
+                raise ValueError("amount")
+        except Exception:
+            await update.message.reply_text(f"{EMOJIS['error']} المبلغ غير صحيح.")
+            return
+        # لا توجد صلاحية (expiry) وفق الطلب
+        # توليد كود فريد
+        import random, string
+        coupon_code = None
         conn = get_db_connection()
         cursor = conn.cursor()
-        
-        # إنشاء جدول الكوبونات إذا لم يكن موجوداً
+        for _ in range(100):
+            trial_code = 'A' + ''.join(random.choices(string.digits, k=8))
+            cursor.execute('SELECT 1 FROM coupons WHERE coupon_code = ?', (trial_code,))
+            if not cursor.fetchone():
+                coupon_code = trial_code
+                break
+        if not coupon_code:
+            conn.close()
+            await update.message.reply_text(f"{EMOJIS['error']} تعذر إنشاء كود فريد. حاول مجدداً.")
+            return
+        # إنشاء الجدول إن لم يوجد
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS coupons (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4193,50 +4340,153 @@ async def create_quick_coupon_handler(update: Update, context: CallbackContext, 
                 amount REAL NOT NULL,
                 is_used INTEGER DEFAULT 0,
                 used_by INTEGER DEFAULT NULL,
-                created_by INTEGER NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                used_at DATETIME DEFAULT NULL,
-                expiry_date DATETIME DEFAULT NULL,
-                description TEXT DEFAULT NULL,
-                FOREIGN KEY (used_by) REFERENCES users (id),
-                FOREIGN KEY (created_by) REFERENCES users (id)
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                used_at TIMESTAMP,
+                expiry_date TIMESTAMP,
+                description TEXT
             )
         ''')
-        
-        from datetime import datetime, timedelta
-        expiry_date = datetime.now() + timedelta(days=30)
-        
         cursor.execute('''
             INSERT INTO coupons (coupon_code, amount, created_by, expiry_date, description)
             VALUES (?, ?, ?, ?, ?)
-        ''', (coupon_code, amount, user['id'], expiry_date.isoformat(), f'كوبون سريع {amount} ريال'))
-        
+        ''', (coupon_code, amount, user['id'], None, 'كوبون فردي'))
         conn.commit()
         conn.close()
-        
-        success_text = f"""
-✅ **تم إنشاء الكوبون بنجاح!** ✅
-
-🎟️ **كود الكوبون:** `{coupon_code}`
-💰 **القيمة:** {amount} ريال
-👑 **المنشئ:** {user['full_name']}
-📅 **تاريخ الانتهاء:** {expiry_date.strftime('%Y-%m-%d')}
-
-📋 **ملاحظة:** احفظ كود الكوبون في مكان آمن
-⚠️ **تحذير:** الكوبون صالح لمدة 30 يوم فقط
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('🎟️ إنشاء كوبون آخر', callback_data='super_create_coupons'),
-             InlineKeyboardButton('📋 قائمة الكوبونات', callback_data='list_coupons')],
-            [InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
-        ]
-        
-        await query.edit_message_text(success_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
+        context.user_data.pop('awaiting_single_coupon', None)
+        success = (
+            f"✅ تم إنشاء الكوبون بنجاح!\n\n"
+            f"🎟️ الكود: `{coupon_code}`\n"
+            f"💰 القيمة: {amount} ريال"
+        )
+        await update.message.reply_text(success, parse_mode='Markdown')
     except Exception as e:
-        logger.error(f"Error creating quick coupon: {e}")
-        await query.edit_message_text(coupon_error("إنشاء الكوبون"))
+        logger.error(f"Error in process single coupon: {e}")
+        await update.message.reply_text(coupon_error("إنشاء كوبون فردي"))
+
+async def create_bulk_coupons_start(update: Update, context: CallbackContext):
+    """بدء إنشاء كوبونات متعددة: تدفق تدرجي (أولاً المبلغ ثم العدد)"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        user = get_user(query.from_user.id)
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        text = (
+            "📦 إنشاء كوبونات متعددة\n\n"
+            "1️⃣ أدخل قيمة الكوبون بالريال (مثال: 50 أو 75.5)"
+        )
+        context.user_data['awaiting_bulk_amount'] = True
+        await query.edit_message_text(text)
+    except Exception as e:
+        logger.error(f"Error in bulk coupons start: {e}")
+        await query.edit_message_text(coupon_error("بدء إنشاء كوبونات متعددة"))
+
+async def process_bulk_amount_input(update: Update, context: CallbackContext):
+    """الخطوة 1 من 2: التقاط قيمة الكوبون للدفعة"""
+    try:
+        if not context.user_data.get('awaiting_bulk_amount'):
+            return
+        user = get_user(update.effective_user.id)
+        if not user or user['role'] != 'super_admin':
+            await update.message.reply_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        try:
+            amount = float(update.message.text.strip().replace(',', '.'))
+            if amount <= 0:
+                raise ValueError
+        except Exception:
+            await update.message.reply_text(f"{EMOJIS['error']} أدخل قيمة صحيحة (مثال: 50 أو 75.5)")
+            return
+        context.user_data['bulk_amount'] = amount
+        context.user_data.pop('awaiting_bulk_amount', None)
+        context.user_data['awaiting_bulk_count'] = True
+        await update.message.reply_text("2️⃣ أدخل عدد الكوبونات المطلوب إنشاؤها (مثال: 25)")
+    except Exception as e:
+        logger.error(f"Error in process bulk amount: {e}")
+        await update.message.reply_text(coupon_error("تحديد قيمة الكوبونات"))
+
+async def process_bulk_count_input(update: Update, context: CallbackContext):
+    """الخطوة 2 من 2: التقاط عدد الكوبونات وإنشاؤها"""
+    try:
+        if not context.user_data.get('awaiting_bulk_count'):
+            return
+        user = get_user(update.effective_user.id)
+        if not user or user['role'] != 'super_admin':
+            await update.message.reply_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        amount = context.user_data.get('bulk_amount')
+        if amount is None:
+            await update.message.reply_text(f"{EMOJIS['error']} لم يتم تحديد قيمة الكوبون. ابدأ من جديد.")
+            context.user_data.pop('awaiting_bulk_count', None)
+            return
+        try:
+            count = int(update.message.text.strip())
+            if count <= 0:
+                raise ValueError
+        except Exception:
+            await update.message.reply_text(f"{EMOJIS['error']} أدخل عدداً صحيحاً (مثال: 25)")
+            return
+        if count > 1000:
+            await update.message.reply_text(f"{EMOJIS['warning']} الحد الأقصى 1000 كوبون في الدفعة الواحدة.")
+            return
+        import random, string
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS coupons (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                coupon_code TEXT UNIQUE NOT NULL,
+                amount REAL NOT NULL,
+                is_used INTEGER DEFAULT 0,
+                used_by INTEGER DEFAULT NULL,
+                created_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                used_at TIMESTAMP,
+                expiry_date TIMESTAMP,
+                description TEXT
+            )
+        ''')
+        created = 0
+        skipped = 0
+        for _ in range(count):
+            for _attempt in range(100):
+                trial_code = 'A' + ''.join(random.choices(string.digits, k=8))
+                cursor.execute('SELECT 1 FROM coupons WHERE coupon_code = ?', (trial_code,))
+                if not cursor.fetchone():
+                    try:
+                        cursor.execute(
+                            'INSERT INTO coupons (coupon_code, amount, created_by, expiry_date, description) VALUES (?, ?, ?, ?, ?)',
+                            (trial_code, amount, user['id'], None, 'كوبون دفعي')
+                        )
+                        created += 1
+                    except Exception:
+                        skipped += 1
+                    break
+            else:
+                skipped += 1
+        conn.commit()
+        conn.close()
+        # تنظيف الحالات
+        context.user_data.pop('awaiting_bulk_count', None)
+        context.user_data.pop('bulk_amount', None)
+        summary = (
+            f"✅ تم إنشاء الكوبونات!\n\n"
+            f"💰 القيمة: {amount} ريال\n"
+            f"📦 الكمية المطلوبة: {count}\n"
+            f"✅ المُنشأ: {created}\n"
+            f"⚠️ تخطّي/مكرر: {skipped}"
+        )
+        await update.message.reply_text(summary)
+    except Exception as e:
+        logger.error(f"Error in process bulk count: {e}")
+        await update.message.reply_text(coupon_error("إنشاء كوبونات متعددة"))
+async def create_quick_coupon_handler(update: Update, context: CallbackContext, amount: int):
+    """تم إلغاء ميزة الكوبون السريع حسب الطلب"""
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("⚠️ تم تعطيل ميزة الكوبونات السريعة. استخدم الخيارات: كوبون فردي أو كوبونات متعددة.")
 
 async def coupons_stats_handler(update: Update, context: CallbackContext):
     """عرض إحصائيات الكوبونات"""

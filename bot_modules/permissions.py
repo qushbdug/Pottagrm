@@ -7,7 +7,7 @@ Advanced Permissions Management System for Yemen Net Bot
 import logging
 from datetime import datetime
 from bot_modules.database import get_db_connection
-from bot_modules.utils import get_user
+from bot_modules.utils import get_user, get_user_by_id
 from bot_modules.enhanced_error_messages import perm_error, db_error
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,22 @@ AVAILABLE_PERMISSIONS = {
         'name_ar': 'إدارة العملاء',
         'description': 'إدارة حسابات العملاء وعرض تفاصيلهم',
         'category': 'users'
+    },
+    # New explicit permissions for the new admin system
+    'manage_admins': {
+        'name_ar': 'إدارة المشرفين',
+        'description': 'إضافة/تعديل/حذف المشرفين',
+        'category': 'users'
+    },
+    'withdrawals': {
+        'name_ar': 'طلبات السحب',
+        'description': 'عرض ومعالجة طلبات السحب',
+        'category': 'finance'
+    },
+    'broadcast': {
+        'name_ar': 'إرسال رسالة جماعية',
+        'description': 'إرسال رسائل جماعية للمستخدمين',
+        'category': 'communication'
     }
 }
 
@@ -152,7 +168,7 @@ def grant_permission(admin_id: int, permission: str, granted_by: int) -> bool:
             return False
         
         # التحقق من أن المستهدف مشرف
-        target = get_user(admin_id)
+        target = get_user_by_id(admin_id)
         if not target or target['role'] not in ['admin', 'super_admin']:
             logger.warning(f"Permission grant denied: {admin_id} is not an admin")
             return False
@@ -227,7 +243,7 @@ def get_admin_permissions(admin_id: int) -> dict:
         dict: قاموس بالصلاحيات {permission_name: bool}
     """
     try:
-        user = get_user(admin_id)
+        user = get_user_by_id(admin_id)
         if not user or user['role'] not in ['admin', 'super_admin']:
             return {}
         

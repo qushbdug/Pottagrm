@@ -12,6 +12,7 @@ import logging
 import asyncio
 import sys
 import os
+import html
 from datetime import datetime
 import sqlite3
 from telegram.error import TelegramError, NetworkError, TimedOut, BadRequest
@@ -20,7 +21,7 @@ from telegram.error import TelegramError, NetworkError, TimedOut, BadRequest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'bot_modules'))
 
 # Import Telegram bot components
-from telegram import Update, MenuButtonCommands, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, MenuButtonCommands, InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler,
     ConversationHandler, PicklePersistence, filters, CallbackContext
@@ -36,7 +37,7 @@ try:
     from utils import (
         get_user, recalc_and_set_user_balance,
         get_or_create_supplier_code, get_cards_stats_by_category,
-        get_card_categories, process_uploaded_cards, calculate_user_rating,
+        get_card_categories, process_uploaded_cards,
         get_user_permissions
     )
     
@@ -48,12 +49,37 @@ try:
         skip_network_location, search_by_type_handler, choose_role
     )
     
+    # Import account statement handlers
+    from account_statement import (
+        account_statement_handler, download_excel_30_handler, download_excel_90_handler,
+        download_excel_all_handler, download_pdf_30_handler, download_pdf_90_handler,
+        download_pdf_all_handler
+    )
+    
+    # Import accounting engine
+    from accounting_engine import (
+        AccountingEngine, record_purchase_accounting, record_transfer_accounting,
+        record_coupon_accounting, record_commission_accounting, record_money_creation_accounting
+    )
+    
+    # Import export system
+    from export_system import (
+        export_options_handler, export_profits_handler, export_customers_handler,
+        export_suppliers_handler, export_comprehensive_handler, ExportSystem, quick_export_handler
+    )
+    
+    # Import accounting search
+    from accounting_search import (
+        accounting_search_handler, quick_stats_handler, quick_transaction_report_handler
+    )
+    
     # Import admin functions
     from admin_functions import (
         ADMIN_CALLBACKS, activate_single_supplier, admin_panel_handler,
         admin_add_offers_handler, accounting_system_handler,
         create_coupons_handler, create_quick_coupon_handler,
-        coupons_stats_handler, list_coupons_handler
+        coupons_stats_handler, list_coupons_handler,
+        show_super_admin_panel
     )
     
     # Import management modules
@@ -64,6 +90,8 @@ try:
     
     # Import permissions system
     from permissions import has_permission, check_permission_or_deny, AVAILABLE_PERMISSIONS
+    
+    # Import restructured handler modules removed
 except ImportError as e:
     print(f"Error importing modules: {e}")
     print("Make sure all module files are in the bot_modules directory")
@@ -190,42 +218,505 @@ async def get_pooled_db_connection():
         raise BotDatabaseError(f"Failed to get database connection: {e}")
 
 # Main callback handler
+# button_click_handler moved to main_router.py for better organization
+# This function is now imported from main_router module
+
 async def button_click_handler(update: Update, context):
     """Enhanced callback query handler with better error handling"""
     try:
         query = update.callback_query
-        
-        # Handle query answer with specific timeout
-        try:
-            await asyncio.wait_for(query.answer(), timeout=5.0)
-        except asyncio.TimeoutError:
-            logger.warning(f"Query answer timeout for user {query.from_user.id}")
-        except (TelegramError, NetworkError) as e:
-            logger.warning(f"Telegram error in query answer: {e}")
-        except Exception as e:
-            logger.error(f"Unexpected error in query answer: {e}")
-        
+        # Read callback data first so it's available even if answering fails
         callback_data = query.data
         
+        # Allow role selection during registration without requiring an existing user
+        if callback_data and callback_data.startswith('role_'):
+            return await choose_role(update, context)
+        
+        # Fast-path: simplified upload confirmation
+        if callback_data == 'confirm_simplified_upload':
+            return await confirm_simplified_upload(update, context)
+        
+        await query.answer()
+        
         # Get user with validation
-        try:
-            user = get_user(query.from_user.id)
-            if not user:
-                raise BotValidationError("User not found in database")
-        except sqlite3.Error as e:
-            logger.error(f"Database error getting user {query.from_user.id}: {e}")
-            await query.edit_message_text(db_error("استرداد بيانات المستخدم", "فشل في الاتصال بقاعدة البيانات"))
-            return
-        except BotValidationError:
+        user = get_user(query.from_user.id)
+        if not user:
             await query.edit_message_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
             return
         
-        # Update user activity (temporarily disabled to avoid errors)
-        # TODO: Re-implement update_user_activity function
-        
-        # Route to appropriate handlers
-        
         # Main menu
+        if callback_data == 'main_menu':
+            return await show_main_menu(update, context, user['role'])
+        
+        # Enhanced wallet
+        elif callback_data == 'enhanced_wallet':
+            return await enhanced_wallet_handler(update, context)
+        
+        # Admin panel
+        elif callback_data == 'admin_panel':
+            if user['role'] in ['admin', 'super_admin']:
+                return await admin_panel_handler(update, context)
+            else:
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية للوصول لهذه الصفحة.")
+                return
+        
+        # Admin callbacks
+        elif callback_data in ADMIN_CALLBACKS:
+            # Strict gating: super admin routes must be invoked only by super admins
+            super_only_prefixes = (
+                'super_',
+            )
+            is_super_route = any(callback_data.startswith(p) for p in super_only_prefixes)
+            if is_super_route and user['role'] != 'super_admin':
+                await query.edit_message_text(f"{EMOJIS['error']} هذه العملية للمشرف الأعلى فقط.")
+                return
+            if user['role'] in ['admin', 'super_admin']:
+                return await ADMIN_CALLBACKS[callback_data](update, context)
+            else:
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+                return
+        
+        # Supplier panel
+        elif callback_data == 'supplier_panel':
+            return await supplier_panel_handler(update, context)
+        
+        # Buy cards
+        elif callback_data == 'buy_cards':
+            return await buy_cards_handler(update, context)
+        
+        # Transfer
+        elif callback_data == 'transfer_to_friend':
+            return await transfer_to_friend_handler(update, context)
+        
+        # Referral stats
+        elif callback_data == 'referral_stats':
+            return await referral_stats_handler(update, context)
+        
+        # Purchase handlers
+        elif callback_data.startswith('buy_from_network_'):
+            network_id = callback_data.split('_')[3]
+            return await show_network_categories(update, context, network_id)
+        elif callback_data.startswith('confirm_purchase_'):
+            parts = callback_data.split('_')
+            network_id = parts[2]
+            price = parts[3]
+            return await confirm_card_purchase(update, context, network_id, price)
+        elif callback_data.startswith('process_purchase_'):
+            parts = callback_data.split('_')
+            network_id = parts[2]
+            price = parts[3]
+            return await process_card_purchase(update, context, network_id, price)
+        
+        # Withdrawal handlers
+        elif callback_data == 'request_withdrawal':
+            return await request_withdrawal_handler(update, context)
+        elif callback_data == 'submit_withdrawal_request':
+            return await submit_withdrawal_request_handler(update, context)
+        elif callback_data == 'view_my_withdrawals':
+            return await view_my_withdrawals_handler(update, context)
+        elif callback_data.startswith('withdrawal_method_'):
+            method = callback_data.split('_', 2)[2]
+            return await confirm_withdrawal_request_handler(update, context, method)
+        elif callback_data.startswith('approve_withdrawal_'):
+            withdrawal_id = callback_data.split('_', 2)[2]
+            return await approve_withdrawal_handler(update, context, withdrawal_id)
+        elif callback_data.startswith('reject_withdrawal_'):
+            withdrawal_id = callback_data.split('_', 2)[2]
+            return await reject_withdrawal_handler(update, context, withdrawal_id)
+        elif callback_data == 'admin_wd_next':
+            context.user_data['admin_wd_page'] = int(context.user_data.get('admin_wd_page', 0)) + 1
+            return await admin_withdrawals_handler(update, context)
+        elif callback_data == 'admin_wd_prev':
+            context.user_data['admin_wd_page'] = max(0, int(context.user_data.get('admin_wd_page', 0)) - 1)
+            return await admin_withdrawals_handler(update, context)
+        
+        # Network and search handlers
+        elif callback_data == 'search_networks':
+            return await search_networks_handler(update, context)
+        elif callback_data == 'view_networks':
+            return await view_networks_handler(update, context)
+        elif callback_data.startswith('network_'):
+            network_id = callback_data.split('_')[1]
+            return await show_network_details(update, context, network_id)
+        elif callback_data == 'manage_networks':
+            return await manage_networks_handler(update, context)
+        elif callback_data.startswith('share_network_'):
+            network_id = callback_data.split('_')[2]
+            return await share_network_handler(update, context, network_id)
+        elif callback_data.startswith('copy_share_link_'):
+            return await copy_share_link_handler(update, context)
+        elif callback_data.startswith('copy_referral_'):
+            return await copy_referral_link_handler(update, context)
+        
+        # Wallet and transaction handlers
+        elif callback_data == 'wallet_stats':
+            return await wallet_stats_handler(update, context)
+        elif callback_data == 'transaction_details':
+            return await transaction_details_handler(update, context)
+        elif callback_data == 'transfer_history':
+            return await transfer_history_handler(update, context)
+        elif callback_data.startswith('wallet_page_'):
+            return await wallet_page_handler(update, context)
+        elif callback_data == 'refresh_balance':
+            new_balance = recalc_and_set_user_balance(user['id'])
+            return await enhanced_wallet_handler(update, context)
+        elif callback_data.startswith('confirm_transfer_'):
+            parts = callback_data.split('_')
+            user_id = parts[2]
+            amount = parts[3]
+            return await confirm_user_transfer(update, context, user_id, amount)
+        
+        # Supplier features
+        elif callback_data == 'upload_cards':
+            return await upload_cards_handler(update, context)
+        elif callback_data == 'cards_reports':
+            return await cards_reports_handler(update, context)
+        elif callback_data == 'sales_stats':
+            return await sales_stats_handler(update, context)
+        elif callback_data == 'upload_history':
+            return await upload_history_handler(update, context)
+        elif callback_data == 'supplier_settings':
+            return await supplier_settings_handler(update, context)
+        elif callback_data == 'add_network':
+            return await add_network_handler(update, context)
+        
+        # Personal features
+        elif callback_data == 'personal_reports':
+            return await personal_reports_handler(update, context)
+        elif callback_data == 'my_notifications':
+            return await my_notifications_handler(update, context)
+        elif callback_data == 'promotions':
+            return await promotions_handler(update, context)
+        elif callback_data == 'help':
+            return await help_handler(update, context)
+        
+        # Account statement handlers
+        elif callback_data == 'account_statement':
+            return await account_statement_handler(update, context)
+        elif callback_data == 'download_statements':
+            # معالج تنزيل كشوف الحسابات للمشرف
+            from bot_modules.admin_functions import download_statements_handler
+            return await download_statements_handler(update, context)
+        elif callback_data.startswith('download_'):
+            if callback_data == 'download_excel_30':
+                return await download_excel_30_handler(update, context)
+            elif callback_data == 'download_excel_90':
+                return await download_excel_90_handler(update, context)
+            elif callback_data == 'download_excel_all':
+                return await download_excel_all_handler(update, context)
+            elif callback_data == 'download_pdf_30':
+                return await download_pdf_30_handler(update, context)
+            elif callback_data == 'download_pdf_90':
+                return await download_pdf_90_handler(update, context)
+            elif callback_data == 'download_pdf_all':
+                return await download_pdf_all_handler(update, context)
+        
+        # Coupon handlers
+        elif callback_data == 'redeem_coupon':
+            return await redeem_coupon_handler(update, context)
+        elif callback_data == 'cancel_coupon':
+            return await cancel_coupon_handler(update, context)
+        
+        # Search and user handlers
+        elif callback_data == 'search_user':
+            return await search_user_handler(update, context)
+        elif callback_data.startswith('select_user_'):
+            user_id = callback_data.split('_')[2]
+            return await select_user_for_transfer(update, context, user_id)
+        elif callback_data.startswith('search_by_'):
+            search_type = callback_data.split('_')[2]
+            return await search_by_type_handler(update, context, search_type)
+        
+        # Transfer confirmation handlers
+        elif callback_data == 'confirm_transfer_yes':
+            return await confirm_transfer_handler(update, context, True)
+        elif callback_data == 'confirm_transfer_no':
+            return await confirm_transfer_handler(update, context, False)
+        
+        # Export system handlers
+        elif callback_data.startswith('export_'):
+            if callback_data == 'export_options':
+                return await export_options_handler(update, context)
+            elif callback_data == 'export_profits':
+                return await export_profits_handler(update, context)
+            elif callback_data == 'export_customers':
+                return await export_customers_handler(update, context)
+            elif callback_data == 'export_suppliers':
+                return await export_suppliers_handler(update, context)
+            elif callback_data == 'export_comprehensive':
+                return await export_comprehensive_handler(update, context)
+            elif callback_data == 'quick_export':
+                return await quick_export_handler(update, context)
+            else:
+                # Handle period selection callbacks like export_profits_30, export_suppliers_year, etc.
+                parts = callback_data.split('_')
+                if len(parts) >= 3:
+                    export_type = parts[1]
+                    period = '_'.join(parts[2:])
+                    return await ExportSystem.export_data_handler(update, context, export_type, period)
+        
+        # Accounting search handlers
+        elif callback_data == 'accounting_search':
+            return await accounting_search_handler(update, context)
+        elif callback_data == 'quick_stats':
+            return await quick_stats_handler(update, context)
+        elif callback_data == 'quick_transaction_report':
+            return await quick_transaction_report_handler(update, context)
+        
+        # Admin management handlers
+        elif callback_data == 'admin_dashboard':
+            return await AdminManagement.get_admin_dashboard(update, context)
+        elif callback_data == 'admin_manage_admins':
+            return await AdminManagement.manage_admins(update, context)
+        elif callback_data == 'admin_permissions_management':
+            return await AdminManagement.admin_permissions_handler(update, context)
+        elif callback_data == 'admin_performance_evaluation':
+            return await AdminManagement.get_admin_analytics(update, context)
+        elif callback_data == 'admin_banned_management':
+            return await AdminManagement.admin_banned_handler(update, context)
+        elif callback_data == 'admin_analytics':
+            return await AdminManagement.get_admin_analytics(update, context)
+        elif callback_data.startswith('admin_profile_'):
+            admin_id = int(callback_data.split('_')[2])
+            return await AdminManagement.show_admin_profile(update, context, admin_id)
+        
+        
+        # File upload handlers and purchase category selection disambiguation
+        elif callback_data.startswith('select_network_'):
+            return await process_network_selection(update, context)
+        elif callback_data.startswith('select_category_'):
+            parts = callback_data.split('_')
+            # Purchase flow uses: select_category_{network_id}_{price}
+            if len(parts) >= 4:
+                network_id = parts[2]
+                price = parts[3]
+                return await confirm_card_purchase(update, context, network_id, price)
+            # Upload flow uses: select_category_{value} or select_category_auto
+            return await process_category_selection(update, context)
+        elif callback_data.startswith('price_'):
+            return await process_price_selection(update, context)
+        elif callback_data == 'cancel_upload':
+            return await cancel_upload(update, context)
+        elif callback_data == 'confirm_upload':
+            return await confirm_upload(update, context)
+        
+        # Legacy handlers for compatibility
+        elif callback_data.startswith('activate_supplier_'):
+            supplier_id = callback_data.split('_')[2]
+            return await activate_single_supplier(update, context, supplier_id)
+        elif callback_data.startswith('amount_'):
+            amount = callback_data.split('_')[1]
+            user_id = callback_data.split('_')[2]
+            return await process_amount_selection(update, context, amount, user_id)
+        elif callback_data.startswith('quick_transfer_'):
+            amount = callback_data.split('_')[2]
+            user_id = callback_data.split('_')[3]
+            return await quick_transfer_handler(update, context, amount, user_id)
+        
+        # Additional missing handlers
+        elif callback_data.startswith('create_quick_coupon_'):
+            if user['role'] != 'super_admin':
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+                return
+            amount = int(callback_data.split('_')[-1])
+            return await create_quick_coupon_handler(update, context, amount)
+        elif callback_data == 'coupons_stats':
+            if user['role'] != 'super_admin':
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+                return
+            return await coupons_stats_handler(update, context)
+        elif callback_data == 'list_coupons':
+            if user['role'] != 'super_admin':
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+                return
+            return await list_coupons_handler(update, context)
+        
+        # Extended admin management
+        elif callback_data == 'admin_permissions':
+            return await AdminManagementExtended.show_permissions_dashboard(update, context)
+        elif callback_data.startswith('permission_details_'):
+            permission = callback_data.split('_')[2]
+            return await AdminManagementExtended.show_permission_details(update, context, permission)
+        elif callback_data.startswith('assign_permission_'):
+            permission = callback_data.split('_')[2]
+            return await AdminManagementExtended.assign_permission_handler(update, context, permission)
+        elif callback_data.startswith('revoke_permission_'):
+            permission = callback_data.split('_')[2]
+            return await AdminManagementExtended.revoke_permission_handler(update, context, permission)
+        elif callback_data.startswith('edit_admin_permissions_'):
+            admin_id = int(callback_data.split('_')[3])
+            return await AdminManagementExtended.edit_admin_permissions(update, context, admin_id)
+        elif callback_data.startswith('toggle_permission_'):
+            parts = callback_data.split('_')
+            admin_id = int(parts[2])
+            permission = parts[3]
+            return await AdminManagementExtended.toggle_admin_permission(update, context, admin_id, permission)
+        
+        # Customer management extended
+        elif callback_data.startswith('customer_edit_'):
+            customer_id = int(callback_data.split('_')[2])
+            return await CustomerManagement.edit_customer_handler(update, context, customer_id)
+        elif callback_data.startswith('customer_toggle_'):
+            customer_id = int(callback_data.split('_')[2])
+            return await CustomerManagement.toggle_customer_handler(update, context, customer_id)
+        elif callback_data == 'customer_add':
+            return await CustomerManagement.add_customer_handler(update, context)
+        elif callback_data.startswith('customer_delete_'):
+            customer_id = int(callback_data.split('_')[2])
+            return await CustomerManagement.delete_customer_handler(update, context, customer_id)
+        elif callback_data.startswith('confirm_delete_customer_'):
+            customer_id = int(callback_data.split('_')[3])
+            return await CustomerManagement.confirm_delete_customer_handler(update, context, customer_id)
+        
+        # Admin management extended
+        elif callback_data.startswith('admin_view_'):
+            admin_id = int(callback_data.split('_')[2])
+            return await AdminManagement.view_admin_handler(update, context, admin_id)
+        elif callback_data.startswith('admin_edit_'):
+            admin_id = int(callback_data.split('_')[2])
+            return await AdminManagement.edit_admin_handler(update, context, admin_id)
+        elif callback_data.startswith('admin_delete_'):
+            admin_id = int(callback_data.split('_')[2])
+            return await AdminManagement.delete_admin_handler(update, context, admin_id)
+        elif callback_data.startswith('admin_toggle_'):
+            admin_id = int(callback_data.split('_')[2])
+            return await AdminManagement.toggle_admin_handler(update, context, admin_id)
+        elif callback_data.startswith('confirm_delete_admin_'):
+            admin_id = int(callback_data.split('_')[3])
+            return await AdminManagement.confirm_delete_admin_handler(update, context, admin_id)
+        elif callback_data == 'admin_add_admin':
+            return await AdminManagement.add_admin_handler(update, context)
+        
+        # Additional utility handlers
+        elif callback_data == 'current_page':
+            # زر رقم الصفحة الحالية - لا يفعل شيء
+            await query.answer("📄 أنت في هذه الصفحة حالياً", show_alert=False)
+            return
+        elif callback_data == 'mark_all_read':
+            # تحديد جميع الإشعارات كمقروءة
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute('UPDATE smart_notifications SET is_read = 1 WHERE user_id = ?', (user['id'],))
+                conn.commit()
+                conn.close()
+                await query.answer("✅ تم تحديد جميع الإشعارات كمقروءة", show_alert=True)
+            except Exception as e:
+                logger.error(f"Error marking notifications as read: {e}")
+                await query.answer("❌ حدث خطأ في تحديث الإشعارات")
+            return
+        elif callback_data in ['contact_admin', 'contact_support']:
+            await query.edit_message_text(
+                f"""
+📞 **التواصل مع الدعم** 📞
+
+💡 **طرق التواصل:**
+• تواصل مع المشرف عبر البوت
+• أرسل رسالة تتضمن استفسارك
+• ستحصل على رد سريع
+
+📱 **أوقات الدعم:**
+• متاح 24/7 للاستفسارات العاجلة
+• رد سريع خلال ساعات العمل
+""",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+                ]),
+                parse_mode='Markdown'
+            )
+            return
+        
+        # Admin: view all suppliers pagination
+        elif callback_data.startswith('super_view_all_suppliers'):
+            from bot_modules.admin_functions import view_all_suppliers_handler
+            return await view_all_suppliers_handler(update, context)
+        
+        # Enhanced Customer Management System
+        elif callback_data == 'customer_dashboard':
+            logger.info(f"Customer dashboard requested by user {query.from_user.id}")
+            try:
+                return await CustomerManagement.get_customer_dashboard(update, context)
+            except Exception as e:
+                logger.error(f"Error calling customer dashboard: {e}", exc_info=True)
+                await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في فتح إدارة العملاء.")
+                return
+        elif callback_data == 'customer_search':
+            return await CustomerManagement.search_customers(update, context)
+        elif callback_data == 'customer_list':
+            return await CustomerManagement.list_customers(update, context)
+        elif callback_data == 'customer_list_active':
+            return await CustomerManagement.list_customers_active(update, context)
+        elif callback_data == 'customer_list_inactive':
+            return await CustomerManagement.list_customers_inactive(update, context)
+        elif callback_data == 'customer_list_top_balance':
+            return await CustomerManagement.list_customers_top_balance(update, context)
+        elif callback_data == 'customer_list_most_active':
+            return await CustomerManagement.list_customers_most_active(update, context)
+        elif callback_data == 'customer_list_new':
+            return await CustomerManagement.list_customers_new(update, context)
+        elif callback_data == 'customer_list_suspicious':
+            return await CustomerManagement.list_customers_suspicious(update, context)
+        elif callback_data == 'customer_reports':
+            return await CustomerManagement.customer_reports(update, context)
+        elif callback_data == 'customer_balance_mgmt':
+            return await CustomerManagement.balance_management(update, context)
+        elif callback_data == 'customer_banned':
+            return await CustomerManagement.banned_customers(update, context)
+        elif callback_data == 'customer_analytics':
+            return await CustomerManagement.get_customer_analytics(update, context)
+        elif callback_data == 'customer_support':
+            return await CustomerManagement.customer_support(update, context)
+        elif callback_data == 'customer_incentives':
+            return await CustomerManagement.customer_incentives(update, context)
+        elif callback_data.startswith('customer_profile_'):
+            customer_id = int(callback_data.split('_')[2])
+            return await CustomerManagement.show_customer_profile(update, context, customer_id)
+        
+        # Fallback for truly unhandled callbacks
+        else:
+            logger.warning(f"Unhandled callback: {callback_data}")
+            
+            # بدلاً من رسالة "قيد التطوير"، نعيد المستخدم للقائمة المناسبة
+            if user['role'] == 'supplier':
+                await query.edit_message_text(
+                    f"🔄 **تم توجيهك للوحة المزود**",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')],
+                        [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+                    ])
+                )
+            elif user['role'] in ['admin', 'super_admin']:
+                await query.edit_message_text(
+                    f"🔄 **تم توجيهك للوحة الإدارة**",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton('👑 لوحة الإدارة', callback_data='admin_panel')],
+                        [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+                    ])
+                )
+            else:
+                await query.edit_message_text(
+                    f"🔄 **تم توجيهك للقائمة الرئيسية**",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet')],
+                        [InlineKeyboardButton('🛒 شراء كروت', callback_data='buy_cards')],
+                        [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+                    ])
+                )
+            
+    except Exception as e:
+        logger.error(f"Error in button click handler: {e}")
+        try:
+            await query.edit_message_text(
+                f"{EMOJIS['error']} حدث خطأ في معالجة الطلب. يرجى المحاولة مرة أخرى.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+                ])
+            )
+        except:
+            pass
+        # Exit early to avoid referencing possibly undefined variables below
+        return
+# Placeholder handlers for features being implemented
         if callback_data == 'main_menu':
             return await show_main_menu(update, context, user['role'])
         
@@ -300,6 +791,28 @@ async def button_click_handler(update: Update, context):
         elif callback_data.startswith('skip_location_'):
             network_id = callback_data.split('_')[2]
             return await skip_network_location(update, context, network_id)
+        elif callback_data.startswith('share_network_'):
+            network_id = callback_data.split('_')[2]
+            return await share_network_handler(update, context, network_id)
+        elif callback_data == 'request_withdrawal':
+            return await request_withdrawal_handler(update, context)
+        elif callback_data == 'submit_withdrawal_request':
+            return await submit_withdrawal_request_handler(update, context)
+        elif callback_data == 'view_my_withdrawals':
+            return await view_my_withdrawals_handler(update, context)
+        elif callback_data.startswith('withdrawal_method_'):
+            method = callback_data.split('_', 2)[2]
+            return await confirm_withdrawal_request_handler(update, context, method)
+        elif callback_data.startswith('approve_withdrawal_'):
+            withdrawal_id = callback_data.split('_', 2)[2]
+            return await approve_withdrawal_handler(update, context, withdrawal_id)
+        elif callback_data.startswith('reject_withdrawal_'):
+            withdrawal_id = callback_data.split('_', 2)[2]
+            return await reject_withdrawal_handler(update, context, withdrawal_id)
+        elif callback_data.startswith('copy_share_link_'):
+            return await copy_share_link_handler(update, context)
+        elif callback_data.startswith('copy_referral_'):
+            return await copy_referral_link_handler(update, context)
 
 
         
@@ -316,16 +829,13 @@ async def button_click_handler(update: Update, context):
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية للوصول لهذه اللوحة.")
                 return
         
-        # Enhanced Customer Management System
-        elif callback_data == 'customer_dashboard':
-            return await CustomerManagement.get_customer_dashboard(update, context)
-        elif callback_data == 'customer_search':
-            return await CustomerManagement.search_customers(update, context)
-        elif callback_data == 'customer_analytics':
-            return await CustomerManagement.get_customer_analytics(update, context)
-        elif callback_data.startswith('customer_profile_'):
-            customer_id = int(callback_data.split('_')[2])
-            return await CustomerManagement.show_customer_profile(update, context, customer_id)
+        # Super admin panel
+        elif callback_data == 'super_admin_panel':
+            if user and user['role'] == 'super_admin':
+                return await show_super_admin_panel(update, context, user)
+            else:
+                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية للوصول لهذه اللوحة.")
+                return
         
         # Enhanced Admin Management System  
         elif callback_data == 'admin_dashboard':
@@ -334,8 +844,6 @@ async def button_click_handler(update: Update, context):
             return await AdminManagement.manage_admins(update, context)
         elif callback_data == 'admin_analytics':
             return await AdminManagement.get_admin_analytics(update, context)
-        elif callback_data == 'admin_security':
-            return await AdminManagement.admin_security_center(update, context)
         elif callback_data.startswith('admin_profile_'):
             admin_id = int(callback_data.split('_')[2])
             return await AdminManagement.show_admin_profile(update, context, admin_id)
@@ -352,6 +860,12 @@ async def button_click_handler(update: Update, context):
         elif callback_data.startswith('perm_quick_edit_'):
             admin_id = int(callback_data.split('_')[3])
             return await AdminManagement.edit_admin_permissions(update, context, admin_id)
+        elif callback_data.startswith('perm_grant_all_'):
+            admin_id = int(callback_data.split('_')[3])
+            return await AdminManagement.grant_all_permissions(update, context, admin_id)
+        elif callback_data.startswith('perm_revoke_all_'):
+            admin_id = int(callback_data.split('_')[3])
+            return await AdminManagement.revoke_all_permissions(update, context, admin_id)
         elif callback_data.startswith('perm_grant_') or callback_data.startswith('perm_revoke_'):
             parts = callback_data.split('_')
             action = parts[1]  # grant or revoke
@@ -372,13 +886,7 @@ async def button_click_handler(update: Update, context):
         elif callback_data == 'promote_to_super_admin':
             return await AdminManagement.execute_admin_promotion(update, context, 'super_admin')
         elif callback_data == 'add_admin_cancel':
-            # تنظيف بيانات السياق
-            context.user_data.pop('awaiting_admin_telegram_id', None)
-            context.user_data.pop('awaiting_admin_phone', None)
-            context.user_data.pop('target_admin_telegram_id', None)
-            context.user_data.pop('target_admin_db_id', None)
-            context.user_data.pop('admin_add_step', None)
-            return await AdminManagement.get_admin_dashboard(update, context)
+            return await AdminManagement.add_admin_cancel_handler(update, context)
         
         # Admin Search System
         elif callback_data == 'admin_search_admin':
@@ -438,14 +946,7 @@ async def button_click_handler(update: Update, context):
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
                 return
         
-        # Coupon quick creation handlers
-        elif callback_data.startswith('create_quick_coupon_'):
-            if user['role'] != 'super_admin':
-                await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
-                return
-            amount = int(callback_data.split('_')[-1])
-            from bot_modules.admin_functions import create_quick_coupon_handler
-            return await create_quick_coupon_handler(update, context, amount)
+        # Quick coupon creation removed per request
         
         # Additional coupon handlers
         elif callback_data == 'coupons_stats':
@@ -459,7 +960,6 @@ async def button_click_handler(update: Update, context):
             if user['role'] != 'super_admin':
                 await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
                 return
-            from bot_modules.admin_functions import list_coupons_handler
             return await list_coupons_handler(update, context)
         
         # Supplier activation (specific handling)
@@ -484,14 +984,10 @@ async def button_click_handler(update: Update, context):
         # Personal features
         elif callback_data == 'personal_reports':
             await personal_reports_handler(update, context)
-        elif callback_data == 'my_ratings':
-            await my_ratings_handler(update, context)
         elif callback_data == 'my_notifications':
             await my_notifications_handler(update, context)
         elif callback_data == 'promotions':
             await promotions_handler(update, context)
-        elif callback_data == 'account_settings':
-            await account_settings_handler(update, context)
         
         # Role-specific features
 
@@ -503,12 +999,12 @@ async def button_click_handler(update: Update, context):
             await view_networks_handler(update, context)
         elif callback_data == 'search_user':
             await search_user_handler(update, context)
-        elif callback_data == 'my_sent_ratings':
-            await my_sent_ratings_handler(update, context)
         elif callback_data == 'transaction_details':
             await transaction_details_handler(update, context)
         elif callback_data == 'wallet_stats':
             await wallet_stats_handler(update, context)
+        elif callback_data == 'referral_stats':
+            await referral_stats_handler(update, context)
         
         # Enhanced supplier features
         elif callback_data == 'upload_cards':
@@ -563,12 +1059,73 @@ async def button_click_handler(update: Update, context):
             await transfer_history_handler(update, context)
         elif callback_data == 'update_profile':
             await update_profile_handler(update, context)
+        elif callback_data == 'view_full_profile':
+            await view_full_profile_handler(update, context)
         elif callback_data == 'change_password':
             await change_password_handler(update, context)
         elif callback_data == 'contact_admin':
             await contact_admin_handler(update, context)
         elif callback_data == 'account_status':
             await account_status_handler(update, context)
+        elif callback_data == 'update_contact_info':
+            # عرض معلومات الاتصال كنص ثابت إلى حين استكمال المعالج المتقدم
+            await query.answer()
+            text = (
+                "📞 معلومات الاتصال\n\n"
+                "- الهاتف: 777000000\n"
+                "- البريد: support@example.com\n\n"
+                "اختر إجراءً:" 
+            )
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            ])
+            await query.edit_message_text(text, reply_markup=keyboard)
+        elif callback_data == 'account_statement':
+            await account_statement_handler(update, context)
+        
+        # Account statement download handlers
+        elif callback_data == 'download_excel_30':
+            await download_excel_30_handler(update, context)
+        elif callback_data == 'download_excel_90':
+            await download_excel_90_handler(update, context)
+        elif callback_data == 'download_excel_all':
+            await download_excel_all_handler(update, context)
+        elif callback_data == 'download_pdf_30':
+            await download_pdf_30_handler(update, context)
+        elif callback_data == 'download_pdf_90':
+            await download_pdf_90_handler(update, context)
+        elif callback_data == 'download_pdf_all':
+            await download_pdf_all_handler(update, context)
+        elif callback_data == 'fix_missing_entries':
+            from bot_modules.admin_functions import fix_missing_entries_handler
+            await fix_missing_entries_handler(update, context)
+        elif callback_data == 'trial_balance':
+            from bot_modules.admin_functions import trial_balance_handler
+            await trial_balance_handler(update, context)
+        
+        # Export system handlers
+        elif callback_data == 'export_profits':
+            await export_profits_handler(update, context)
+        elif callback_data == 'export_customers':
+            await export_customers_handler(update, context)
+        elif callback_data == 'export_suppliers':
+            await export_suppliers_handler(update, context)
+        elif callback_data == 'export_comprehensive':
+            await export_comprehensive_handler(update, context)
+        elif callback_data == 'quick_export':
+            await quick_export_handler(update, context)
+        elif callback_data == 'quick_stats':
+            await quick_stats_handler(update, context)
+        elif callback_data == 'quick_transaction_report':
+            await quick_transaction_report_handler(update, context)
+        
+        # Export with period handlers
+        elif callback_data.startswith('export_'):
+            parts = callback_data.split('_')
+            if len(parts) >= 3:
+                export_type = parts[1]
+                period = '_'.join(parts[2:])
+                await ExportSystem.export_data_handler(update, context, export_type, period)
         
         # Refresh balance
         elif callback_data == 'refresh_balance':
@@ -692,52 +1249,7 @@ async def button_click_handler(update: Update, context):
 
 # Placeholder handlers for features being implemented
 
-async def my_ratings_handler(update: Update, context):
-    """Show user ratings"""
-    try:
-        query = update.callback_query
-        user = get_user(query.from_user.id)
-        
-        rating_summary = calculate_user_rating(user['id'])
-        
-        rating_text = f"""
-⭐ **تقييماتي ومراجعاتي** ⭐
-
-👤 **{user['full_name']}**
-
-📊 **ملخص التقييمات:**
-⭐ متوسط التقييم: **{rating_summary['average_rating']}/5**
-🔢 إجمالي التقييمات: **{rating_summary['total_ratings']}**
-
-📈 **توزيع النجوم:**
-⭐⭐⭐⭐⭐ {rating_summary['rating_distribution'].get(5, 0)} تقييم
-⭐⭐⭐⭐ {rating_summary['rating_distribution'].get(4, 0)} تقييم  
-⭐⭐⭐ {rating_summary['rating_distribution'].get(3, 0)} تقييم
-⭐⭐ {rating_summary['rating_distribution'].get(2, 0)} تقييم
-⭐ {rating_summary['rating_distribution'].get(1, 0)} تقييم
-
-🎯 **نصائح لتحسين تقييمك:**
-• كن مهذباً في التعامل
-• أكمل المعاملات بسرعة
-• قدم خدمة عملاء ممتازة
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton(f'📝 تقييماتي المرسلة', callback_data='my_sent_ratings')],
-            [InlineKeyboardButton(f'📨 تقييماتي المستلمة', callback_data='my_received_ratings')],
-            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
-        ]
-        
-        await query.edit_message_text(rating_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in my ratings handler: {e}")
-        await query.edit_message_text(ErrorMessages.custom_error(
-            "عرض التقييمات",
-            "لا يمكن الوصول إلى بيانات التقييمات حالياً",
-            "تأكد من الاتصال بالإنترنت وحاول مرة أخرى خلال دقائق",
-            "RATING_ERROR"
-        ))
+# my_ratings_handler removed as requested
 
 async def my_notifications_handler(update: Update, context):
     """Show user notifications"""
@@ -764,7 +1276,8 @@ async def my_notifications_handler(update: Update, context):
             WHERE user_id = ? AND is_read = 0
         ''', (user['id'],))
         
-        unread_count = cursor.fetchone()['unread_count']
+        result = cursor.fetchone()
+        unread_count = result['unread_count'] if result else 0
         conn.close()
         
         notif_text = f"""
@@ -933,21 +1446,29 @@ async def supplier_panel_handler(update: Update, context):
         
         # Count networks
         cursor.execute('SELECT COUNT(*) as count FROM networks WHERE supplier_id = ?', (user['id'],))
-        networks_count = cursor.fetchone()['count']
+        result = cursor.fetchone()
+        networks_count = result['count'] if result else 0
         
         # Count active cards
         cursor.execute('SELECT COUNT(*) as count FROM network_cards WHERE supplier_id = ? AND is_sold = 0', (user['id'],))
-        active_cards = cursor.fetchone()['count']
+        result = cursor.fetchone()
+        active_cards = result['count'] if result else 0
         
         # Count sold cards
         cursor.execute('SELECT COUNT(*) as count FROM network_cards WHERE supplier_id = ? AND is_sold = 1', (user['id'],))
-        sold_cards = cursor.fetchone()['count']
+        result = cursor.fetchone()
+        sold_cards = result['count'] if result else 0
         
         # Recent uploads
         cursor.execute('SELECT COUNT(*) as count FROM card_upload_batches WHERE supplier_id = ?', (user['id'],))
-        recent_uploads = cursor.fetchone()['count']
+        result = cursor.fetchone()
+        recent_uploads = result['count'] if result else 0
         
         conn.close()
+        
+        # الحصول على معلومات الأرباح
+        from bot_modules.utils import get_provider_withdrawable_amount
+        profit_info = get_provider_withdrawable_amount(user['id'])
         
         # تحديد حالة الشبكة
         network_status = "✅ متاحة" if networks_count == 0 else "📶 مُنشأة"
@@ -955,17 +1476,19 @@ async def supplier_panel_handler(update: Update, context):
         
         panel_text = f"""
 🏪 **لوحة المزود المطورة** 🏪
-
 👤 **{user['full_name']}**
 💰 رصيدك: **{user['balance']:.2f}** ريال
 🆔 **معرف المزود: `{supplier_code}`**
 🔰 حالة التفعيل: **{'✅ مفعل' if user['is_active'] else '⏳ في الانتظار'}**
-
 📊 **إحصائيات المزود:**
 📶 شبكتك: **{network_status}** ({networks_count}/1)
 📋 كروت متاحة: **{active_cards}**
 ✅ كروت مباعة: **{sold_cards}**
 📤 رفع حديث (7 أيام): **{recent_uploads}**
+💰 **ملخص الأرباح (70% من المبيعات):**
+💵 إجمالي الأرباح: **{profit_info['total_earnings']:,.2f}** ريال
+📤 تم سحبه/معلق: **{profit_info['withdrawn_amount']:,.2f}** ريال
+✅ متاح للسحب: **{profit_info['available_amount']:,.2f}** ريال
 
 🎯 **إدارة الكروت والشبكات:**
 💡 **ملاحظة:** يُسمح بشبكة واحدة فقط لكل مزود
@@ -975,12 +1498,11 @@ async def supplier_panel_handler(update: Update, context):
             [InlineKeyboardButton(f'📶 إدارة الشبكات', callback_data='manage_networks'),
              InlineKeyboardButton(f'📤 رفع كروت', callback_data='upload_cards')],
             [InlineKeyboardButton(f'📊 تقارير الكروت', callback_data='cards_reports'),
-             InlineKeyboardButton(f'🎯 فلترة حسب الفئة', callback_data='filter_by_category')],
-            [InlineKeyboardButton(f'🔍 البحث في الشبكات', callback_data='search_networks'),
              InlineKeyboardButton(f'📈 إحصائيات المبيعات', callback_data='sales_stats')],
-            [InlineKeyboardButton(f'📋 سجل الرفع', callback_data='upload_history'),
-             InlineKeyboardButton(f'⚙️ إعدادات المزود', callback_data='supplier_settings')],
-            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
+            [InlineKeyboardButton(f'💰 طلب سحب الأرباح', callback_data='request_withdrawal'),
+             InlineKeyboardButton(f'📋 سجل الرفع', callback_data='upload_history')],
+            [InlineKeyboardButton(f'⚙️ إعدادات المزود', callback_data='supplier_settings'),
+             InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
         ]
         
         await query.edit_message_text(panel_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
@@ -1096,92 +1618,8 @@ async def search_user_handler(update: Update, context):
         logger.error(f"Error in search user handler: {e}")
         await query.edit_message_text(search_error("المستخدم", "قاعدة بيانات المستخدمين"))
 
-async def my_sent_ratings_handler(update: Update, context):
-    """Handle my sent ratings"""
-    try:
-        query = update.callback_query
-        user = get_user(query.from_user.id)
-        
-        # الحصول على مشتريات المستخدم للتقييم
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # البحث عن الشبكات التي اشترى منها المستخدم
-        cursor.execute('''
-            SELECT DISTINCT n.id, n.name, n.provider, n.location, 
-                   COUNT(t.id) as purchase_count,
-                   MAX(t.created_at) as last_purchase,
-                   SUM(t.amount) as total_spent
-            FROM transactions t
-            LEFT JOIN cards c ON t.description LIKE '%' || c.code || '%'
-            LEFT JOIN card_categories cc ON c.category_id = cc.id
-            LEFT JOIN networks n ON cc.network_id = n.id
-            WHERE t.to_user = ? AND t.type = 'card_purchase' AND n.id IS NOT NULL
-            GROUP BY n.id, n.name, n.provider, n.location
-            ORDER BY last_purchase DESC
-            LIMIT 10
-        ''', (user['id'],))
-        purchased_networks = cursor.fetchall()
-        
-        # إجمالي المشتريات
-        cursor.execute('''
-            SELECT COUNT(*), COALESCE(SUM(amount), 0)
-            FROM transactions 
-            WHERE to_user = ? AND type = 'card_purchase'
-        ''', (user['id'],))
-        total_purchases, total_amount = cursor.fetchone()
-        
-        conn.close()
-        
-        ratings_text = f"""
-📝 **تقييماتي والمراجعات** 📝
-
-👤 **{user['full_name']}**
-🛒 **إجمالي مشترياتك:** {total_purchases or 0} عملية شراء
-💰 **إجمالي الإنفاق:** {total_amount or 0:,.2f} ريال
-
-⭐ **الشبكات التي يمكنك تقييمها:**
-
-"""
-        
-        if purchased_networks:
-            for network in purchased_networks:
-                net_id, name, provider, location, purchase_count, last_purchase, spent = network
-                location_text = f"📍 {location}" if location else ""
-                
-                ratings_text += f"""
-🌐 **{name}**
-👤 {provider} {location_text}
-🛒 اشتريت منها: {purchase_count} مرة
-💰 أنفقت: {spent:,.2f} ريال
-📅 آخر شراء: {last_purchase[:10] if last_purchase else 'غير محدد'}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-"""
-        else:
-            ratings_text += """
-❌ **لم تشتري من أي شبكة بعد**
-
-💡 **لتقييم الشبكات:**
-• قم بشراء كروت من الشبكات أولاً
-• بعد الشراء ستظهر هنا للتقييم
-• تقييمك يساعد المستخدمين الآخرين
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton(f'⭐ تقييماتي', callback_data='my_ratings')],
-            [InlineKeyboardButton(f'{EMOJIS["home"]} القائمة الرئيسية', callback_data='main_menu')]
-        ]
-        
-        await query.edit_message_text(ratings_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in my sent ratings handler: {e}")
-        await query.edit_message_text(ErrorMessages.custom_error(
-            "عرض التقييمات المرسلة",
-            "فشل في استرداد قائمة التقييمات التي أرسلتها",
-            "قد تكون قاعدة البيانات مشغولة، حاول مرة أخرى خلال دقائق",
-            "SENT_RATING_ERROR"
-        ))
+# my_sent_ratings_handler removed as requested
+# my_sent_ratings_handler removed as requested
 
 async def transaction_details_handler(update: Update, context):
     """Handle transaction details"""
@@ -1214,7 +1652,10 @@ async def transaction_details_handler(update: Update, context):
             WHERE from_user = ? OR to_user = ?
         ''', (user['id'], user['id'], user['id'], user['id'], user['id'], user['id']))
         stats = cursor.fetchone()
-        sent_count, received_count, sent_amount, received_amount = stats
+        if stats:
+            sent_count, received_count, sent_amount, received_amount = stats
+        else:
+            sent_count, received_count, sent_amount, received_amount = 0, 0, 0, 0
         
         conn.close()
         
@@ -1237,29 +1678,47 @@ async def transaction_details_handler(update: Update, context):
             for transaction in transactions:
                 trans_id, from_user_id, to_user_id, amount, trans_type, description, created_at = transaction
                 
-                # تحديد نوع المعاملة
+                # تحديد اتجاه المعاملة والأيقونات
                 if from_user_id == user['id']:
-                    direction = "📤 مرسل"
-                    color = "🔴"
+                    # معاملة صادرة (سحب)
+                    direction_color = "🔴"
+                    direction_text = "مرسل"
+                    amount_prefix = "-"
                 else:
-                    direction = "📥 مستلم" 
-                    color = "🟢"
+                    # معاملة واردة (إيداع)
+                    direction_color = "🟢"
+                    direction_text = "مستلم"
+                    amount_prefix = "+"
                 
-                # نوع المعاملة
-                type_text = {
+                # أيقونات أنواع المعاملات
+                type_icons = {
+                    'transfer': '🔄',
+                    'card_purchase': '🛒',
+                    'coupon_redeem': '🎟️',
+                    'commission': '🎯',
+                    'money_creation': '💰',
+                    'transfer_fee': '💳'
+                }
+                
+                type_names = {
                     'transfer': 'تحويل رصيد',
                     'card_purchase': 'شراء كرت',
                     'coupon_redeem': 'شحن بكوبون',
-                    'commission': 'عمولة'
-                }.get(trans_type, 'معاملة')
+                    'commission': 'عمولة',
+                    'money_creation': 'إنشاء رصيد',
+                    'transfer_fee': 'رسوم تحويل'
+                }
+                
+                type_icon = type_icons.get(trans_type, '💼')
+                type_name = type_names.get(trans_type, 'معاملة')
+                
+                # تنسيق التاريخ
+                date_formatted = created_at[:16] if created_at else 'غير محدد'
                 
                 details_text += f"""
-{color} **{direction} - {type_text}**
-💰 المبلغ: **{amount:,.2f}** ريال
-📝 التفاصيل: {description or 'غير محدد'}
-📅 التاريخ: {created_at[:16] if created_at else 'غير محدد'}
-🆔 رقم المعاملة: #{trans_id}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📅 {date_formatted}
+{direction_color} {direction_text} | {type_icon} {type_name} | 💰 {amount_prefix}{amount:,.0f} ريال
+
 """
         else:
             details_text += "❌ لا توجد معاملات حتى الآن"
@@ -1322,8 +1781,15 @@ async def wallet_stats_handler(update: Update, context):
         
         conn.close()
         
-        sent_month, received_month, spent_month, earned_month = monthly_stats
-        weekly_transactions, weekly_change = weekly_stats
+        if monthly_stats:
+            sent_month, received_month, spent_month, earned_month = monthly_stats
+        else:
+            sent_month, received_month, spent_month, earned_month = 0, 0, 0, 0
+        
+        if weekly_stats:
+            weekly_transactions, weekly_change = weekly_stats
+        else:
+            weekly_transactions, weekly_change = 0, 0
         
         # حساب متوسط الإنفاق اليومي
         daily_avg = spent_month / 30 if spent_month else 0
@@ -1374,6 +1840,68 @@ async def wallet_stats_handler(update: Update, context):
     except Exception as e:
         logger.error(f"Error in wallet stats handler: {e}")
         await query.edit_message_text(wallet_error("حساب إحصائيات المحفظة"))
+
+async def referral_stats_handler(update: Update, context: CallbackContext):
+    """معالج إحصائيات الإحالات والعمولات"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        if not user:
+            await query.edit_message_text(f"{EMOJIS['error']} يرجى التسجيل أولاً /start")
+            return
+        
+        # الحصول على إحصائيات الإحالات
+        from bot_modules.utils import get_referral_stats
+        stats = get_referral_stats(user['id'])
+        
+        # إنشاء رابط الإحالة
+        invite_code = user['invite_code'] if user['invite_code'] else 'غير متوفر'
+        bot_username = context.bot.username or "YemenNetBot"
+        referral_link = f"https://t.me/{bot_username}?start=ref_{invite_code}" if invite_code != 'غير متوفر' else "غير متوفر"
+        
+        referral_text = f"""
+👥 **إحالاتي وعمولاتي** 👥
+
+👤 **{user['full_name']}**
+💳 محفظتك: **{user['wallet_number']}**
+
+🎯 **إحصائيات الإحالات:**
+👥 عدد الإحالات: **{stats['total_referrals']:,}** شخص
+💰 إجمالي العمولات: **{stats['total_commissions']:,.2f}** ريال
+🛒 إجمالي مشتريات المُحالين: **{stats['total_referred_purchases']:,.2f}** ريال
+📊 عدد العمولات: **{stats['commission_count']:,}** عمولة
+
+📅 **هذا الشهر:**
+💰 العمولات المكتسبة: **{stats['monthly_commission_amount']:,.2f}** ريال
+📈 عدد العمولات: **{stats['monthly_commissions']:,}** عمولة
+
+🎫 **رابط الإحالة الخاص بك:**
+`{referral_link}`
+
+💡 **كيف تعمل العمولات:**
+• احصل على **5%** من كل مشترى يقوم به أصدقاؤك
+• العمولة تُضاف فوراً لرصيدك عند كل عملية شراء
+• لا يوجد حد أقصى للعمولات
+• شارك رابطك واكسب المزيد!
+
+📱 **نصائح لزيادة الإحالات:**
+• شارك الرابط مع الأصدقاء والعائلة
+• انشر الرابط في مجموعات التواصل
+• اشرح فوائد المنصة للآخرين
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📋 نسخ رابط الإحالة', callback_data=f'copy_referral_{invite_code}')],
+            [InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(referral_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in referral stats handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض إحصائيات الإحالات.")
 
 # Enhanced supplier handlers
 async def upload_cards_handler(update: Update, context):
@@ -1477,8 +2005,10 @@ async def manage_networks_handler(update: Update, context):
         
         if networks:
             # إذا كانت توجد شبكة، عرض أزرار الإدارة
+            network_id = networks[0]['id']
             keyboard = [
-                [InlineKeyboardButton('📊 تفاصيل الشبكة', callback_data='network_details')],
+                [InlineKeyboardButton('📊 تفاصيل الشبكة', callback_data='network_details'),
+                 InlineKeyboardButton('🔗 مشاركة الشبكة', callback_data=f'share_network_{network_id}')],
                 [InlineKeyboardButton('📤 رفع كروت', callback_data='upload_cards')],
                 [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
             ]
@@ -1502,6 +2032,600 @@ async def manage_networks_handler(update: Update, context):
             "إدارة الشبكات",
             "لا يمكن الوصول إلى بيانات الشبكات الخاصة بك حالياً"
         ))
+
+async def share_network_handler(update: Update, context: CallbackContext, network_id: str):
+    """معالج مشاركة الشبكة"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        if not user or user['role'] != 'supplier':
+            await query.edit_message_text(f"{EMOJIS['error']} غير مخول لك الوصول لهذه الميزة")
+            return
+        
+        # الحصول على معلومات الشبكة
+        from bot_modules.utils import get_network_share_info, generate_supplier_share_link
+        
+        network_info = get_network_share_info(network_id, user['id'])
+        if not network_info:
+            await query.edit_message_text(f"{EMOJIS['error']} الشبكة غير موجودة أو لا تملك صلاحية الوصول إليها")
+            return
+        
+        # إنشاء رابط المشاركة
+        bot_username = context.bot.username or "YemenNetBot"
+        share_link = generate_supplier_share_link(network_id, bot_username)
+        
+        # تأمين النص ضد مشاكل تنسيق Markdown باستعمال HTML مع هروب المحارف
+        name_html = html.escape(str(network_info.get('name') or ''))
+        provider_html = html.escape(str(network_info.get('provider') or ''))
+        location_html = html.escape(str(network_info.get('location') or ''))
+        city_html = html.escape(str(network_info.get('city') or ''))
+        total_cards = network_info.get('total_cards') or 0
+        available_cards = network_info.get('available_cards') or 0
+        min_price = network_info.get('min_price') or 0
+        max_price = network_info.get('max_price') or 0
+
+        share_text = (
+            f"🔗 <b>مشاركة شبكتك</b> 🔗\n\n"
+            f"📶 <b>{name_html}</b>\n"
+            f"🏢 المزود: <b>{provider_html}</b>\n"
+            f"🏙️ الموقع: <b>{location_html}, {city_html}</b>\n\n"
+            f"📊 <b>إحصائيات الشبكة:</b>\n"
+            f"💳 إجمالي الكروت: <b>{total_cards:,}</b> كرت\n"
+            f"✅ الكروت المتاحة: <b>{available_cards:,}</b> كرت\n"
+            f"💰 نطاق الأسعار: <b>{min_price:,.0f} - {max_price:,.0f}</b> ريال\n\n"
+            f"🎯 <b>رابط المشاركة:</b>\n"
+            f"<code>{html.escape(share_link)}</code>\n\n"
+            f"💡 <b>كيفية الاستخدام:</b>\n"
+            f"• شارك هذا الرابط مع العملاء\n"
+            f"• عند النقر عليه سيفتح شبكتك مباشرة\n"
+            f"• يمكن للعملاء الشراء فوراً من شبكتك\n"
+            f"• احصل على المزيد من المبيعات!\n\n"
+            f"📱 <b>طرق المشاركة:</b>\n"
+            f"• انسخ الرابط وشاركه في الواتساب\n"
+            f"• انشره في مجموعات التليجرام\n"
+            f"• ضعه في منشوراتك على وسائل التواصل\n"
+            f"• أرسله للعملاء مباشرة\n\n"
+            f"🎊 <b>مزايا الرابط المباشر:</b>\n"
+            f"• وصول سريع لشبكتك\n"
+            f"• تجربة شراء محسنة\n"
+            f"• زيادة في المبيعات\n"
+            f"• سهولة في التسويق"
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton('📋 نسخ الرابط', callback_data=f'copy_share_link_{network_id}')],
+            [InlineKeyboardButton('🔙 العودة لإدارة الشبكات', callback_data='manage_networks'),
+             InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
+        ]
+        
+        # عرض المعاينة سيكون عندما نرسل الرابط برسالة منفصلة، لأن edit_message_text لا يعرض معاينة للرابط مع الكود داخل النص
+        await query.edit_message_text(share_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+        
+    except Exception as e:
+        logger.error(f"Error in share network handler: {e}")
+        await query.edit_message_text(unexpected_error("مشاركة الشبكة"))
+
+async def request_withdrawal_handler(update: Update, context: CallbackContext):
+    """معالج طلب سحب الأرباح للمزود"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        if not user or user['role'] != 'supplier':
+            await query.edit_message_text(f"{EMOJIS['error']} غير مخول لك الوصول لهذه الميزة")
+            return
+        
+        # التحقق من حالة المزود النشطة
+        if not user['is_active']:
+            await query.edit_message_text(f"{EMOJIS['error']} حسابك غير مفعل. لا يمكن طلب السحب.")
+            return
+        
+        # التحقق من وجود شبكة نشطة
+        conn_check = get_db_connection()
+        cursor_check = conn_check.cursor()
+        cursor_check.execute('SELECT COUNT(*) FROM networks WHERE supplier_id = ? AND is_active = 1', (user['id'],))
+        result_check = cursor_check.fetchone()
+        active_networks = result_check[0] if result_check else 0
+        conn_check.close()
+        
+        if active_networks == 0:
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك شبكة نشطة. لا يمكن طلب السحب.")
+            return
+        
+        # الحصول على المبلغ القابل للسحب
+        from bot_modules.utils import get_provider_withdrawable_amount, can_request_withdrawal
+        
+        withdrawable_info = get_provider_withdrawable_amount(user['id'])
+        can_withdraw = can_request_withdrawal()
+        
+        # التحقق من وجود طلب معلق
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT COUNT(*) FROM withdrawals 
+            WHERE provider_id = ? AND status = 'Pending'
+        ''', (user['id'],))
+        result = cursor.fetchone()
+        pending_requests = result[0] if result else 0
+        conn.close()
+        
+        withdrawal_text = f"""
+💰 **طلب سحب الأرباح** 💰
+
+👤 **{user['full_name']}**
+🆔 **معرف المزود:** `{get_or_create_supplier_code(user['id'])}`
+
+📊 **ملخص الأرباح:**
+💰 إجمالي الأرباح: **{withdrawable_info['total_earnings']:,.2f}** ريال
+📤 تم سحبه/معلق: **{withdrawable_info['withdrawn_amount']:,.2f}** ريال
+✅ المتاح للسحب: **{withdrawable_info['available_amount']:,.2f}** ريال
+
+📅 **شروط السحب:**
+• يمكن إنشاء طلب السحب في أي وقت
+• تتم الموافقة والتحويل من الإدارة يوم الجمعة فقط
+• الحد الأدنى للسحب: 100 ريال
+• مدة المعالجة بعد الموافقة: 1-3 أيام عمل
+
+🕐 **حالة اليوم:** {'✅ تتم الموافقات اليوم (الجمعة)' if can_withdraw else 'ℹ️ الموافقات تتم يوم الجمعة فقط'}
+"""
+        
+        if pending_requests > 0:
+            withdrawal_text += f"\n⏳ **لديك {pending_requests} طلب معلق بالفعل**"
+        
+        keyboard = []
+        
+        if withdrawable_info['available_amount'] >= 100 and pending_requests == 0:
+            keyboard.append([InlineKeyboardButton('💰 تقديم طلب سحب', callback_data='submit_withdrawal_request')])
+        
+        keyboard.extend([
+            [InlineKeyboardButton('📋 عرض طلبات السحب', callback_data='view_my_withdrawals')],
+            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ])
+        
+        await query.edit_message_text(withdrawal_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in request withdrawal handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض معلومات السحب")
+
+async def submit_withdrawal_request_handler(update: Update, context: CallbackContext):
+    """معالج تقديم طلب السحب"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        if not user or user['role'] != 'supplier':
+            await query.edit_message_text(f"{EMOJIS['error']} غير مخول لك الوصول لهذه الميزة")
+            return
+        
+        # بدء عملية جمع بيانات السحب
+        context.user_data['withdrawal_step'] = 'name'
+        
+        submit_text = f"""
+📝 **تقديم طلب سحب** 📝
+
+👤 **{user['full_name']}**
+
+📋 **المطلوب إدخال البيانات التالية:**
+
+1️⃣ **اسم المستفيد** (كما هو في الحساب البنكي)
+2️⃣ **رقم الحساب أو بيانات التحويل**
+3️⃣ **طريقة التحويل** (القطيبي، الكريمي، شبكة صرافة)
+
+💡 **يرجى كتابة اسم المستفيد أولاً:**
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('❌ إلغاء الطلب', callback_data='request_withdrawal')]
+        ]
+        
+        await query.edit_message_text(submit_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in submit withdrawal request handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تقديم الطلب")
+
+async def view_my_withdrawals_handler(update: Update, context: CallbackContext):
+    """معالج عرض طلبات السحب الخاصة بالمزود"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        if not user or user['role'] != 'supplier':
+            await query.edit_message_text(f"{EMOJIS['error']} غير مخول لك الوصول لهذه الميزة")
+            return
+        
+        # الحصول على طلبات السحب
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT withdrawal_id, amount, method, status, requested_at, confirmed_at
+            FROM withdrawals 
+            WHERE provider_id = ?
+            ORDER BY requested_at DESC
+            LIMIT 10
+        ''', (user['id'],))
+        
+        withdrawals = cursor.fetchall()
+        conn.close()
+        
+        withdrawals_text = f"""
+📋 **طلبات السحب** 📋
+
+👤 **{user['full_name']}**
+
+📊 **آخر الطلبات:**
+"""
+        
+        if withdrawals:
+            status_icons = {
+                'Pending': '⏳',
+                'Approved': '✅', 
+                'Rejected': '❌'
+            }
+            
+            for withdrawal in withdrawals:
+                w_id, amount, method, status, requested_at, confirmed_at = withdrawal
+                status_icon = status_icons.get(status, '❓')
+                date_str = requested_at[:10] if requested_at else 'غير محدد'
+                
+                withdrawals_text += f"""
+{status_icon} **{amount:,.2f} ريال**
+📅 تاريخ الطلب: {date_str}
+💳 طريقة التحويل: {method}
+📊 الحالة: {status}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+        else:
+            withdrawals_text += """
+❌ **لا توجد طلبات سحب**
+💡 يمكنك تقديم طلب سحب في أي وقت، وستتم الموافقة يوم الجمعة.
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('💰 طلب سحب جديد', callback_data='request_withdrawal')],
+            [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel'),
+             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(withdrawals_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in view my withdrawals handler: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في عرض طلبات السحب")
+
+async def process_withdrawal_step(update: Update, context: CallbackContext, message_text: str):
+    """معالجة خطوات طلب السحب"""
+    try:
+        user = get_user(update.effective_user.id)
+        step = context.user_data.get('withdrawal_step')
+        
+        if step == 'name':
+            # حفظ اسم المستفيد
+            context.user_data['withdrawal_name'] = message_text.strip()
+            context.user_data['withdrawal_step'] = 'account'
+            
+            await update.message.reply_text(f"""
+💳 **تم حفظ الاسم:** {message_text}
+
+2️⃣ **الآن يرجى كتابة رقم الحساب أو بيانات التحويل:**
+
+💡 **أمثلة:**
+• رقم حساب القطيبي: 1234567890
+• رقم محفظة الكريمي: 777123456
+• اسم الصرافة ورقم الحساب: صرافة الأمل - 987654321
+""", reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton('❌ إلغاء الطلب', callback_data='request_withdrawal')]
+            ]))
+            
+        elif step == 'account':
+            # حفظ رقم الحساب
+            context.user_data['withdrawal_account'] = message_text.strip()
+            context.user_data['withdrawal_step'] = 'method'
+            
+            method_text = f"""
+🏦 **تم حفظ بيانات الحساب:** {message_text}
+
+3️⃣ **اختر طريقة التحويل:**
+"""
+            
+            keyboard = [
+                [InlineKeyboardButton('🏦 القطيبي', callback_data='withdrawal_method_القطيبي')],
+                [InlineKeyboardButton('💳 الكريمي', callback_data='withdrawal_method_الكريمي')],
+                [InlineKeyboardButton('🏪 شبكة صرافة', callback_data='withdrawal_method_شبكة صرافة')],
+                [InlineKeyboardButton('❌ إلغاء الطلب', callback_data='request_withdrawal')]
+            ]
+            
+            await update.message.reply_text(method_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            
+    except Exception as e:
+        logger.error(f"Error in process withdrawal step: {e}")
+        await update.message.reply_text(f"{EMOJIS['error']} حدث خطأ في معالجة البيانات")
+
+async def confirm_withdrawal_request_handler(update: Update, context: CallbackContext, method: str):
+    """تأكيد طلب السحب"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        if not user or user['role'] != 'supplier':
+            await query.edit_message_text(f"{EMOJIS['error']} غير مخول لك الوصول لهذه الميزة")
+            return
+        
+        # التحقق من البيانات المطلوبة
+        withdrawal_name = context.user_data.get('withdrawal_name')
+        withdrawal_account = context.user_data.get('withdrawal_account')
+        
+        if not withdrawal_name or not withdrawal_account:
+            await query.edit_message_text(f"{EMOJIS['error']} بيانات الطلب غير مكتملة. يرجى البدء من جديد.")
+            return
+        
+        # الحصول على المبلغ المتاح
+        from bot_modules.utils import get_provider_withdrawable_amount, create_withdrawal_request
+        
+        withdrawable_info = get_provider_withdrawable_amount(user['id'])
+        amount = withdrawable_info['available_amount']
+        
+        if amount < 100:
+            await query.edit_message_text(f"{EMOJIS['error']} المبلغ المتاح ({amount:.2f} ريال) أقل من الحد الأدنى (100 ريال)")
+            return
+        
+        # إنشاء طلب السحب
+        result = create_withdrawal_request(user['id'], withdrawal_name, withdrawal_account, method, amount)
+        
+        if result['success']:
+            # مسح بيانات الطلب
+            context.user_data.clear()
+            
+            success_text = f"""
+✅ **تم تقديم طلب السحب بنجاح!** ✅
+
+👤 **المستفيد:** {withdrawal_name}
+💳 **بيانات الحساب:** {withdrawal_account}
+🏦 **طريقة التحويل:** {method}
+💰 **المبلغ:** {amount:,.2f} ريال
+
+📋 **معرف الطلب:** `{result['withdrawal_id'][:8]}...`
+
+⏳ **حالة الطلب:** معلق - في انتظار موافقة الإدارة
+
+📱 **ما يحدث الآن:**
+• تم إرسال إشعار للمشرف الأعلى
+• سيتم مراجعة الطلب خلال 1-3 أيام عمل
+• ستحصل على إشعار عند الموافقة أو الرفض
+• يمكنك متابعة حالة الطلب من "عرض طلبات السحب"
+
+💡 **ملاحظة:** التحويل يتم يدوياً من الإدارة بعد الموافقة
+"""
+            
+            keyboard = [
+                [InlineKeyboardButton('📋 عرض طلبات السحب', callback_data='view_my_withdrawals')],
+                [InlineKeyboardButton('🏪 لوحة المزود', callback_data='supplier_panel')]
+            ]
+            
+            await query.edit_message_text(success_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            
+        else:
+            await query.edit_message_text(f"{EMOJIS['error']} {result['error']}")
+            
+    except Exception as e:
+        logger.error(f"Error in confirm withdrawal request: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في تأكيد الطلب")
+
+async def approve_withdrawal_handler(update: Update, context: CallbackContext, withdrawal_id: str):
+    """موافقة المشرف على طلب السحب"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # السماح بالموافقة يوم الجمعة فقط
+        from datetime import datetime
+        if datetime.utcnow().weekday() != 4:  # الجمعة = 4
+            await query.edit_message_text(
+                f"{EMOJIS['info']} الموافقات تتم يوم الجمعة فقط. يرجى العودة يوم الجمعة.")
+            return
+        
+        # تحديث حالة الطلب وإنشاء قيد خصم من رصيد المزود (ذرّي)
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE withdrawals 
+            SET status = 'Approved', confirmed_at = datetime('now'), confirmed_by = ?
+            WHERE withdrawal_id = ?
+        ''', (user['id'], withdrawal_id))
+        
+        # الحصول على تفاصيل الطلب للإشعار
+        cursor.execute('''
+            SELECT w.provider_id, w.provider_name, w.amount, u.full_name
+            FROM withdrawals w
+            JOIN users u ON w.provider_id = u.id
+            WHERE w.withdrawal_id = ?
+        ''', (withdrawal_id,))
+        
+        result = cursor.fetchone()
+        
+        # إنشاء معاملة خصم من رصيد المزود وإثباتها
+        if result:
+            provider_id, provider_name, amount, provider_full_name = result
+            # خصم من رصيد المزود عبر إعادة احتساب الرصيد بعد تسجيل معاملة مدينة
+            payout_tx_id = str(uuid.uuid4())
+            cursor.execute('''
+                INSERT INTO transactions (id, from_user, to_user, amount, type, description, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+            ''', (payout_tx_id, provider_id, None, amount, 'withdrawal_payout', f'سحب أرباح بموافقة الإدارة - طلب {withdrawal_id}'))
+            # إعادة احتساب الرصيد
+            from bot_modules.utils import recalc_and_set_user_balance
+            recalc_and_set_user_balance(provider_id)
+        
+        conn.commit()
+        conn.close()
+        
+        if result:
+            provider_id, provider_name, amount, provider_full_name = result
+            
+            success_text = f"""
+✅ **تمت الموافقة على طلب السحب** ✅
+
+👤 **المزود:** {provider_full_name} ({provider_name})
+💰 **المبلغ:** {amount:,.2f} ريال
+🆔 **معرف الطلب:** `{withdrawal_id[:8]}...`
+📅 **تاريخ الموافقة:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+💡 **تم إرسال إشعار للمزود بالموافقة**
+"""
+        else:
+            success_text = "✅ تمت الموافقة على الطلب بنجاح"
+        
+        keyboard = [
+            [InlineKeyboardButton('💰 طلبات السحب', callback_data='admin_withdrawals')],
+            [InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(success_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in approve withdrawal: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في الموافقة")
+
+async def reject_withdrawal_handler(update: Update, context: CallbackContext, withdrawal_id: str):
+    """رفض المشرف لطلب السحب"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        
+        if not user or user['role'] != 'super_admin':
+            await query.edit_message_text(f"{EMOJIS['error']} ليس لديك صلاحية لهذه العملية.")
+            return
+        
+        # تحديث حالة الطلب
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE withdrawals 
+            SET status = 'Rejected', confirmed_at = datetime('now'), confirmed_by = ?, 
+                rejection_reason = 'تم الرفض من قبل المشرف الأعلى'
+            WHERE withdrawal_id = ?
+        ''', (user['id'], withdrawal_id))
+        
+        # الحصول على تفاصيل الطلب
+        cursor.execute('''
+            SELECT w.provider_name, w.amount, u.full_name
+            FROM withdrawals w
+            JOIN users u ON w.provider_id = u.id
+            WHERE w.withdrawal_id = ?
+        ''', (withdrawal_id,))
+        
+        result = cursor.fetchone()
+        
+        conn.commit()
+        conn.close()
+        
+        if result:
+            provider_name, amount, provider_full_name = result
+            
+            reject_text = f"""
+❌ **تم رفض طلب السحب** ❌
+
+👤 **المزود:** {provider_full_name} ({provider_name})
+💰 **المبلغ:** {amount:,.2f} ريال
+🆔 **معرف الطلب:** `{withdrawal_id[:8]}...`
+📅 **تاريخ الرفض:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+💡 **تم إرسال إشعار للمزود بالرفض**
+"""
+        else:
+            reject_text = "❌ تم رفض الطلب"
+        
+        keyboard = [
+            [InlineKeyboardButton('💰 طلبات السحب', callback_data='admin_withdrawals')],
+            [InlineKeyboardButton('👑 لوحة المشرف الأعلى', callback_data='super_admin_panel')]
+        ]
+        
+        await query.edit_message_text(reject_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in reject withdrawal: {e}")
+        await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في الرفض")
+
+async def copy_share_link_handler(update: Update, context: CallbackContext):
+    """معالج نسخ رابط مشاركة الشبكة"""
+    try:
+        query = update.callback_query
+        callback = query.data or ''
+        network_id = callback.split('_')[-1] if callback.startswith('copy_share_link_') else None
+        bot_username = context.bot.username or "YemenNetBot"
+        if network_id:
+            # جلب اسم الشبكة لعرضه في الرسالة
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute('SELECT name FROM networks WHERE id = ?', (network_id,))
+                row = cursor.fetchone()
+                conn.close()
+                network_name = row[0] if row else None
+            except Exception:
+                network_name = None
+
+            share_link = f"https://t.me/{bot_username}?start=network_{network_id}"
+            await query.answer("📋 تم نسخ الرابط!", show_alert=False)
+            preview = LinkPreviewOptions(is_disabled=False, show_above_text=True)
+            title = f"رابط الشبكة - {network_name}" if network_name else "رابط الشبكة"
+            # ضع الرابط في أول السطر لتفعيل المعاينة
+            text = f"{share_link}\n\n{title}\nاضغط للدخول المباشر"
+            await context.bot.send_message(chat_id=query.from_user.id, text=text, link_preview_options=preview)
+        else:
+            await query.answer("❌ لم يتم تحديد معرف الشبكة", show_alert=True)
+        
+    except Exception as e:
+        logger.error(f"Error in copy share link handler: {e}")
+        try:
+            await query.answer("❌ حدث خطأ في نسخ الرابط")
+        except Exception:
+            pass
+
+async def copy_referral_link_handler(update: Update, context: CallbackContext):
+    """معالج نسخ رابط الإحالة"""
+    try:
+        query = update.callback_query
+        user = get_user(query.from_user.id)
+        bot_username = context.bot.username or "YemenNetBot"
+        invite_code = user['invite_code'] if user and user['invite_code'] else None
+        if not invite_code:
+            import random, string
+            try:
+                new_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute('UPDATE users SET invite_code = ? WHERE id = ?', (new_code, user['id']))
+                conn.commit()
+                conn.close()
+                invite_code = new_code
+            except Exception:
+                invite_code = None
+        if invite_code:
+            referral_link = f"https://t.me/{bot_username}?start=ref_{invite_code}"
+            await query.answer("📋 تم نسخ رابط الإحالة!", show_alert=False)
+            preview = LinkPreviewOptions(is_disabled=False, show_above_text=True)
+            text = f"{referral_link}\n\nرابط الإحالة الخاص بك\nاضغط للدخول"
+            await context.bot.send_message(chat_id=query.from_user.id, text=text, link_preview_options=preview)
+        else:
+            await query.answer("❌ لا يوجد كود إحالة متاح", show_alert=True)
+        
+    except Exception as e:
+        logger.error(f"Error in copy referral link handler: {e}")
+        try:
+            await query.answer("❌ حدث خطأ في نسخ رابط الإحالة")
+        except Exception:
+            pass
 
 async def cards_reports_handler(update: Update, context):
     """Handle cards reports"""
@@ -1527,6 +2651,8 @@ async def cards_reports_handler(update: Update, context):
         ''', (user['id'],))
         
         stats = cursor.fetchone()
+        if not stats:
+            stats = (0, 0, 0, 0, 0, 0)
         conn.close()
         
         reports_text = f"""
@@ -1583,7 +2709,8 @@ async def sales_stats_handler(update: Update, context):
             FROM transactions 
             WHERE type = 'card_purchase'
         ''')
-        total_sales, total_revenue = cursor.fetchone()
+        result = cursor.fetchone()
+        total_sales, total_revenue = result if result else (0, 0)
         
         # مبيعات هذا الشهر
         cursor.execute('''
@@ -1594,7 +2721,8 @@ async def sales_stats_handler(update: Update, context):
             WHERE type = 'card_purchase' 
             AND DATE(created_at) >= DATE('now', 'start of month')
         ''')
-        monthly_sales, monthly_revenue = cursor.fetchone()
+        result = cursor.fetchone()
+        monthly_sales, monthly_revenue = result if result else (0, 0)
         
         # مبيعات اليوم
         cursor.execute('''
@@ -1605,16 +2733,16 @@ async def sales_stats_handler(update: Update, context):
             WHERE type = 'card_purchase' 
             AND DATE(created_at) = DATE('now')
         ''')
-        daily_sales, daily_revenue = cursor.fetchone()
+        result = cursor.fetchone()
+        daily_sales, daily_revenue = result if result else (0, 0)
         
-        # أفضل الشبكات مبيعاً (تقديري)
+        # أفضل الشبكات مبيعاً (محدث للنظام الجديد)
         cursor.execute('''
             SELECT n.name, n.provider, COUNT(t.id) as sales_count, SUM(t.amount) as network_revenue
             FROM transactions t
-            LEFT JOIN cards c ON t.description LIKE '%' || c.code || '%'
-            LEFT JOIN card_categories cc ON c.category_id = cc.id
-            LEFT JOIN networks n ON cc.network_id = n.id
-            WHERE t.type = 'card_purchase' AND n.id IS NOT NULL
+            JOIN users u ON t.to_user = u.id
+            JOIN networks n ON u.id = n.supplier_id
+            WHERE t.type = 'card_purchase'
             GROUP BY n.id, n.name, n.provider
             ORDER BY sales_count DESC
             LIMIT 5
@@ -1786,8 +2914,8 @@ async def supplier_settings_handler(update: Update, context):
 ⚙️ **الإعدادات المتاحة:**
 
 🏢 **معلومات المزود:**
-• اسم الشركة: {user.get('full_name', 'غير محدد')}
-• رقم الهاتف: {user.get('phone', 'غير محدد')}
+• اسم الشركة: {user['full_name'] if user['full_name'] else 'غير محدد'}
+• رقم الهاتف: {user['phone'] if user['phone'] else 'غير محدد'}
 • البريد الإلكتروني: غير محدد
 • العنوان: غير محدد
 
@@ -1802,7 +2930,7 @@ async def supplier_settings_handler(update: Update, context):
 • نظام الدفع: شهري
 • طريقة الاستلام: تحويل مباشر
 
-🔧 **إعدادات النظام:**
+🔧 **إعدادات المزود:**
 • حالة الحساب: نشط ✅
 • مستوى التحقق: مؤكد ✅
 • آخر تحديث: اليوم
@@ -1900,15 +3028,12 @@ async def handle_document(update: Update, context: CallbackContext):
         if not file_name.lower().endswith('.txt'):
             await update.message.reply_text("""
 ❌ **ملف غير مدعوم**
-
 🎯 **النظام المبسط الجديد:**
 يدعم فقط ملفات **TXT** (.txt)
-
 📋 **كيفية إنشاء الملف:**
 • افتح برنامج Notepad أو أي محرر نصوص
 • اكتب كل رقم كرت في سطر منفصل
 • احفظ الملف بصيغة TXT
-
 💡 **مثال على المحتوى:**
 ```
 123456789012
@@ -2163,6 +3288,12 @@ async def handle_text_message(update: Update, context: CallbackContext):
         
         # ===== Admin Management Text Handlers =====
         
+        # معالجة إدخال رقم محفظة لإضافة مشرف جديد
+        if context.user_data.get('awaiting_admin_wallet'):
+            from bot_modules.admin_management import AdminManagement
+            await AdminManagement.process_admin_wallet_input(update, context)
+            return
+        
         # معالجة إدخال معرف تلجرام لإضافة مشرف جديد
         if context.user_data.get('awaiting_admin_telegram_id'):
             if message_text.lower() in ['إلغاء', 'cancel', 'الغاء']:
@@ -2299,8 +3430,32 @@ async def handle_text_message(update: Update, context: CallbackContext):
                 # عرض ملخص نهائي وتأكيد الرفع
                 await show_final_confirmation(update, context)
                 return
+            
+            # معالجة طلب السحب
+            if context.user_data.get('withdrawal_step'):
+                await process_withdrawal_step(update, context, message_text)
+                return
         
         # للمستخدمين الآخرين (العملاء والمشرفين) - استخدام المعالج العام
+        # اعتراض تدفق إدخال الكوبونات للمشرف الأعلى
+        if user['role'] == 'super_admin':
+            from bot_modules.admin_functions import (
+                process_single_coupon_input,
+                process_bulk_amount_input,
+                process_bulk_count_input,
+            )
+            # فردي
+            if context.user_data.get('awaiting_single_coupon'):
+                await process_single_coupon_input(update, context)
+                return
+            # متعدد خطوة 1: القيمة
+            if context.user_data.get('awaiting_bulk_amount'):
+                await process_bulk_amount_input(update, context)
+                return
+            # متعدد خطوة 2: العدد
+            if context.user_data.get('awaiting_bulk_count'):
+                await process_bulk_count_input(update, context)
+                return
         await general_text_handler(update, context)
             
     except Exception as e:
@@ -2655,13 +3810,11 @@ async def process_category_selection(update: Update, context: CallbackContext):
         
         confirmation_text = f"""
 ✅ **تأكيد رفع الكروت**
-
 📁 **الملف:** {upload_data['filename']}
 📶 **الشبكة:** {network['name']}
 💳 **الفئة:** {category_name}
 📊 **حجم الملف:** {upload_data['size']/1024:.1f} كيلوبايت
 📝 **عدد الأسطر:** {len([l for l in lines if l.strip()])}
-
 🔍 **معاينة الأسطر الأولى:**
 ```
 {preview}
@@ -2683,7 +3836,6 @@ async def process_category_selection(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error processing category selection: {e}")
         await query.edit_message_text(ErrorMessages.card_error("اختيار فئة الكرت"))
-
 async def cancel_upload(update: Update, context: CallbackContext):
     """Cancel file upload"""
     try:
@@ -3456,7 +4608,6 @@ async def show_network_details(update: Update, context: CallbackContext, network
     except Exception as e:
         logger.error(f"Error in show network details: {e}")
         await query.edit_message_text(search_error("تفاصيل الشبكة", "قاعدة البيانات"))
-
 async def legacy_search_networks_handler(update: Update, context: CallbackContext):
     """Legacy search function - shows all networks (deprecated)"""
     try:
@@ -3483,7 +4634,6 @@ async def legacy_search_networks_handler(update: Update, context: CallbackContex
         
         search_text = f"""
 🔍 **البحث في الشبكات** 🔍
-
 📊 **إجمالي الشبكات المتاحة:** {len(networks)} شبكة
 
 🌐 **الشبكات المتاحة:**
@@ -3574,10 +4724,13 @@ async def transfer_to_friend_handler(update: Update, context: CallbackContext):
         await query.edit_message_text(wallet_error("عرض صفحة التحويل"))
 
 async def personal_reports_handler(update: Update, context: CallbackContext):
-    """معالج التقارير الشخصية"""
+    """معالج التقارير الشخصية يدعم الأوامر والضغط على الأزرار"""
     try:
-        query = update.callback_query
-        user = get_user(query.from_user.id)
+        is_callback = hasattr(update, 'callback_query') and update.callback_query
+        if is_callback:
+            query = update.callback_query
+            await query.answer()
+        user = get_user(update.effective_user.id)
         
         # الحصول على إحصائيات المستخدم
         conn = get_db_connection()
@@ -3596,7 +4749,10 @@ async def personal_reports_handler(update: Update, context: CallbackContext):
         ''', (user['id'], user['id'], user['id'], user['id'], user['id'], user['id']))
         
         stats = cursor.fetchone()
-        total_trans, sent_amount, received_amount, sent_count, received_count = stats
+        if stats:
+            total_trans, sent_amount, received_amount, sent_count, received_count = stats
+        else:
+            total_trans, sent_amount, received_amount, sent_count, received_count = 0, 0, 0, 0, 0
         
         # إحصائيات هذا الشهر
         cursor.execute('''
@@ -3609,7 +4765,10 @@ async def personal_reports_handler(update: Update, context: CallbackContext):
         ''', (user['id'], user['id']))
         
         monthly_stats = cursor.fetchone()
-        monthly_trans, monthly_amount = monthly_stats
+        if monthly_stats:
+            monthly_trans, monthly_amount = monthly_stats
+        else:
+            monthly_trans, monthly_amount = 0, 0
         
         conn.close()
         
@@ -3650,17 +4809,23 @@ async def personal_reports_handler(update: Update, context: CallbackContext):
              InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
-        await query.edit_message_text(reports_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        if is_callback:
+            await query.edit_message_text(reports_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        else:
+            await update.message.reply_text(reports_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
     except Exception as e:
         logger.error(f"Error in personal reports handler: {e}")
         await query.edit_message_text(ErrorMessages.report_error("الشخصية"))
 
 async def promotions_handler(update: Update, context: CallbackContext):
-    """معالج العروض والخصومات"""
+    """معالج العروض والخصومات يدعم الأوامر والضغط على الأزرار"""
     try:
-        query = update.callback_query
-        user = get_user(query.from_user.id)
+        is_callback = hasattr(update, 'callback_query') and update.callback_query
+        if is_callback:
+            query = update.callback_query
+            await query.answer()
+        user = get_user(update.effective_user.id)
         
         # الحصول على العروض المتاحة
         conn = get_db_connection()
@@ -3733,17 +4898,23 @@ async def promotions_handler(update: Update, context: CallbackContext):
             [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
-        await query.edit_message_text(promotions_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        if is_callback:
+            await query.edit_message_text(promotions_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        else:
+            await update.message.reply_text(promotions_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
     except Exception as e:
         logger.error(f"Error in promotions handler: {e}")
         await query.edit_message_text(menu_error("العروض والخصومات", "عرض العروض"))
 
 async def my_notifications_handler(update: Update, context: CallbackContext):
-    """معالج إشعاراتي"""
+    """معالج إشعاراتي يدعم الأوامر والضغط على الأزرار"""
     try:
-        query = update.callback_query
-        user = get_user(query.from_user.id)
+        is_callback = hasattr(update, 'callback_query') and update.callback_query
+        if is_callback:
+            query = update.callback_query
+            await query.answer()
+        user = get_user(update.effective_user.id)
         
         # الحصول على آخر المعاملات كإشعارات
         conn = get_db_connection()
@@ -3813,78 +4984,14 @@ async def my_notifications_handler(update: Update, context: CallbackContext):
             [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
-        await query.edit_message_text(notifications_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        if is_callback:
+            await query.edit_message_text(notifications_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        else:
+            await update.message.reply_text(notifications_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         
     except Exception as e:
         logger.error(f"Error in my notifications handler: {e}")
         await query.edit_message_text(ErrorMessages.notification_error("عرض الإشعارات"))
-
-async def account_settings_handler(update: Update, context: CallbackContext):
-    """معالج إعدادات الحساب"""
-    try:
-        query = update.callback_query
-        user = get_user(query.from_user.id)
-        
-                # تحديد نوع الحساب
-        role_names = {
-            'user': 'عميل', 
- 
-            'supplier': 'مزود', 
-            'admin': 'مشرف', 
-            'super_admin': 'مشرف أعلى'
-        }
-        
-        settings_text = f"""
-⚙️ **إعدادات الحساب** ⚙️
-
-👤 **{user['full_name']}**
-💳 **رقم المحفظة:** {user['wallet_number']}
-📱 **رقم الهاتف:** {user.get('phone', 'غير محدد')}
-🆔 **معرف تلغرام:** {user.get('telegram_id', 'غير محدد')}
-👑 **نوع الحساب:** {role_names.get(user.get('role', 'user'), 'عميل')}
-
-⚙️ **الإعدادات المتاحة:**
-
-🔔 **إعدادات الإشعارات:**
-• إشعارات المعاملات: مفعل ✅
-• إشعارات التحديثات: مفعل ✅
-• إشعارات العروض: مفعل ✅
-
-🔒 **إعدادات الأمان:**
-• حماية المحفظة: مفعل ✅
-• تأكيد العمليات: مفعل ✅
-• إشعارات الأمان: مفعل ✅
-
-👁️ **إعدادات الخصوصية:**
-• إظهار الاسم: مفعل ✅
-• إظهار رقم الهاتف: مخفي ❌
-• إظهار آخر ظهور: مفعل ✅
-
-📊 **إعدادات التقارير:**
-• التقارير الشخصية: مفعل ✅
-• إحصائيات المحفظة: مفعل ✅
-• سجل المعاملات: مفعل ✅
-
-💡 **معلومات الحساب:**
-• تاريخ التسجيل: {user.get('created_at', 'غير محدد')[:10] if user.get('created_at') else 'غير محدد'}
-• آخر تحديث: اليوم
-• حالة الحساب: نشط ✅
-"""
-        
-        keyboard = [
-            [InlineKeyboardButton('🔔 إعدادات الإشعارات', callback_data='notification_settings'),
-             InlineKeyboardButton('🔒 إعدادات الخصوصية', callback_data='privacy_settings')],
-            [InlineKeyboardButton('🔄 تحديث البيانات', callback_data='update_profile'),
-             InlineKeyboardButton('🔐 تغيير كلمة المرور', callback_data='change_password')],
-            [InlineKeyboardButton('💳 محفظتي', callback_data='enhanced_wallet'),
-             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
-        ]
-        
-        await query.edit_message_text(settings_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in account settings handler: {e}")
-        await query.edit_message_text(ErrorMessages.settings_error("الحساب"))
 
 async def transfer_history_handler(update: Update, context: CallbackContext):
     """معالج سجل التحويلات"""
@@ -3981,9 +5088,9 @@ async def update_profile_handler(update: Update, context: CallbackContext):
 
 👤 **البيانات الحالية:**
 📝 الاسم: **{user['full_name']}**
-📱 الهاتف: **{user.get('phone', 'غير محدد')}**
+📱 الهاتف: **{user['phone'] if user['phone'] else 'غير محدد'}**
 💳 رقم المحفظة: **{user['wallet_number']}**
-🆔 معرف تلغرام: **{user.get('telegram_id', 'غير محدد')}**
+🆔 معرف تلغرام: **{user['telegram_id']}**
 
 ✏️ **يمكنك تحديث:**
 • الاسم الكامل
@@ -4001,7 +5108,7 @@ async def update_profile_handler(update: Update, context: CallbackContext):
         keyboard = [
             [InlineKeyboardButton('📞 تواصل مع الدعم', callback_data='contact_admin'),
              InlineKeyboardButton('📋 عرض البيانات الكاملة', callback_data='view_full_profile')],
-            [InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings'),
+            [
              InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
@@ -4010,6 +5117,102 @@ async def update_profile_handler(update: Update, context: CallbackContext):
     except Exception as e:
         logger.error(f"Error in update profile handler: {e}")
         await query.edit_message_text(ErrorMessages.settings_error("البيانات الشخصية"))
+
+async def view_full_profile_handler(update: Update, context: CallbackContext):
+    """معالج عرض البيانات الكاملة للمستخدم"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        user = get_user(query.from_user.id)
+        if not user:
+            await query.edit_message_text(f"{EMOJIS['error']} لم يتم العثور على بيانات المستخدم.")
+            return
+        
+        # الحصول على إحصائيات مفصلة للمستخدم
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # إحصائيات المعاملات
+        cursor.execute('SELECT COUNT(*) FROM transactions WHERE user_id = ?', (user['id'],))
+        total_transactions = cursor.fetchone()[0]
+        
+        cursor.execute('SELECT SUM(amount) FROM transactions WHERE user_id = ? AND type = "purchase"', (user['id'],))
+        result = cursor.fetchone()[0]
+        total_purchases = result if result is not None else 0
+        
+        cursor.execute('SELECT SUM(amount) FROM transactions WHERE user_id = ? AND type = "transfer"', (user['id'],))
+        result = cursor.fetchone()[0]
+        total_transfers = result if result is not None else 0
+        
+        # إحصائيات الإحالات
+        cursor.execute('SELECT COUNT(*) FROM referrals WHERE referrer_id = ?', (user['id'],))
+        total_referrals = cursor.fetchone()[0]
+        
+        # آخر نشاط
+        cursor.execute('''
+            SELECT action, details, created_at 
+            FROM activity_logs 
+            WHERE user_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT 5
+        ''', (user['id'],))
+        recent_activities = cursor.fetchall()
+        
+        conn.close()
+        
+        # تنسيق النشاطات الأخيرة
+        activities_text = ""
+        if recent_activities:
+            for activity in recent_activities:
+                activities_text += f"• {activity[0]}: {activity[1][:30]}... - {activity[2][:16]}\n"
+        else:
+            activities_text = "• لا توجد نشاطات مسجلة\n"
+        
+        profile_text = f"""
+📋 **البيانات الكاملة للمستخدم** 📋
+
+👤 **المعلومات الأساسية:**
+📝 الاسم: **{user['full_name']}**
+📱 الهاتف: **{user['phone'] if user['phone'] else 'غير محدد'}**
+💳 رقم المحفظة: **{user['wallet_number']}**
+🆔 معرف تلغرام: **{user['telegram_id']}**
+🎭 الدور: **{USER_ROLES.get(user['role'], user['role'])}**
+🟢 الحالة: **{'نشط' if user['is_active'] else 'غير نشط'}**
+
+💰 **المعلومات المالية:**
+💵 الرصيد الحالي: **{user['balance']:,.2f}** ريال
+💸 إجمالي المشتريات: **{total_purchases:,.2f}** ريال
+🔄 إجمالي التحويلات: **{total_transfers:,.2f}** ريال
+📊 إجمالي المعاملات: **{total_transactions:,}**
+
+👥 **الإحالات:**
+🎯 عدد الإحالات: **{total_referrals:,}**
+
+📅 **التواريخ المهمة:**
+📅 تاريخ التسجيل: **{user['created_at'][:16]}**
+⏰ آخر نشاط: **{user['last_activity'][:16]}**
+
+⚡ **النشاطات الأخيرة:**
+{activities_text}
+
+───────────────────
+💡 استخدم الأزرار أدناه للمزيد من الخيارات
+"""
+        
+        keyboard = [
+            [InlineKeyboardButton('📊 تقاريري المفصلة', callback_data='detailed_reports'),
+             InlineKeyboardButton('💳 محفظتي المطورة', callback_data='enhanced_wallet')],
+            [
+             InlineKeyboardButton('🔄 تحديث البيانات', callback_data='update_profile')],
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+        ]
+        
+        await query.edit_message_text(profile_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in view full profile handler: {e}")
+        await query.edit_message_text(ErrorMessages.settings_error("عرض البيانات الكاملة"))
 
 async def change_password_handler(update: Update, context: CallbackContext):
     """معالج تغيير كلمة المرور"""
@@ -4047,10 +5250,7 @@ async def change_password_handler(update: Update, context: CallbackContext):
 """
         
         keyboard = [
-            [InlineKeyboardButton('🛡️ إعدادات الأمان', callback_data='security_settings'),
-             InlineKeyboardButton('🔔 إشعارات الأمان', callback_data='security_notifications')],
-            [InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings'),
-             InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
+            [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
         await query.edit_message_text(password_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
@@ -4110,7 +5310,7 @@ async def contact_admin_handler(update: Update, context: CallbackContext):
              InlineKeyboardButton('📱 واتساب', url='https://wa.me/967777777777')],
             [InlineKeyboardButton('📧 إرسال إيميل', callback_data='send_email'),
              InlineKeyboardButton('🏢 عناوين المكاتب', callback_data='office_locations')],
-            [InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings'),
+            [
              InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
@@ -4177,7 +5377,6 @@ async def account_status_handler(update: Update, context: CallbackContext):
 • التحقق: مكتمل ✅
 • الأمان: محمي ✅
 • الإشعارات: مفعلة ✅
-
 🎯 **تقييم الحساب:**
 • الموثوقية: ممتاز ⭐⭐⭐⭐⭐
 • الأمان: عالي 🔒
@@ -4200,8 +5399,7 @@ async def account_status_handler(update: Update, context: CallbackContext):
         keyboard = [
             [InlineKeyboardButton('📊 تقاريري الشخصية', callback_data='personal_reports'),
              InlineKeyboardButton('📈 إحصائيات المحفظة', callback_data='wallet_stats')],
-            [InlineKeyboardButton('🔔 إشعاراتي', callback_data='my_notifications'),
-             InlineKeyboardButton('⚙️ إعدادات الحساب', callback_data='account_settings')],
+            [InlineKeyboardButton('🔔 إشعاراتي', callback_data='my_notifications')],
             [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ]
         
@@ -4220,7 +5418,6 @@ async def recharge_balance_handler(update: Update, context: CallbackContext):
         
         recharge_text = f"""
 💰 **شحن الرصيد** 💰
-
 👤 مرحباً **{user['full_name']}**
 💳 رقم محفظتك: **{user['wallet_number']}**
 💰 رصيدك الحالي: **{user['balance']:,.2f}** ريال
@@ -4241,7 +5438,6 @@ async def recharge_balance_handler(update: Update, context: CallbackContext):
    • للمساعدة في عملية الشحن
    • للاستفسار عن نقاط البيع
    • لحل أي مشاكل في الشحن
-
 💡 **أسرع طريقة: استخدم الكوبونات!**
 """
         
@@ -4263,7 +5459,14 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
     """Handle transfer confirmation"""
     try:
         query = update.callback_query
-        await query.answer()
+        # تجنب خطأ Query is too old
+        try:
+            await query.answer()
+        except Exception as e:
+            if "too old" in str(e):
+                logger.debug("Query too old, continuing with transfer")
+            else:
+                raise
         
         user = get_user(query.from_user.id)
         if not user:
@@ -4289,6 +5492,14 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
             await query.edit_message_text(f"{EMOJIS['error']} انتهت صلاحية العملية. يرجى البدء من جديد.")
             return
         
+        # حماية ضد الضغط المتعدد
+        if context.user_data.get('transfer_processing'):
+            await query.answer("⏳ العملية قيد التنفيذ، يرجى الانتظار...", show_alert=True)
+            return
+        
+        # تعيين حالة المعالجة
+        context.user_data['transfer_processing'] = True
+        
         # Get transfer details
         target_user_id = context.user_data.get('target_user_id')
         target_user_name = context.user_data.get('target_user_name')
@@ -4300,38 +5511,74 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
             return
         
         # Execute the transfer
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Get target user details
-        cursor.execute('SELECT * FROM users WHERE id = ?', (target_user_id,))
-        target_user = cursor.fetchone()
-        
-        if not target_user:
-            await query.edit_message_text(f"{EMOJIS['error']} المستخدم المستهدف غير موجود.")
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # بدء معاملة قاعدة البيانات
+            cursor.execute('BEGIN IMMEDIATE')
+            
+            # Get target user details
+            cursor.execute('SELECT * FROM users WHERE id = ?', (target_user_id,))
+            target_user = cursor.fetchone()
+            
+            if not target_user:
+                conn.rollback()
+                conn.close()
+                await query.edit_message_text(f"{EMOJIS['error']} المستخدم المستهدف غير موجود.")
+                return
+            
+            # التحقق من الرصيد مرة أخيرة
+            cursor.execute('SELECT balance FROM users WHERE id = ?', (user['id'],))
+            current_balance_result = cursor.fetchone()
+            if not current_balance_result or current_balance_result[0] < amount:
+                conn.rollback()
+                conn.close()
+                await query.edit_message_text(f"{EMOJIS['error']} رصيدك غير كافي للتحويل.")
+                return
+            
+            current_balance = current_balance_result[0]
+            
+            # تحديث الأرصدة مباشرة (أسرع من إعادة الحساب)
+            cursor.execute('UPDATE users SET balance = balance - ? WHERE id = ?', (amount, user['id']))
+            cursor.execute('UPDATE users SET balance = balance + ? WHERE id = ?', (amount, target_user_id))
+            
+            # إنشاء معاملة التحويل
+            import uuid
+            from datetime import datetime
+            
+            transfer_id = str(uuid.uuid4())
+            cursor.execute('''
+                INSERT INTO transactions 
+                (id, from_user, to_user, amount, type, description, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (transfer_id, user['id'], target_user_id, amount, 'transfer', 'تحويل رصيد من صديق', datetime.now()))
+            
+            # الحصول على الأرصدة الجديدة
+            cursor.execute('SELECT balance FROM users WHERE id = ?', (user['id'],))
+            sender_new_balance = cursor.fetchone()[0]
+            
+            cursor.execute('SELECT balance FROM users WHERE id = ?', (target_user_id,))
+            receiver_new_balance = cursor.fetchone()[0]
+            
+            # تأكيد المعاملة
+            conn.commit()
             conn.close()
+            
+            # تسجيل القيد المحاسبي في الخلفية (لا نريد أن يبطئ التحويل)
+            # تم تعطيل المحاسبة مؤقتاً لتحسين الأداء
+            # يمكن تفعيلها لاحقاً إذا لزم الأمر
+                
+        except Exception as e:
+            try:
+                conn.rollback()
+                conn.close()
+            except:
+                pass
+            logger.error(f"Transfer failed: {e}")
+            await query.edit_message_text(f"{EMOJIS['error']} حدث خطأ في التحويل. يرجى المحاولة مرة أخرى.")
+            context.user_data.clear()
             return
-        
-        # Create transfer transactions
-        import uuid
-        from datetime import datetime
-        
-        # Transfer transaction
-        transfer_id = str(uuid.uuid4())
-        cursor.execute('''
-            INSERT INTO transactions 
-            (id, from_user, to_user, amount, type, description, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (transfer_id, user['id'], target_user['id'], amount, 'transfer', 'تحويل رصيد من صديق', datetime.now()))
-        
-        # No fee transaction - transfers are FREE!
-        
-        # Update balances
-        sender_new_balance = recalc_and_set_user_balance(user['id'])
-        receiver_new_balance = recalc_and_set_user_balance(target_user['id'])
-        
-        conn.commit()
-        conn.close()
         
         # Clear user state
         context.user_data.clear()
@@ -4355,7 +5602,16 @@ async def confirm_transfer_handler(update: Update, context: CallbackContext, con
 📱 سيتم إشعار المستلم فوراً
 """
         
-        await query.edit_message_text(success_text, parse_mode='Markdown')
+        # تعديل الرسالة مع معالجة الأخطاء
+        try:
+            await query.edit_message_text(success_text, parse_mode='Markdown')
+        except Exception as e:
+            if "not modified" in str(e):
+                # الرسالة لم تتغير، لا نحتاج لفعل شيء
+                logger.debug("Message not modified, skipping edit")
+            else:
+                # إرسال رسالة جديدة بدلاً من التعديل
+                await query.message.reply_text(success_text, parse_mode='Markdown')
         
         # Send notification to receiver (about receiving money)
         try:
@@ -4430,10 +5686,10 @@ def main():
         if not BOT_TOKEN:
             raise BotConfigurationError("BOT_TOKEN is not configured")
         
-        # Create persistence with error handling
+        # Create application without persistence to avoid sqlite3.Row pickle issues
         try:
-            persistence = PicklePersistence(filepath='yemen_net_bot_data')
-            application = Application.builder().token(BOT_TOKEN).persistence(persistence).build()
+            # تم تعطيل persistence مؤقتاً لحل مشكلة sqlite3.Row
+            application = Application.builder().token(BOT_TOKEN).build()
         except Exception as e:
             raise BotConfigurationError(f"Failed to create application: {e}")
         
@@ -4449,6 +5705,22 @@ def main():
                     application.bot.set_chat_menu_button(menu_button=MenuButtonCommands()),
                     timeout=30.0
                 )
+                # Set bot description and short description for better link previews
+                try:
+                    description_text = (
+                        "بوت كروت الإنترنت اليمني المطوّر: شراء كروت، محفظة ذكية، تقارير شخصية، عروض وكوبونات."
+                    )
+                    short_description_text = "بوت كروت الإنترنت اليمني المطوّر"
+                    await asyncio.wait_for(
+                        application.bot.set_my_description(description=description_text),
+                        timeout=30.0
+                    )
+                    await asyncio.wait_for(
+                        application.bot.set_my_short_description(short_description=short_description_text),
+                        timeout=30.0
+                    )
+                except Exception as de:
+                    logger.warning(f"Failed to set bot descriptions: {de}")
                 logger.info("Bot commands set successfully")
             except asyncio.TimeoutError:
                 logger.error("Timeout setting bot commands")
@@ -4473,7 +5745,7 @@ def main():
                 MessageHandler(filters.TEXT & filters.Regex(r'^/cancel$'), COMMAND_HANDLERS['cancel']),
             ],
             name='yemen_net_conversation',
-            persistent=True,
+            persistent=False,
             allow_reentry=True,
             per_message=False,
             per_chat=True,
@@ -4539,6 +5811,10 @@ def main():
         application.add_handler(CommandHandler('search_networks', search_networks_handler))
         application.add_handler(CommandHandler('promotions', promotions_handler))
         application.add_handler(CommandHandler('redeem_coupon', redeem_coupon_handler))
+        application.add_handler(CommandHandler('statement', account_statement_handler))
+        application.add_handler(CommandHandler('transfer', COMMAND_HANDLERS['transfer_to_friend']))
+        application.add_handler(CommandHandler('reports', personal_reports_handler))
+        application.add_handler(CommandHandler('notifications', my_notifications_handler))
         
         # Start the bot with enhanced error handling
         logger.info(f'{EMOJIS["fire"]} Starting Pottagrm Enhanced Bot v2.1.0...')
@@ -4725,12 +6001,15 @@ async def show_wallet_page(update: Update, context: CallbackContext, user: dict,
         ''', (user['id'], user['id'], user['id'], user['id']))
         
         stats = cursor.fetchone()
-        total_count, sent_amount, received_amount = stats
+        if stats:
+            total_count, sent_amount, received_amount = stats
+        else:
+            total_count, sent_amount, received_amount = 0, 0, 0
         
         conn.close()
         
-        # حساب التقييم
-        rating_data = calculate_user_rating(user['id'])
+        # حساب التقييم (محذوف)
+        rating_data = {'total_ratings': 0, 'average_rating': 0.0}
         
         # بناء نص المحفظة
         wallet_text = f"""
@@ -4754,28 +6033,50 @@ async def show_wallet_page(update: Update, context: CallbackContext, user: dict,
             for transaction in page_transactions:
                 trans_id, from_user_id, to_user_id, amount, trans_type, description, created_at = transaction
                 
-                # تحديد اتجاه المعاملة
+                # تحديد اتجاه المعاملة والأيقونات
                 if from_user_id == user['id']:
-                    direction = "📤 مرسل"
-                    color = "🔴"
+                    # معاملة صادرة (سحب)
+                    direction_color = "🔴"
+                    direction_icon = "📤"
+                    direction_text = "مرسل"
+                    amount_prefix = "-"
                 else:
-                    direction = "📥 مستلم"
-                    color = "🟢"
+                    # معاملة واردة (إيداع)
+                    direction_color = "🟢" 
+                    direction_icon = "📥"
+                    direction_text = "مستلم"
+                    amount_prefix = "+"
                 
-                # نوع المعاملة
+                # أيقونات أنواع المعاملات
+                type_icons = {
+                    'transfer': '🔄',
+                    'card_purchase': '🛒', 
+                    'coupon_redeem': '🎟️',
+                    'commission': '🎯',
+                    'money_creation': '💰',
+                    'transfer_fee': '💳'
+                }
+                
                 type_names = {
                     'transfer': 'تحويل رصيد',
                     'card_purchase': 'شراء كرت',
-                    'coupon_redeem': 'شحن بكوبون',
-                    'commission': 'عمولة'
+                    'coupon_redeem': 'شحن بكوبون', 
+                    'commission': 'عمولة',
+                    'money_creation': 'إنشاء رصيد',
+                    'transfer_fee': 'رسوم تحويل'
                 }
+                
+                type_icon = type_icons.get(trans_type, '💼')
                 type_name = type_names.get(trans_type, 'معاملة')
                 
+                # تنسيق التاريخ
+                date_formatted = created_at[:16] if created_at else 'غير محدد'
+                
+                # عرض المعاملة بالتنسيق الجديد
                 wallet_text += f"""
-{color} **{direction} - {type_name}**
-💰 {amount:,.2f} ريال
-📅 {created_at[:16] if created_at else 'غير محدد'}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📅 {date_formatted}
+{direction_color} {direction_text} | {type_icon} {type_name} | 💰 {amount_prefix}{amount:,.0f} ريال
+
 """
         else:
             if total_transactions == 0:
@@ -4821,7 +6122,9 @@ async def show_wallet_page(update: Update, context: CallbackContext, user: dict,
              InlineKeyboardButton('🛒 شراء كروت', callback_data='buy_cards')],
             [InlineKeyboardButton('🎟️ شحن بكوبون', callback_data='redeem_coupon'),
              InlineKeyboardButton('📊 تفاصيل المعاملات', callback_data='transaction_details')],
-            [InlineKeyboardButton('📈 إحصائيات المحفظة', callback_data='wallet_stats'),
+            [InlineKeyboardButton('👥 إحالاتي وعمولاتي', callback_data='referral_stats'),
+             InlineKeyboardButton('📈 إحصائيات المحفظة', callback_data='wallet_stats')],
+            [InlineKeyboardButton('🎟️ كشف الحساب', callback_data='account_statement'),
              InlineKeyboardButton('🔄 تحديث الرصيد', callback_data='refresh_balance')],
             [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
         ])
@@ -4871,7 +6174,6 @@ async def wallet_page_handler(update: Update, context: CallbackContext):
             "حاول العودة للمحفظة الرئيسية وأعد المحاولة",
             "PAGE_NAV_ERROR"
         ))
-
 async def confirm_user_transfer(update: Update, context: CallbackContext, user_id: str, amount: str):
     """تأكيد التحويل للمستخدم - معالج مفقود"""
     try:
@@ -4910,7 +6212,6 @@ async def confirm_user_transfer(update: Update, context: CallbackContext, user_i
                 [InlineKeyboardButton('🏠 القائمة الرئيسية', callback_data='main_menu')]
             ])
         )
-
 async def show_network_categories(update: Update, context: CallbackContext, network_id: str):
     """عرض فئات الكروت المتاحة في الشبكة للشراء"""
     try:
@@ -5010,6 +6311,11 @@ async def confirm_card_purchase(update: Update, context: CallbackContext, networ
     """تأكيد شراء الكرت"""
     try:
         query = update.callback_query
+        # Answer callback to avoid repeated pending queries
+        try:
+            await query.answer()
+        except Exception:
+            pass
         user = get_user(query.from_user.id)
         
         if not user:
@@ -5035,7 +6341,8 @@ async def confirm_card_purchase(update: Update, context: CallbackContext, networ
             SELECT COUNT(*) FROM network_cards 
             WHERE network_id = ? AND card_value = ? AND is_sold = 0
         ''', (network_id, card_price))
-        available_count = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        available_count = result[0] if result else 0
         
         conn.close()
         
@@ -5079,11 +6386,17 @@ async def confirm_card_purchase(update: Update, context: CallbackContext, networ
 """
         
         keyboard = [
-            [InlineKeyboardButton('✅ نعم، أريد الشراء', callback_data=f'confirm_purchase_{network_id}_{price}'),
+            [InlineKeyboardButton('✅ نعم، أريد الشراء', callback_data=f'process_purchase_{network_id}_{price}'),
              InlineKeyboardButton('❌ لا، إلغاء', callback_data=f'buy_from_network_{network_id}')]
         ]
         
-        await query.edit_message_text(confirm_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        # Safely edit message; ignore 'not modified' error if user double-clicked
+        try:
+            await query.edit_message_text(confirm_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        except BadRequest as e:
+            if 'Message is not modified' in str(e):
+                return
+            raise
         
     except Exception as e:
         logger.error(f"Error in confirm card purchase: {e}")
@@ -5105,12 +6418,20 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             await query.edit_message_text("❌ يرجى التسجيل أولاً /start")
             return
         
+        # حماية ضد الضغط المتعدد
+        if context.user_data.get('purchase_processing'):
+            await query.answer("⏳ عملية الشراء قيد التنفيذ، يرجى الانتظار...", show_alert=True)
+            return
+        
+        # تعيين حالة المعالجة
+        context.user_data['purchase_processing'] = True
+        
         # الحصول على معلومات الشبكة
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # بدء معاملة قاعدة البيانات
-        cursor.execute('BEGIN TRANSACTION')
+        # بدء معاملة بكتابة فورية لتقليل التنافس
+        cursor.execute('BEGIN IMMEDIATE')
         
         try:
             cursor.execute('SELECT name, provider, supplier_id FROM networks WHERE id = ? AND is_active = 1', (network_id,))
@@ -5120,9 +6441,20 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
                 raise Exception("الشبكة غير موجودة أو غير متاحة")
             
             network_name, provider, supplier_id = network
-            card_price = float(price)
             
-            # التحقق من توفر الكرت (مع قفل للصف لتجنب التضارب)
+            # التحقق من صحة السعر (Input Validation)
+            try:
+                card_price = float(price)
+                if card_price <= 0:
+                    raise ValueError("السعر يجب أن يكون أكبر من صفر")
+                if card_price > 10000:  # حد أقصى معقول
+                    raise ValueError("السعر أكبر من الحد المسموح")
+                if card_price != card_price:  # Check for NaN
+                    raise ValueError("السعر غير صحيح")
+            except (ValueError, TypeError) as e:
+                raise Exception(f"سعر الكرت غير صحيح: {price}")
+            
+            # التحقق من توفر الكرت وحجزه (بدون FOR UPDATE في SQLite)
             cursor.execute('''
                 SELECT id FROM network_cards 
                 WHERE network_id = ? AND card_value = ? AND is_sold = 0
@@ -5135,21 +6467,43 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             
             card_id = card_result[0]
             
-            # التحقق من الرصيد مرة أخرى
-            cursor.execute('SELECT balance FROM users WHERE telegram_id = ?', (user['telegram_id'],))
-            current_balance = cursor.fetchone()[0]
+            # تحقق مزدوج من حالة الكرت (أمان إضافي)
+            cursor.execute('SELECT is_sold FROM network_cards WHERE id = ?', (card_id,))
+            card_status = cursor.fetchone()
+            if not card_status or card_status[0] != 0:
+                raise Exception("الكرت غير متاح للبيع (تم بيعه بواسطة عملية أخرى)")
+            
+            # التحقق من الرصيد مرة أخرى (استخدام user['id'] للاتساق)
+            cursor.execute('SELECT balance FROM users WHERE id = ?', (user['id'],))
+            result = cursor.fetchone()
+            if not result:
+                raise Exception("خطأ في استرداد بيانات المستخدم")
+            current_balance = result[0]
             
             if current_balance < card_price:
                 raise Exception(f"رصيدك ({current_balance:,.2f} ريال) غير كافي")
             
-            # تحديث حالة الكرت إلى مباع
-            cursor.execute('UPDATE network_cards SET is_sold = 1, sold_at = datetime("now") WHERE id = ?', (card_id,))
+            # تحديث حالة الكرت إلى مباع مع شرط الأمان لمنع السباق
+            cursor.execute('UPDATE network_cards SET is_sold = 1, sold_at = datetime("now") WHERE id = ? AND is_sold = 0', (card_id,))
+            if cursor.rowcount == 0:
+                raise Exception("الكرت تم حجزه بواسطة عملية أخرى، حاول مرة أخرى")
             
-            # خصم المبلغ من رصيد المشتري
-            cursor.execute('UPDATE users SET balance = balance - ? WHERE telegram_id = ?', (card_price, user['telegram_id']))
+            # حساب تقسيم الأرباح (70% للمزود، 30% للمشرف)
+            provider_share = card_price * 0.70  # 70% للمزود
+            admin_share = card_price * 0.30     # 30% للمشرف
             
-            # إضافة المبلغ لرصيد المزود
-            cursor.execute('UPDATE users SET balance = balance + ? WHERE id = ?', (card_price, supplier_id))
+            # خصم المبلغ كاملاً من رصيد المشتري (استخدام user['id'] للاتساق)
+            cursor.execute('UPDATE users SET balance = balance - ? WHERE id = ?', (card_price, user['id']))
+            
+            # إضافة حصة المزود فقط (70%)
+            cursor.execute('UPDATE users SET balance = balance + ? WHERE id = ?', (provider_share, supplier_id))
+            
+            # إضافة حصة المشرف الأعلى (30%)
+            cursor.execute("SELECT id FROM users WHERE role = 'super_admin' LIMIT 1")
+            admin_result = cursor.fetchone()
+            if admin_result:
+                admin_id = admin_result[0]
+                cursor.execute('UPDATE users SET balance = balance + ? WHERE id = ?', (admin_share, admin_id))
             
             # إنشاء معاملة في السجل
             import uuid
@@ -5163,10 +6517,61 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             
             # الحصول على معلومات الكرت
             cursor.execute('SELECT card_code FROM network_cards WHERE id = ?', (card_id,))
-            card_code = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            if not result:
+                raise Exception("خطأ في استرداد بيانات الكرت")
+            card_code = result[0]
+            
+            # تحديث حصة المزود/الإدارة وفق إعدادات العمولة وتسجيل قيود محاسبية مبسطة
+            try:
+                cursor.execute('''
+                    SELECT provider_percent, admin_percent 
+                    FROM commission_settings 
+                    WHERE network_id IS NULL 
+                    ORDER BY effective_from DESC LIMIT 1
+                ''')
+                row = cursor.fetchone()
+                provider_percent = row[0] if row else 70.0
+                admin_percent = row[1] if row else 30.0
+                provider_share = card_price * (provider_percent / 100.0)
+                admin_share = card_price * (admin_percent / 100.0)
+                cursor.execute('''
+                    UPDATE transactions 
+                    SET provider_id = ?, total_amount = ?, provider_share = ?, admin_share = ?
+                    WHERE id = ?
+                ''', (supplier_id, card_price, provider_share, admin_share, transaction_id))
+                # إنشاء قيد تجميعي بسيط (Journal) عبر accounting_engine إذا لزم
+                try:
+                    record_purchase_accounting(card_price, user['id'], transaction_id)
+                except Exception:
+                    pass
+            except Exception as e:
+                logger.warning(f"Commission update failed: {e}")
             
             # تأكيد المعاملة
             cursor.execute('COMMIT')
+            
+            # معالجة عمولة الإحالة (5% من حصة المشرف الأعلى)
+            try:
+                from bot_modules.utils import process_referral_commission_fixed
+                if admin_result:  # إذا كان هناك مشرف أعلى
+                    referral_commission = process_referral_commission_fixed(user['id'], card_price, transaction_id, admin_id)
+                    if referral_commission > 0:
+                        # خصم العمولة من حصة المشرف الأعلى
+                        cursor.execute('UPDATE users SET balance = balance - ? WHERE id = ?', (referral_commission, admin_id))
+                        logger.info(f"Referral commission {referral_commission:.2f} deducted from admin share")
+            except Exception as e:
+                logger.warning(f"Failed to process referral commission: {e}")
+            
+            # تسجيل تفاصيل التقسيم في المعاملة (اختياري للتقارير)
+            try:
+                cursor.execute('''
+                    UPDATE transactions 
+                    SET provider_id = ?, total_amount = ?, provider_share = ?, admin_share = ?
+                    WHERE id = ?
+                ''', (supplier_id, card_price, provider_share, admin_share, transaction_id))
+            except Exception as e:
+                logger.warning(f"Failed to update transaction details: {e}")
             
             # عرض نتيجة الشراء الناجح
             success_text = f"""
@@ -5199,6 +6604,9 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             ]
             
             await query.edit_message_text(success_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            
+            # تنظيف حالة المعالجة بعد النجاح
+            context.user_data.clear()
             
             # Send notification to buyer (about purchase)
             try:
@@ -5261,8 +6669,12 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
                 logger.warning(f"Failed to send notification to supplier: {e}")
             
         except Exception as e:
-            # إلغاء المعاملة في حالة الخطأ
-            cursor.execute('ROLLBACK')
+            # إلغاء المعاملة في حالة الخطأ (مع معالجة آمنة)
+            try:
+                cursor.execute('ROLLBACK')
+                logger.info("Transaction rolled back successfully")
+            except Exception as rollback_error:
+                logger.error(f"Failed to rollback transaction: {rollback_error}")
             raise e
             
         finally:
@@ -5270,6 +6682,15 @@ async def process_card_purchase(update: Update, context: CallbackContext, networ
             
     except Exception as e:
         logger.error(f"Error in process card purchase: {e}")
+        
+        # تنظيف حالة المعالجة في حالة الخطأ
+        context.user_data.pop('purchase_processing', None)
+        
+        # تنظيف شامل لبيانات المستخدم المؤقتة لمنع memory leaks
+        cleanup_keys = ['awaiting_card_upload', 'upload_file', 'selected_price', 'card_size', 'selected_network_id', 'withdrawal_step', 'withdrawal_name', 'withdrawal_account']
+        for key in cleanup_keys:
+            context.user_data.pop(key, None)
+        
         from enhanced_error_messages import ErrorMessages
         await query.edit_message_text(
             ErrorMessages.custom_error(
