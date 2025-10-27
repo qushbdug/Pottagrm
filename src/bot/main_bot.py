@@ -914,6 +914,44 @@ class YemenNetBot:
         """إرجاع كائن Application للاستخدام الخارجي"""
         return self.application
     
+    async def run(self):
+        """تشغيل البوت"""
+        try:
+            # إعداد الأوامر السريعة
+            await self.setup_commands()
+            
+            # تشغيل البوت
+            await self.application.run_polling(drop_pending_updates=True)
+            
+        except Exception as e:
+            logger.error(f"خطأ في تشغيل البوت: {e}")
+            raise
+    
+    async def run_webhook(self, port=10000, webhook_url=None):
+        """تشغيل البوت باستخدام webhook"""
+        try:
+            # إعداد الأوامر السريعة
+            await self.setup_commands()
+            
+            if webhook_url:
+                logger.info(f"تشغيل webhook على المنفذ {port}")
+                logger.info(f"webhook URL: {webhook_url}")
+                
+                # تشغيل webhook
+                await self.application.run_webhook(
+                    listen='0.0.0.0',
+                    port=port,
+                    webhook_url=webhook_url,
+                    drop_pending_updates=True
+                )
+            else:
+                # تشغيل polling
+                await self.application.run_polling(drop_pending_updates=True)
+                
+        except Exception as e:
+            logger.error(f"خطأ في تشغيل webhook: {e}")
+            raise
+    
     async def setup_commands(self):
         """إعداد الأوامر السريعة"""
         try:
@@ -930,7 +968,7 @@ def main():
         
         # تشغيل البوت باستخدام polling
         logger.info("🚀 بدء تشغيل البوت بـ polling...")
-        bot.application.run_polling(drop_pending_updates=True)
+        asyncio.run(bot.run())
         
     except KeyboardInterrupt:
         logger.info("تم إيقاف البوت بواسطة المستخدم")
